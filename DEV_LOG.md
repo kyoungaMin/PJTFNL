@@ -77,11 +77,11 @@ DEV_LOG/
 
 | 영역 | 기술 | 선정 사유 |
 |------|------|-----------|
-| **백엔드** | | |
-| **프론트엔드** | | |
+| **백엔드** | FastAPI (Python) | Python ML 연동, 자동 API 문서(Swagger), 비동기 지원 |
+| **프론트엔드** | Next.js (React) | SSR/SSG 대시보드, Supabase 공식 지원, Vercel 배포 |
 | **데이터 파이프라인** | | |
 | **ML/AI 모델** | | |
-| **데이터베이스** | | |
+| **데이터베이스** | PostgreSQL (Supabase) | SaaS 프로덕션, 팀 공유, REST API 제공 |
 | **배포/인프라** | | |
 
 ---
@@ -93,6 +93,14 @@ DEV_LOG/
 | 2026-02-27 | kyoungaMin | 개발일지 형식 | Notion / Markdown | Markdown | 코드와 함께 버전 관리 가능 |
 | 2026-02-27 | kyoungaMin | 개발일지 구조 | 단일파일 / 개발자별 분리 | 개발자별 분리 | 4인 분담 개발, 충돌 방지 |
 | 2026-02-27 | kyoungaMin | 개발자 식별 방식 | Windows 계정 / Git config / 수동 입력 | Git config | 별도 매핑 불필요, 실명 가독성 |
+| 2026-02-27 | kyoungaMin | 데이터베이스 | SQLite / PostgreSQL / DuckDB | PostgreSQL (Supabase) | SaaS 프로덕션 환경, 팀 공유 |
+| 2026-02-27 | kyoungaMin | FK 제약조건 | 설정 / 미설정 | 미설정 | 데이터 유연성 우선 |
+| 2026-02-27 | kyoungaMin | 데이터 적재 방식 | Python / SQL / CLI | SQL + Python | DDL은 SQL Editor, 데이터는 REST API |
+| 2026-02-27 | kyoungaMin | 백엔드 프레임워크 | FastAPI / Next.js API / Express / Django | FastAPI (Python) | ML 연동, 자동 Swagger, 비동기 |
+| 2026-02-27 | kyoungaMin | 프론트엔드 프레임워크 | Next.js / React+Vite / Streamlit / Vue+Nuxt | Next.js (React) | SSR 대시보드, Supabase 지원, Vercel 배포 |
+| 2026-02-27 | kyoungaMin | 외부지표 DB 구조 | 소스별 분리 / 통합 테이블 | 통합 2테이블 (economic_indicator + trade_statistics) | 시계열은 통합, 무역통계는 구조가 달라 분리 |
+| 2026-02-27 | kyoungaMin | 인증 방식 | Supabase Auth / 자체 구현 | Supabase Auth | 내장 JWT, OAuth 지원, 별도 인증 로직 불필요 |
+| 2026-02-27 | kyoungaMin | 권한 구조 | 단일 역할 / RBAC / 조직+역할 | RBAC (4단계) | admin/manager/analyst/viewer, B2B SaaS 적합 |
 
 ---
 
@@ -116,7 +124,7 @@ DEV_LOG/
 
 | ID | 등록일 | 등록자 | 제목 | 심각도 | 상태 | 해결일 | 해결자 | 해결 방법 |
 |----|--------|--------|------|--------|------|--------|--------|-----------|
-| — | — | — | — | `높음`/`중간`/`낮음` | `열림`/`해결` | — | — | — |
+| ISS-001 | 2026-02-27 | kyoungaMin | ECOS API DNS 해석 실패 (ecos.bok.or.kr) | `중간` | `열림` | — | — | 네트워크 환경 문제, 추후 재시도 |
 
 ---
 
@@ -134,3 +142,5 @@ DEV_LOG/
 |------|--------|-----------|
 | 2026-02-27 | kyoungaMin | 개발일지 템플릿 초기 생성 |
 | 2026-02-27 | kyoungaMin | 개발자별 일자별 분리 구조로 전환 |
+| 2026-02-27 | kyoungaMin | DB 기술 스택 확정 (Supabase PostgreSQL), DDL/적재 스크립트 추가 |
+| 2026-02-27 | kyoungaMin | 외부지표 API 연동 (FRED/EIA/관세청), DDL·적재 스크립트 추가, 6,829건 적재 |
