@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git remote add origin https://github.com/kyoungaMin/PJTFNL.git)",
+      "Bash(git add .gitignore DEV_LOG.md DEV_LOG/_TEMPLATE.md DEV_LOG/kyoungaMin/2026-02-27.md DATA/ .claude/)"
+    ]
+  }
+}
