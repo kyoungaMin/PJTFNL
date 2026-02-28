@@ -1,8 +1,8 @@
 """
-Step 4: 수요예측 모델 — LightGBM Quantile Regression (P10/P50/P90)
-주간 피처 스토어 기반, 호라이즌별 별도 모델 학습
+Step 4m: 월간 수요예측 모델 — LightGBM Quantile Regression (P10/P50/P90)
+월간 피처 스토어 기반, 호라이즌별 별도 모델 학습
 
-입력 테이블: feature_store_weekly
+입력 테이블: feature_store_monthly
 출력 테이블: forecast_result, model_evaluation, feature_importance, tuning_result
 """
 
@@ -15,25 +15,26 @@ import numpy as np
 import pandas as pd
 
 from config import (
-    supabase, upsert_batch, WEEKLY_FEATURE_COLS,
-    WEEKLY_PARAM_GRID, WEEKLY_CV_FOLDS, TUNING_METRIC, TUNE_SAMPLE_PRODUCTS,
+    supabase, upsert_batch, MONTHLY_FEATURE_COLS,
+    MONTHLY_PARAM_GRID, MONTHLY_CV_FOLDS, TUNING_METRIC, TUNE_SAMPLE_PRODUCTS,
 )
 from ml_utils import compute_metrics, walk_forward_cv, grid_search_horizon
 
-MODEL_ID = "lgbm_q_v2"
-HORIZONS = {"target_1w": 7, "target_2w": 14, "target_4w": 28}
-MIN_SAMPLES = 26
+MODEL_ID = "lgbm_q_monthly_v1"
+HORIZONS = {"target_1m": 30, "target_3m": 90, "target_6m": 180}
+MIN_SAMPLES = 6
 TRAIN_RATIO = 0.8
+MIN_TRAIN_SIZE = 4  # walk-forward CV 최소 학습 크기
 
 # LightGBM 기본 하이퍼파라미터
 LGB_PARAMS = {
     "objective": "quantile",
     "metric": "quantile",
-    "n_estimators": 300,
+    "n_estimators": 200,
     "max_depth": 6,
     "learning_rate": 0.05,
     "num_leaves": 31,
-    "min_child_samples": 20,
+    "min_child_samples": 15,
     "colsample_bytree": 0.8,
     "subsample": 0.8,
     "subsample_freq": 1,
@@ -55,7 +56,7 @@ def fetch_all(table: str, select: str) -> list:
 
 
 def run(tune: bool = False):
-    print("[S4] 수요예측 모델 학습/추론 시작")
+    print("[S4m] 월간 수요예측 모델 학습/추론 시작")
 
     try:
         import lightgbm as lgb
@@ -64,43 +65,42 @@ def run(tune: bool = False):
         print("  [!] lightgbm 없이 단순 이동평균 fallback 사용")
         lgb = None
 
-    # 1) feature_store_weekly 로드
-    rows = fetch_all("feature_store_weekly", "*")
+    # 1) feature_store_monthly 로드
+    rows = fetch_all("feature_store_monthly", "*")
     if not rows:
-        print("  [!] feature_store_weekly 비어있음. s3 먼저 실행 필요")
+        print("  [!] feature_store_monthly 비어있음. s3m 먼저 실행 필요")
         return
 
     df = pd.DataFrame(rows)
-    df = df.sort_values(["product_id", "year_week"])
+    df = df.sort_values(["product_id", "year_month"])
 
-    if "week_start" in df.columns:
-        week_to_date = dict(zip(df["year_week"], df["week_start"]))
+    if "month_start" in df.columns:
+        month_to_date = dict(zip(df["year_month"], df["month_start"]))
     else:
-        week_to_date = {}
+        month_to_date = {}
 
     # 수치형 변환
-    feature_cols = [c for c in WEEKLY_FEATURE_COLS if c in df.columns]
+    feature_cols = [c for c in MONTHLY_FEATURE_COLS if c in df.columns]
     for col in feature_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     for t in HORIZONS:
         df[t] = pd.to_numeric(df[t], errors="coerce")
 
     products = df["product_id"].unique()
-    print(f"  feature_store_weekly: {len(df):,}행, 제품: {len(products):,}개")
+    print(f"  feature_store_monthly: {len(df):,}행, 제품: {len(products):,}개")
     print(f"  피처: {len(feature_cols)}개, 호라이즌: {list(HORIZONS.keys())}")
 
     today = date.today()
 
     # ─── 2) Grid Search (tune=True 일 때만) ───
-    horizon_params = {}  # target_col → best params
+    horizon_params = {}
     tuning_rows = []
 
     if tune and lgb is not None:
-        print("\n  ── Grid Search 시작 ──")
+        print("\n  ── Grid Search 시작 (월간) ──")
         for target_col, horizon_days in HORIZONS.items():
             print(f"\n  [{target_col}] horizon={horizon_days}일")
 
-            # 충분한 데이터를 가진 제품 샘플링
             sample_data = []
             eligible = [p for p in products
                         if df[(df["product_id"] == p)].dropna(subset=[target_col]).shape[0] >= MIN_SAMPLES]
@@ -119,12 +119,11 @@ def run(tune: bool = False):
                 continue
 
             best_params, gs_results = grid_search_horizon(
-                sample_data, WEEKLY_PARAM_GRID, LGB_PARAMS,
-                n_folds=WEEKLY_CV_FOLDS, metric_key=TUNING_METRIC,
+                sample_data, MONTHLY_PARAM_GRID, LGB_PARAMS,
+                n_folds=MONTHLY_CV_FOLDS, metric_key=TUNING_METRIC,
             )
             horizon_params[target_col] = best_params
 
-            # tuning_result 행 생성
             best_metric = min(gs_results, key=lambda r: r["metric_value"])["metric_value"]
             for r in gs_results:
                 tuning_rows.append({
@@ -135,7 +134,7 @@ def run(tune: bool = False):
                     "metric_name": r["metric_name"],
                     "metric_value": round(r["metric_value"], 6) if r["metric_value"] != float("inf") else None,
                     "is_best": r["metric_value"] == best_metric,
-                    "n_folds": WEEKLY_CV_FOLDS,
+                    "n_folds": MONTHLY_CV_FOLDS,
                 })
 
         print(f"\n  ── Grid Search 완료 ({len(tuning_rows)}건) ──\n")
@@ -163,13 +162,15 @@ def run(tune: bool = False):
 
             X = valid[feature_cols].fillna(0)
             y = valid[target_col].values
-            weeks = valid["year_week"].values
+            months = valid["year_month"].values
 
             params = horizon_params[target_col]
 
             if lgb is not None:
                 # a) Walk-Forward CV → 메트릭 + 피처 중요도
-                cv = walk_forward_cv(X, y, params, n_folds=WEEKLY_CV_FOLDS)
+                cv = walk_forward_cv(X, y, params,
+                                     n_folds=MONTHLY_CV_FOLDS,
+                                     min_train_size=MIN_TRAIN_SIZE)
 
                 if cv:
                     eval_rows.append({
@@ -198,9 +199,9 @@ def run(tune: bool = False):
                         fi_split[target_col] += cv["importance_split"]
                         fi_count[target_col] += 1
 
-                # b) 최종 80/20 split → forecast_result (기존 동작 유지)
+                # b) 최종 80/20 split → forecast_result
                 split_idx = int(len(valid) * TRAIN_RATIO)
-                if split_idx < 10 or (len(valid) - split_idx) < 3:
+                if split_idx < 3 or (len(valid) - split_idx) < 2:
                     skipped_count += 1
                     continue
 
@@ -221,7 +222,7 @@ def run(tune: bool = False):
                         "model_id": MODEL_ID,
                         "product_id": pid,
                         "forecast_date": today.isoformat(),
-                        "target_date": week_to_date.get(weeks[split_idx + i], today.isoformat()),
+                        "target_date": month_to_date.get(months[split_idx + i], today.isoformat()),
                         "horizon_days": horizon_days,
                         "p10": round(max(float(p10), 0), 6),
                         "p50": round(max(float(p50), 0), 6),
@@ -230,14 +231,13 @@ def run(tune: bool = False):
                     })
                 trained_count += 1
             else:
-                # Fallback: 이동평균 기반 단순 예측
-                recent = y[-30:] if len(y) >= 30 else y
+                recent = y[-6:] if len(y) >= 6 else y
                 p50_val = float(np.median(recent))
                 p10_val = float(np.percentile(recent, 10))
                 p90_val = float(np.percentile(recent, 90))
 
                 results.append({
-                    "model_id": "moving_avg_v1",
+                    "model_id": "moving_avg_monthly_v1",
                     "product_id": pid,
                     "forecast_date": today.isoformat(),
                     "target_date": today.isoformat(),
@@ -272,25 +272,21 @@ def run(tune: bool = False):
             })
 
     # ─── 5) DB 적재 ───
-    # model_evaluation
     if eval_rows:
         upsert_batch("model_evaluation", eval_rows,
                       on_conflict="model_id,product_id,horizon_key,eval_date")
         print(f"  model_evaluation: {len(eval_rows):,}건 적재")
 
-    # feature_importance
     if fi_rows:
         upsert_batch("feature_importance", fi_rows,
                       on_conflict="model_id,horizon_key,eval_date,feature_name")
         print(f"  feature_importance: {len(fi_rows):,}건 적재")
 
-    # tuning_result
     if tuning_rows:
         upsert_batch("tuning_result", tuning_rows,
                       on_conflict="model_id,horizon_key,eval_date,params_json")
         print(f"  tuning_result: {len(tuning_rows):,}건 적재")
 
-    # forecast_result
     if results:
         for i in range(0, len(results), 500):
             batch = results[i:i + 500]
@@ -300,7 +296,7 @@ def run(tune: bool = False):
     # 메트릭 요약 출력
     if eval_rows:
         eval_df = pd.DataFrame(eval_rows)
-        print(f"\n  ── 평가 메트릭 요약 ──")
+        print(f"\n  ── 평가 메트릭 요약 (월간) ──")
         for hk in HORIZONS:
             sub = eval_df[eval_df["horizon_key"] == hk]
             if sub.empty:
@@ -309,10 +305,9 @@ def run(tune: bool = False):
             cov_avg = sub["coverage_rate"].dropna().mean()
             print(f"  {hk}: MAPE={mape_avg:.1f}% | Coverage={cov_avg:.1f}% | 제품수={len(sub)}")
 
-    # 피처 중요도 TOP 10 출력
     if fi_rows:
         fi_df = pd.DataFrame(fi_rows)
-        print(f"\n  ── 피처 중요도 TOP 10 ──")
+        print(f"\n  ── 피처 중요도 TOP 10 (월간) ──")
         for hk in HORIZONS:
             sub = fi_df[(fi_df["horizon_key"] == hk) & (fi_df["rank_gain"] <= 10)]
             if sub.empty:
@@ -322,7 +317,7 @@ def run(tune: bool = False):
                 print(f"    {row['rank_gain']:>2}. {row['feature_name']:<30} gain={row['importance_gain']:.2f}")
 
     count = supabase.table("forecast_result").select("id", count="exact").execute()
-    print(f"\n[S4] 완료 — forecast_result: {count.count:,}행")
+    print(f"\n[S4m] 완료 — forecast_result: {count.count:,}행 (월간+주간 합산)")
 
 
 if __name__ == "__main__":

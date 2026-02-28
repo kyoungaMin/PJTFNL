@@ -64,8 +64,8 @@
 | 항목 | 내용 |
 |------|------|
 | **예측 단위** | 고객사별, 제품별, 주차별/월별 선택 |
-| **예측 범위** | 주별 최대 24주 / 월별 최대 6개월 |
-| **예측 모델** | LightGBM Quantile Regression |
+| **예측 범위** | 주간: 1w/2w/4w (최대 28일) / 월간: 1m/3m/6m (최대 180일) |
+| **예측 모델** | LightGBM Quantile Regression (주간 46피처, 월간 35피처) |
 | **출력** | P10(낙관) / P50(중앙) / P90(비관) 밴드 |
 
 ```
@@ -177,6 +177,10 @@
 │  │ feature_store / forecast_result / risk_score   │   │
 │  │ action_queue / daily_inventory_estimated       │   │
 │  └───────────────────────────────────────────────┘   │
+│  ┌─ ML 피처 ─────────────────────────────────────┐   │
+│  │ feature_store_weekly (46피처, 83K행)            │   │
+│  │ feature_store_monthly (35피처, 48K행)           │   │
+│  └───────────────────────────────────────────────┘   │
 │  ┌─ 집계 ────────────────────────────────────────┐   │
 │  │ weekly/monthly_product_summary                 │   │
 │  │ weekly/monthly_customer_summary                │   │
@@ -186,12 +190,12 @@
 ┌──────────────────────┴──────────────────────────────┐
 │            데이터 파이프라인 (Python)                    │
 │                                                       │
-│  CSV 적재 → 외부 API 수집 → 환율/지수 생성             │
-│        → 7단계 분석 파이프라인 (S0~S6)                  │
+│  CSV 적재 → 외부 API 수집 → 환율/지수/ECOS 적재        │
+│  → 주간 파이프라인 (S0~S6) + 월간 파이프라인 (S3m~S4m)  │
 └───────────────────────────────────────────────────────┘
         ▲                                    ▲
    ERP 데이터                        외부 API
-   (CSV Export)              (FRED / EIA / 관세청)
+   (CSV Export)          (FRED / EIA / 관세청 / ECOS)
 ```
 
 ---
@@ -205,23 +209,44 @@
 [2] 외부 API 수집    → python DB/04_load_external_data.py → economic_indicator + trade_statistics
 [3] 환율 데이터      → python DB/10_load_exchange_rate.py → exchange_rate (4통화 5,321건)
 [4] 산업 지수 데이터  → python DB/11_load_indices.py → economic_indicator (10지표 4,886건)
+[5] ECOS 실데이터    → python DB/12_load_ecos.py → economic_indicator (10종 1,810건)
 ```
 
-### 6.2 분석 파이프라인 (7단계)
+### 6.2 분석 파이프라인 (주간 7단계 + 월간 2단계)
 
 ```bash
+# 주간 파이프라인 전체 실행 (S0~S6)
 python DB/07_pipeline/run_pipeline.py
+
+# 월간 파이프라인 실행
+python DB/07_pipeline/run_pipeline.py --step=3m,4m
+
+# 주간 + 월간 한 번에 실행
+python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m
 ```
+
+**주간 파이프라인 (S0~S6)**
 
 | Step | 모듈 | 입력 | 출력 | 설명 |
 |:----:|------|------|------|------|
 | 0 | `s0_aggregation.py` | 수주, 매출, 생산 | 주별·월별 집계 4테이블 | ISO 주차 캘린더 + 다차원 집계 |
 | 1 | `s1_daily_inventory.py` | 재고, 생산, 매출 | `daily_inventory_estimated` | 월초 스냅샷 기반 일간 재고 보간 |
 | 2 | `s2_lead_time.py` | 구매발주 | `product_lead_time` | 제품별 리드타임 통계 (AVG/P90) |
-| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store` | 롤링 윈도우 + 외부지표 조인 |
-| 4 | `s4_forecast.py` | feature_store | `forecast_result` | LightGBM Quantile 예측 |
+| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store_weekly` | 주간 피처 엔지니어링 (46개 피처) |
+| 4 | `s4_forecast.py` | feature_store_weekly | `forecast_result` | LightGBM Quantile 예측 (1w/2w/4w) |
 | 5 | `s5_risk_score.py` | 예측 + 재고 + 리드타임 | `risk_score` | 4유형 리스크 스코어링 |
 | 6 | `s6_action_queue.py` | risk_score | `action_queue` | C등급 이상 자동 조치 제안 |
+
+**월간 파이프라인 (S3m~S4m)**
+
+| Step | 모듈 | 입력 | 출력 | 설명 |
+|:----:|------|------|------|------|
+| 3m | `s3m_feature_store_monthly.py` | 전체 ERP + 외부지표 | `feature_store_monthly` | 월간 피처 엔지니어링 (35개 피처) |
+| 4m | `s4m_forecast_monthly.py` | feature_store_monthly | `forecast_result` | LightGBM Quantile 예측 (1m/3m/6m) |
+
+> 주간과 월간 예측 결과는 동일한 `forecast_result` 테이블에 적재되며, `model_id`로 구분됩니다.
+> - 주간: `lgbm_q_v2` (horizon: 7/14/28일) | fallback: `moving_avg_v1`
+> - 월간: `lgbm_q_monthly_v1` (horizon: 30/90/180일) | fallback: `moving_avg_monthly_v1`
 
 ---
 
@@ -232,14 +257,14 @@ python DB/07_pipeline/run_pipeline.py
 | **백엔드** | FastAPI (Python) | ML 연동, 자동 Swagger, 비동기 지원 |
 | **프론트엔드** | Next.js (React) | SSR 대시보드, Supabase 연동, Vercel 배포 |
 | **데이터베이스** | PostgreSQL (Supabase) | REST API, 실시간 구독, RLS 보안 |
-| **ML 모델** | LightGBM Quantile | P10/P50/P90 분위 예측, 이동평균 fallback |
+| **ML 모델** | LightGBM Quantile | 주간(46피처)+월간(35피처) 이중 파이프라인, 이동평균 fallback |
 | **외부 데이터** | FRED / EIA / 관세청 API | 거시경제·에너지·무역 실시간 수집 |
 | **인증** | Supabase Auth + RBAC | JWT, 4단계 역할 (admin/manager/analyst/viewer) |
 | **배포** | Vercel + Supabase Cloud | 서버리스, 자동 스케일링 |
 
 ---
 
-## 8. DB 구조 (25개 테이블)
+## 8. DB 구조 (27개 테이블)
 
 | 구분 | 테이블 수 | 주요 테이블 | 행 수 |
 |------|----------|------------|-------|
@@ -247,6 +272,7 @@ python DB/07_pipeline/run_pipeline.py
 | 트랜잭션 | 6 | daily_order, daily_revenue, daily_production, purchase_order, inventory, bom | ~448,000 |
 | 외부지표 | 3 | economic_indicator, trade_statistics, exchange_rate | ~17,000 |
 | 분석 | 6 | feature_store, forecast_result, risk_score, action_queue 등 | 파이프라인 생성 |
+| ML 피처 | 2 | feature_store_weekly, feature_store_monthly | ~132,000 |
 | 집계 | 5 | weekly/monthly_product_summary, weekly/monthly_customer_summary, calendar_week | ~347,000 |
 | 인증 | 2 | user_profile, login_history | — |
 
@@ -280,14 +306,16 @@ PJTFNL/
 │   ├── 04_load_external_data.py       ← FRED/EIA/관세청 수집
 │   ├── 05_auth_ddl.sql                ← 인증/권한 (RBAC + RLS)
 │   ├── 06_analytics_ddl.sql           ← 분석용 6테이블
-│   ├── 07_pipeline/                   ← 7단계 분석 파이프라인
-│   │   ├── run_pipeline.py            ← 통합 실행기
-│   │   ├── config.py                  ← 공통 설정
+│   ├── 07_pipeline/                   ← 주간 7단계 + 월간 2단계 파이프라인
+│   │   ├── run_pipeline.py            ← 통합 실행기 (주간/월간 선택 가능)
+│   │   ├── config.py                  ← 공통 설정 + 피처 컬럼 정의
 │   │   ├── s0_aggregation.py          ← 주별·월별 집계
 │   │   ├── s1_daily_inventory.py      ← 일간 추정 재고
 │   │   ├── s2_lead_time.py            ← 리드타임 통계
-│   │   ├── s3_feature_store.py        ← 피처 엔지니어링
-│   │   ├── s4_forecast.py             ← 수요예측 모델
+│   │   ├── s3_feature_store.py        ← 주간 피처 엔지니어링 (46개)
+│   │   ├── s3m_feature_store_monthly.py ← 월간 피처 엔지니어링 (35개)
+│   │   ├── s4_forecast.py             ← 주간 수요예측 (LightGBM)
+│   │   ├── s4m_forecast_monthly.py    ← 월간 수요예측 (LightGBM)
 │   │   ├── s5_risk_score.py           ← 리스크 스코어링
 │   │   └── s6_action_queue.py         ← 조치 큐 생성
 │   ├── 07_queries/                    ← 분석 쿼리
@@ -296,6 +324,9 @@ PJTFNL/
 │   ├── 09_exchange_rate_ddl.sql       ← 환율 테이블
 │   ├── 10_load_exchange_rate.py       ← 환율 데이터 생성/적재
 │   ├── 11_load_indices.py             ← 산업 지수 생성/적재
+│   ├── 12_load_ecos.py               ← ECOS 한국은행 실데이터 적재
+│   ├── 13_feature_store_weekly_ddl.sql  ← 주간 ML 피처 테이블
+│   ├── 14_feature_store_monthly_ddl.sql ← 월간 ML 피처 테이블
 │   └── SCHEMA_REFERENCE.md            ← DB 스키마 전체 레퍼런스
 │
 ├── DEV_LOG/                           ← 개발일지
@@ -327,15 +358,18 @@ pip install supabase python-dotenv requests lightgbm
 # 2. DDL 실행 (Supabase SQL Editor에서 순서대로)
 #    01_ddl.sql → 03_external_ddl.sql → 05_auth_ddl.sql
 #    → 06_analytics_ddl.sql → 08_aggregation_ddl.sql → 09_exchange_rate_ddl.sql
+#    → 13_feature_store_weekly_ddl.sql → 14_feature_store_monthly_ddl.sql
 
 # 3. 데이터 적재
 python DB/02_load_data.py                # ERP CSV 데이터
 python DB/04_load_external_data.py       # FRED/EIA/관세청
 python DB/10_load_exchange_rate.py       # 환율 데이터
 python DB/11_load_indices.py             # 산업 지수 데이터
+python DB/12_load_ecos.py               # ECOS 한국은행 실데이터
 
 # 4. 분석 파이프라인 실행
-python DB/07_pipeline/run_pipeline.py    # 전체 7단계
+python DB/07_pipeline/run_pipeline.py              # 주간 전체 (S0~S6)
+python DB/07_pipeline/run_pipeline.py --step=3m,4m # 월간 (피처+예측)
 ```
 
 ---
@@ -358,7 +392,7 @@ python DB/07_pipeline/run_pipeline.py    # 전체 7단계
 |------|---------|----------|
 | 과거 실적 조회 | O | O |
 | **미래 수요 예측** | X | O (P10/P50/P90) |
-| **외부 변수 반영** | X | O (22개 경제지표) |
+| **외부 변수 반영** | X | O (30+개 경제·산업지표, FRED/EIA/ECOS/관세청) |
 | **리스크 자동 감지** | X | O (4유형, A~F 등급) |
 | **생산 대응안 제안** | X | O (자동 조치 큐) |
 | **다차원 집계 분석** | 제한적 | O (주별/월별/거래처별) |
@@ -372,21 +406,21 @@ python DB/07_pipeline/run_pipeline.py    # 전체 7단계
 | 고객사별 패턴 편차 큼 | 예측 정확도 저하 | 제품군 우선 적용 후 점진 확장, 고객사별 모델 분리 |
 | 외부 변수 영향도 불확실 | 과적합/과소적합 | 변수 자동 가중치 학습 (feature importance), 정기 재학습 |
 | 현업 미반영 가능성 | ROI 미달 | KPI 연계 리포트, "예측 vs 실제" 비교 대시보드 제공 |
-| ECOS API 미연동 | 한국 경제지표 부족 | 생성 데이터로 보완 (BOK 소스), API 복구 시 실데이터 전환 |
+| ECOS API 연동 불안정 | 한국 경제지표 결손 | ECOS 실데이터 + BOK 시뮬레이션 이중 적재, ECOS 우선 사용 |
 | LightGBM 미설치 환경 | 모델 실행 불가 | 이동평균 fallback 자동 적용 |
 
 ---
 
 ## 14. 마일스톤
 
-| Phase | 내용 | 상태 |
-|-------|------|------|
-| **Phase 1** | 데이터 탐색·전처리·DB 구축 | **완료** |
-| **Phase 2** | 수요 변동성 분석 모델 개발 | 진행중 |
-| Phase 3 | 재고 리스크 점수화 엔진 개발 | 대기 |
-| Phase 4 | 생산·발주 최적화 알고리즘 개발 | 대기 |
-| Phase 5 | 웹 대시보드 및 API 서버 구축 | 대기 |
-| Phase 6 | 통합 테스트·배포 | 대기 |
+| Phase | 내용 | 상태 | 비고 |
+|-------|------|------|------|
+| **Phase 1** | 데이터 탐색·전처리·DB 구축 | **완료** | 27테이블, 내부+외부 데이터 적재 |
+| **Phase 2** | 수요 변동성 분석 모델 개발 | **진행중** | 주간+월간 LightGBM Quantile 파이프라인 구축 완료 |
+| **Phase 3** | 재고 리스크 점수화 엔진 개발 | **진행중** | 4유형 리스크 스코어링 + 조치 큐 파이프라인 구축 완료 |
+| Phase 4 | 생산·발주 최적화 알고리즘 개발 | 대기 | |
+| Phase 5 | 웹 대시보드 및 API 서버 구축 | 대기 | |
+| Phase 6 | 통합 테스트·배포 | 대기 | |
 
 ---
 
@@ -408,7 +442,7 @@ python DB/07_pipeline/run_pipeline.py    # 전체 7단계
 | **FRED** | 미국 연방준비은행 | 산업생산, 환율, 금리, CPI 등 10개 | 연동 완료 |
 | **EIA** | 미국 에너지정보청 | WTI 원유 가격 (주간/월간) | 연동 완료 |
 | **관세청** | 대한민국 관세청 | HS 8541/8542 수출입 통계 | 연동 완료 |
-| **ECOS** | 한국은행 | 환율, 기준금리, CPI, 수출입 | 미연동 (DNS 이슈) |
+| **ECOS** | 한국은행 | 기준금리, CPI, PPI, 환율, 생산지수 등 10종 | **연동 완료** (1,810건) |
 | **생성 데이터** | 시세 기반 앵커 | SOX, DRAM, NAND, BDI, 구리 등 10개 | 적재 완료 |
 
 ---

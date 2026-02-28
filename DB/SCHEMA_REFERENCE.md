@@ -2,7 +2,7 @@
 
 > **프로젝트**: 반도체 부품·소재 수요예측 AI SaaS
 > **DB**: PostgreSQL (Supabase)
-> **최종 수정일**: 2026-02-28
+> **최종 수정일**: 2026-03-01
 
 ---
 
@@ -35,8 +35,13 @@
 | 23 | `monthly_product_summary` | 월별 제품 집계 | `08_aggregation_ddl.sql` | 65,712 | 수주·매출·생산 통합 |
 | 24 | `monthly_customer_summary` | 월별 거래처×제품 집계 | `08_aggregation_ddl.sql` | 55,149 | 수주·매출 |
 | 25 | `exchange_rate` | 일별 환율 | `09_exchange_rate_ddl.sql` | ~5,300 | USD/JPY/EUR/CNY→KRW |
+| 26 | `feature_store_weekly` | 주간 피처 스토어 (LightGBM) | `13_feature_store_weekly_ddl.sql` | 83,719 | 제품×주 ~70피처 + 타겟 |
+| 27 | `feature_store_monthly` | 월간 피처 스토어 (LightGBM) | `14_feature_store_monthly_ddl.sql` | 48,416 | 제품×월 ~55피처 + 타겟 |
+| 28 | `model_evaluation` | 모델 평가 지표 | `15_model_evaluation_ddl.sql` | — | MAPE/RMSE/Coverage/Pinball |
+| 29 | `feature_importance` | 피처 중요도 | `15_model_evaluation_ddl.sql` | — | LightGBM gain/split |
+| 30 | `tuning_result` | 튜닝 결과 | `15_model_evaluation_ddl.sql` | — | Grid Search 이력 |
 
-**총 25개 테이블** | 내부 데이터 451,093행 + 외부지표 11,715건 + 환율 ~5,300건 + 분석 6테이블 + 집계 5테이블
+**총 30개 테이블** | 내부 데이터 451,093행 + 외부지표 11,715건 + 환율 ~5,300건 + 분석 6테이블 + 집계 5테이블 + ML 2테이블 + 평가 3테이블
 
 ---
 
@@ -326,7 +331,60 @@
 | created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | 수정일 (자동 갱신) |
 
-### 2.6 집계 테이블 (주별·월별)
+### 2.6 모델 평가 테이블
+
+#### model_evaluation — 모델 평가 지표
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| model_id | VARCHAR(50) | NOT NULL | 모델 식별자 (lgbm_q_v2 등) |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| horizon_key | VARCHAR(20) | NOT NULL | 호라이즌 키 (target_1w 등) |
+| horizon_days | INT | NOT NULL | 예측 일수 |
+| eval_date | DATE | NOT NULL | 평가일 |
+| mape | NUMERIC(10,4) | | MAPE (%) |
+| rmse | NUMERIC(18,6) | | RMSE |
+| mae | NUMERIC(18,6) | | MAE |
+| coverage_rate | NUMERIC(5,2) | | P10~P90 밴드 내 실측치 비율 (%) |
+| pinball_p10 | NUMERIC(18,6) | | Pinball loss (α=0.1) |
+| pinball_p50 | NUMERIC(18,6) | | Pinball loss (α=0.5) |
+| pinball_p90 | NUMERIC(18,6) | | Pinball loss (α=0.9) |
+| n_folds | INT | | Walk-Forward CV 폴드 수 |
+| n_samples_total | INT | | 전체 검증 샘플 수 |
+| params_json | TEXT | | 학습 파라미터 (JSON) |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (model_id, product_id, horizon_key, eval_date) |
+
+#### feature_importance — 피처 중요도
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| model_id | VARCHAR(50) | NOT NULL | 모델 식별자 |
+| horizon_key | VARCHAR(20) | NOT NULL | 호라이즌 키 |
+| eval_date | DATE | NOT NULL | 평가일 |
+| feature_name | VARCHAR(100) | NOT NULL | 피처명 |
+| importance_gain | NUMERIC(12,6) | | LightGBM gain 중요도 |
+| importance_split | NUMERIC(12,6) | | LightGBM split 중요도 |
+| rank_gain | INT | | gain 기준 순위 (1=최중요) |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (model_id, horizon_key, eval_date, feature_name) |
+
+#### tuning_result — 하이퍼파라미터 튜닝 결과
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| model_id | VARCHAR(50) | NOT NULL | 모델 식별자 |
+| horizon_key | VARCHAR(20) | NOT NULL | 호라이즌 키 |
+| eval_date | DATE | NOT NULL | 평가일 |
+| params_json | TEXT | NOT NULL | 테스트 파라미터 (JSON) |
+| metric_name | VARCHAR(30) | NOT NULL | 최적화 대상 메트릭 |
+| metric_value | NUMERIC(18,6) | | 메트릭 값 |
+| is_best | BOOLEAN | DEFAULT FALSE | 최적 조합 여부 |
+| n_folds | INT | | CV 폴드 수 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (model_id, horizon_key, eval_date, params_json) |
+
+### 2.7 집계 테이블 (주별·월별)
 
 #### calendar_week — 주차 캘린더 (차원 테이블)
 | 컬럼 | 타입 | 제약조건 | 설명 |
@@ -411,6 +469,29 @@
 | revenue_count | INT | DEFAULT 0 | 매출 건수 |
 | created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
 | | | **UNIQUE** | (product_id, customer_id, year_month) |
+
+#### feature_store_weekly — 주간 피처 스토어 (LightGBM 학습용)
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| year_week | VARCHAR(8) | NOT NULL | ISO 주차 (2025-W08) |
+| week_start | DATE | NOT NULL | 주 시작일 |
+| order_qty_lag1~52 | NUMERIC(18,6) | | 수주량 래그 (1/2/4/8/13/26/52주) |
+| order_qty_ma4/13/26 | NUMERIC(18,6) | | 이동평균 (4/13/26주) |
+| order_qty_roc_4w/13w | NUMERIC(12,6) | | 변화율 |
+| order_qty_std4/13 | NUMERIC(18,6) | | 표준편차 |
+| order_qty_cv4 | NUMERIC(12,6) | | 변동계수 |
+| sox_index, dram_price, nand_price | NUMERIC(12,4) | | 반도체 시장 지표 |
+| usd_krw, jpy_krw, eur_krw, cny_krw | NUMERIC(12,4) | | 환율 |
+| fed_funds_rate, wti_price, indpro_index | NUMERIC | | 거시경제 |
+| kr_base_rate, kr_ipi_mfg, kr_bsi_mfg | NUMERIC | | 한국 경제지표 |
+| target_1w | NUMERIC(18,6) | | T+1주 수주량 (타겟) |
+| target_2w | NUMERIC(18,6) | | T+1~2주 수주량 합계 (타겟) |
+| target_4w | NUMERIC(18,6) | | T+1~4주 수주량 합계 (타겟) |
+| | | **UNIQUE** | (product_id, year_week) |
+
+**피처 카테고리 (총 ~70개):** A.수주이력(13) B.모멘텀(4) C.변동성(7) D.공급측(8) E.고객집중도(5) F.가격(2) G.반도체시장(8) H.환율(5) I.거시경제(8) J.무역(4) K.시간(5)
 
 ---
 
@@ -907,32 +988,44 @@ GET https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList
 
 ---
 
-### 5.4 ECOS — 한국은행 경제통계시스템 (미연동)
+### 5.4 ECOS — 한국은행 경제통계시스템
 
 | 항목 | 내용 |
 |------|------|
 | **제공 기관** | 한국은행 (Bank of Korea) |
 | **API 문서** | https://ecos.bok.or.kr/api/#/ |
-| **Base URL** | `https://ecos.bok.or.kr/api/` |
+| **Base URL** | `https://ecos.bok.or.kr/api/StatisticSearch` |
 | **인증** | API Key (URL path에 포함) |
-| **응답 형식** | JSON / XML |
+| **응답 형식** | JSON |
 | **환경변수** | `ECOS_API_KEY` |
-| **상태** | DNS 해석 실패 (`ecos.bok.or.kr` 접속 불가) — 네트워크 이슈, 추후 재시도 |
+| **수집 기간** | 2021-01 ~ 현재 |
+| **적재 테이블** | `economic_indicator` (source='ECOS') |
+| **적재 건수** | 1,810건 |
 
-**수집 예정 지표:**
+**수집 지표 (10종):**
 
-| 통계코드 | 지표명 | 주기 | 활용 목적 |
-|----------|--------|------|----------|
-| 064Y001 | 원/달러 환율 | 일간 | 환율 (FRED DEXKOUS 교차 검증) |
-| 028Y15S | 한국 기준금리 | 월간 | 국내 금리 정책 → 투자/수요 |
-| 021Y125 | 소비자물가지수 | 월간 | 국내 인플레이션 |
-| 013Y202 | 수출입 동향 | 월간 | 한국 전체 수출입 추이 |
+| indicator_code | 통계코드 | 아이템코드 | 주기 | 지표명 | 단위 | 건수 |
+|---------------|----------|-----------|------|--------|------|------|
+| KR_BASE_RATE | 722Y001 | 0101000 | 월간 | 한국 기준금리 | Percent | 61 |
+| KR_CPI | 901Y009 | 0 | 월간 | 소비자물가지수 (총지수) | Index 2020=100 | 61 |
+| KR_IPI_MFG | 901Y033 | AB00/2 | 월간 | 광공업 생산지수 (계절조정) | Index 2020=100 | 60 |
+| KR_BSI_MFG | 512Y014 | C0000/BA | 월간 | 제조업 BSI (업황전망) | Index | 62 |
+| KR_PPI | 404Y014 | *AA | 월간 | 생산자물가지수 (총지수) | Index 2020=100 | 61 |
+| KR_USD_RATE | 731Y003 | 0000003 | 일간 | 원/달러 환율 (종가 15:30) | KRW per USD | 1,263 |
+| KR_TRADE_PRICE_EX | 402Y014 | *AA/W | 월간 | 수출물가지수 (원화기준) | Index 2020=100 | 61 |
+| KR_TRADE_PRICE_IM | 401Y015 | *AA/W | 월간 | 수입물가지수 (원화기준) | Index 2020=100 | 61 |
+| KR_EQUIP_INVEST | 901Y034 | I31AA/I10B | 월간 | 자본재 생산지수 (설비투자, 계절조정) | Index 2020=100 | 60 |
+| KR_INVENTORY_MFG | 901Y034 | I31AB/I10E | 월간 | 중간재 재고지수 (제조업) | Index 2020=100 | 60 |
 
-**예시 호출:**
+**API 호출 형식:**
 ```
-GET https://ecos.bok.or.kr/api/StatisticSearch
-  /{API_KEY}/JSON/kr/1/100/064Y001/MM/202501/202501/0000001
+GET https://ecos.bok.or.kr/api/StatisticSearch/{API_KEY}/json/kr/{START}/{END}/{STAT_CODE}/{FREQ}/{START_DATE}/{END_DATE}/{ITEM1}/{ITEM2}
 ```
+
+**적재 스크립트**: `DB/12_load_ecos.py`
+
+> **참고**: 기존 source='BOK' (11_load_indices.py 시뮬레이션 데이터)와 별도로 source='ECOS' 실데이터가 공존.
+> KR_BASE_RATE, KR_CPI, KR_IPI_MFG는 BOK(시뮬레이션)과 ECOS(실데이터) 양쪽에 존재하며, 분석 시 ECOS 우선 사용 권장.
 
 ---
 
@@ -971,7 +1064,7 @@ FRED_API_KEY=xxxxx                            # FRED 경제지표
 EIA_API_KEY=xxxxx                             # EIA 에너지 가격
 DATA_GO_KR_CUSTOMS_ENDPOINT=https://apis.data.go.kr/1220000/Itemtrade
 DATA_GO_KR_SERVICE_KEY=xxxxx                  # 관세청 수출입
-ECOS_API_KEY=xxxxx                            # 한국은행 (미연동)
+ECOS_API_KEY=xxxxx                            # 한국은행 ECOS (10종 연동)
 
 # AI/LLM (향후)
 OPENAI_API_KEY=sk-xxxxx
@@ -992,6 +1085,9 @@ TAVILY_API_KEY=xxxxx                          # Tavily 웹 검색
 | `DB/06_analytics_ddl.sql` | 분석용 (예측형 관제 시스템) | 6 | 4 |
 | `DB/08_aggregation_ddl.sql` | 주별·월별 집계 (캘린더 포함) | 5 | 5 |
 | `DB/09_exchange_rate_ddl.sql` | 환율 (일별 통화별 KRW 기준) | 1 | 6 |
+| `DB/13_feature_store_weekly_ddl.sql` | 주간 피처 스토어 (LightGBM 학습용) | 1 | 7 |
+| `DB/14_feature_store_monthly_ddl.sql` | 월간 피처 스토어 (LightGBM 학습용) | 1 | 8 |
+| `DB/15_model_evaluation_ddl.sql` | 모델 평가·피처 중요도·튜닝 결과 | 3 | 9 |
 
 ## 8. 데이터 적재 스크립트
 
@@ -1002,6 +1098,7 @@ TAVILY_API_KEY=xxxxx                          # Tavily 웹 검색
 | `DB/07_pipeline/run_pipeline.py` | 예측형 관제 파이프라인 (6단계) | `python DB/07_pipeline/run_pipeline.py` |
 | `DB/10_load_exchange_rate.py` | 환율 데이터 생성 & 적재 | `python DB/10_load_exchange_rate.py` |
 | `DB/11_load_indices.py` | 반도체 산업 지수 생성 & 적재 | `python DB/11_load_indices.py` |
+| `DB/12_load_ecos.py` | ECOS 한국은행 실데이터 적재 (10종) | `python DB/12_load_ecos.py` |
 
 **스크립트 옵션:**
 ```bash
@@ -1040,6 +1137,13 @@ python DB/11_load_indices.py
 # 특정 지표만 적재
 python DB/11_load_indices.py --only=sox,dram,nand
 python DB/11_load_indices.py --only=kr_base_rate,kr_cpi,kr_ipi
+
+# ECOS 한국은행 실데이터 전체 적재 (10종)
+python DB/12_load_ecos.py
+
+# 특정 지표만 적재
+python DB/12_load_ecos.py --only=kr_base_rate,kr_cpi
+python DB/12_load_ecos.py --only=kr_usd_rate,kr_ppi,kr_bsi_mfg
 ```
 
 ### 파이프라인 스텝 설명
@@ -1049,10 +1153,14 @@ python DB/11_load_indices.py --only=kr_base_rate,kr_cpi,kr_ipi
 | 0 | `s0_aggregation.py` | daily_order, daily_revenue, daily_production | calendar_week + 집계 4테이블 | 주차 캘린더 + 주별·월별 집계 |
 | 1 | `s1_daily_inventory.py` | inventory, daily_production, daily_revenue | daily_inventory_estimated | 일간 추정 재고 |
 | 2 | `s2_lead_time.py` | purchase_order | product_lead_time | 리드타임 통계 |
-| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | feature_store | 피처 엔지니어링 |
-| 4 | `s4_forecast.py` | feature_store | forecast_result | P10/P50/P90 예측 |
+| 3 | `s3_feature_store.py` | weekly_product/customer_summary + 외부지표 | feature_store_weekly | 주간 피처 엔지니어링 (~70개 피처) |
+| 4 | `s4_forecast.py` | feature_store_weekly | forecast_result + model_evaluation + feature_importance | LightGBM Quantile 예측 + Walk-Forward CV 평가 |
 | 5 | `s5_risk_score.py` | forecast + 재고 + 리드타임 | risk_score | 리스크 스코어링 |
 | 6 | `s6_action_queue.py` | risk_score | action_queue | 권장 조치 생성 |
+| 3m | `s3m_feature_store_monthly.py` | monthly_product/customer_summary + 외부지표 | feature_store_monthly | 월간 피처 엔지니어링 (~55개 피처) |
+| 4m | `s4m_forecast_monthly.py` | feature_store_monthly | forecast_result + model_evaluation + feature_importance | 월간 LightGBM Quantile 예측 + 평가 |
+
+**튜닝 모드**: `--tune` 플래그 추가 시 Step 4/4m에서 Grid Search 실행 → `tuning_result` 테이블에 결과 저장
 
 ---
 

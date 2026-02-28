@@ -2,7 +2,37 @@
   "permissions": {
     "allow": [
       "Bash(git remote add origin https://github.com/kyoungaMin/PJTFNL.git)",
-      "Bash(git add .gitignore DEV_LOG.md DEV_LOG/_TEMPLATE.md DEV_LOG/kyoungaMin/2026-02-27.md DATA/ .claude/)"
+      "Bash(git add .gitignore DEV_LOG.md DEV_LOG/_TEMPLATE.md DEV_LOG/kyoungaMin/2026-02-27.md DATA/ .claude/)",
+      "Bash(git commit:*)",
+      "Bash(git branch -M main)",
+      "Bash(git push -u origin main)",
+      "Bash(python -c \"from supabase import create_client; import os; from dotenv import load_dotenv; load_dotenv\\(\\); client = create_client\\(os.getenv\\(''SUPABASE_URL''\\), os.getenv\\(''SUPABASE_KEY''\\)\\); print\\(''Connection OK''\\); tables = client.table\\(''''\\).select\\(''*''\\).execute\\(\\); print\\(tables\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(git config --global user.name)",
+      "Bash(wc -l C:AIPJTFNLDATA*.csv)",
+      "Bash(ls -la *.csv)",
+      "Bash(head -1 *.csv)",
+      "Bash(python DB/02_load_data.py)",
+      "WebFetch(domain:www.data.go.kr)",
+      "WebFetch(domain:fred.stlouisfed.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:secondlife.lol)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:www.businessinitiative.org)",
+      "WebFetch(domain:bjecondata.blogspot.com)",
+      "WebFetch(domain:datons.com)",
+      "Bash(python DB/04_load_external_data.py --only=customs)",
+      "Bash(git push origin main)",
+      "Bash(python s0_aggregation.py)",
+      "Bash(python DB/10_load_exchange_rate.py)",
+      "Bash(python DB/11_load_indices.py)",
+      "Bash(git fetch --all)",
+      "Bash(git checkout -b dev/kyoungaMin origin/dev/kyoungaMin)",
+      "Bash(git stash --include-untracked)",
+      "Bash(git add DB/06_analytics_ddl.sql DB/07_pipeline/ DB/07_queries/ DB/08_aggregation_ddl.sql DB/09_exchange_rate_ddl.sql DB/10_load_exchange_rate.py DB/11_load_indices.py DB/SCHEMA_REFERENCE.md DEV_LOG.md DEV_LOG/kyoungaMin/2026-02-28.md README.md)",
+      "WebFetch(domain:velog.io)",
+      "WebFetch(domain:wooiljeong.github.io)",
+      "Bash(python DB/07_pipeline/run_pipeline.py --step=3)"
     ]
   }
 }

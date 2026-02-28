@@ -63,7 +63,8 @@ CREATE INDEX IF NOT EXISTS idx_wps_yearweek  ON weekly_product_summary(year_week
 CREATE TABLE IF NOT EXISTS weekly_customer_summary (
     id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     product_id       VARCHAR(20)   NOT NULL,
-    customer_id      VARCHAR(10)   NOT NULL,
+    customer_id      VARCHAR(10)   NOT NULL,       -- supplier.customer_code 매핑
+    customer_name    VARCHAR(200),                  -- supplier.customer_name 조인
     year_week        VARCHAR(8)    NOT NULL,
     week_start       DATE          NOT NULL,
     week_end         DATE          NOT NULL,
@@ -80,7 +81,7 @@ CREATE TABLE IF NOT EXISTS weekly_customer_summary (
     UNIQUE (product_id, customer_id, year_week)
 );
 
-COMMENT ON TABLE weekly_customer_summary IS '주별 거래처×제품 집계 — 수주·매출';
+COMMENT ON TABLE weekly_customer_summary IS '주별 거래처×제품 집계 — 수주·매출 (customer_id → supplier.customer_code)';
 
 CREATE INDEX IF NOT EXISTS idx_wcs_product   ON weekly_customer_summary(product_id);
 CREATE INDEX IF NOT EXISTS idx_wcs_customer  ON weekly_customer_summary(customer_id);
@@ -123,7 +124,8 @@ CREATE INDEX IF NOT EXISTS idx_mps_yearmonth  ON monthly_product_summary(year_mo
 CREATE TABLE IF NOT EXISTS monthly_customer_summary (
     id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     product_id       VARCHAR(20)   NOT NULL,
-    customer_id      VARCHAR(10)   NOT NULL,
+    customer_id      VARCHAR(10)   NOT NULL,       -- supplier.customer_code 매핑
+    customer_name    VARCHAR(200),                  -- supplier.customer_name 조인
     year_month       VARCHAR(7)    NOT NULL,
     -- 수주 집계
     order_qty        NUMERIC(18,6) DEFAULT 0,
@@ -138,7 +140,7 @@ CREATE TABLE IF NOT EXISTS monthly_customer_summary (
     UNIQUE (product_id, customer_id, year_month)
 );
 
-COMMENT ON TABLE monthly_customer_summary IS '월별 거래처×제품 집계 — 수주·매출';
+COMMENT ON TABLE monthly_customer_summary IS '월별 거래처×제품 집계 — 수주·매출 (customer_id → supplier.customer_code)';
 
 CREATE INDEX IF NOT EXISTS idx_mcs_product    ON monthly_customer_summary(product_id);
 CREATE INDEX IF NOT EXISTS idx_mcs_customer   ON monthly_customer_summary(customer_id);

@@ -25,12 +25,18 @@ def fetch_all(table: str, select: str) -> list:
     return all_rows
 
 
-def get_severity(score: float) -> str:
-    if score > 80:
+def get_severity(individual_score: float, total_risk: float) -> str:
+    """개별 리스크 점수 + 종합 리스크를 조합하여 심각도 산정.
+    - critical: 개별 90+ AND 종합 D등급(61+)
+    - high:     개별 80+ OR (개별 60+ AND 종합 61+)
+    - medium:   개별 40+
+    - low:      나머지
+    """
+    if individual_score >= 90 and total_risk > 60:
         return "critical"
-    elif score > 60:
+    elif individual_score >= 80 or (individual_score >= 60 and total_risk > 60):
         return "high"
-    elif score > 40:
+    elif individual_score > 40:
         return "medium"
     return "low"
 
@@ -65,6 +71,7 @@ def run():
         eval_dt = r["eval_date"]
         inv_days = r.get("inventory_days")
         inv_days_str = f"{float(inv_days):.0f}일" if inv_days else "N/A"
+        total_risk = float(r.get("total_risk") or 0)
 
         stockout = float(r.get("stockout_risk") or 0)
         excess = float(r.get("excess_risk") or 0)
@@ -73,7 +80,7 @@ def run():
 
         # 결품 리스크 조치
         if stockout > 40:
-            sev = get_severity(stockout)
+            sev = get_severity(stockout, total_risk)
             if stockout > 60:
                 actions.append({
                     "product_id": pid,
@@ -99,7 +106,7 @@ def run():
 
         # 과잉 리스크 조치
         if excess > 40:
-            sev = get_severity(excess)
+            sev = get_severity(excess, total_risk)
             actions.append({
                 "product_id": pid,
                 "eval_date": eval_dt,
@@ -113,7 +120,7 @@ def run():
 
         # 납기 리스크 조치
         if delivery > 40:
-            sev = get_severity(delivery)
+            sev = get_severity(delivery, total_risk)
             actions.append({
                 "product_id": pid,
                 "eval_date": eval_dt,
@@ -127,7 +134,7 @@ def run():
 
         # 마진 리스크 조치
         if margin > 40:
-            sev = get_severity(margin)
+            sev = get_severity(margin, total_risk)
             actions.append({
                 "product_id": pid,
                 "eval_date": eval_dt,
@@ -148,7 +155,10 @@ def run():
     print(f"  심각도 분포: {dict(sorted(sev_dist.items()))}")
 
     if actions:
-        # 기존 pending 조치 중 같은 eval_date 제거 방지 → INSERT (중복 허용, 매일 새로 생성)
+        # 같은 eval_date의 기존 pending 조치 삭제 후 재생성
+        supabase.table("action_queue").delete().eq(
+            "eval_date", today_str
+        ).eq("status", "pending").execute()
         for i in range(0, len(actions), 500):
             batch = actions[i:i + 500]
             supabase.table("action_queue").insert(batch).execute()

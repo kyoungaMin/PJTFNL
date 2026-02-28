@@ -16,7 +16,13 @@ from config import supabase, upsert_batch, RISK_WEIGHTS, get_risk_grade
 def fetch_all(table: str, select: str) -> list:
     all_rows, offset, ps = [], 0, 1000
     while True:
-        resp = supabase.table(table).select(select).range(offset, offset + ps - 1).execute()
+        try:
+            resp = supabase.table(table).select(select).range(offset, offset + ps - 1).execute()
+        except Exception as e:
+            if "PGRST205" in str(e) or "Could not find" in str(e) or "57014" in str(e):
+                print(f"    [!] 테이블 '{table}' 조회 실패 — 빈 데이터로 진행")
+                return []
+            raise
         if not resp.data:
             break
         all_rows.extend(resp.data)
@@ -52,25 +58,43 @@ def run():
         }
     print(f"  예측 결과: {len(fc_map):,}개 제품")
 
-    # 2) 최신 추정 재고
-    inv_rows = fetch_all("daily_inventory_estimated", "product_id,target_date,estimated_qty")
-    # 가장 최근 날짜의 재고
-    inv_latest = {}
+    # 2) 최신 재고 스냅샷 (inventory 테이블에서 직접)
+    inv_rows = fetch_all("inventory", "snapshot_date,product_id,inventory_qty")
+    inv_map = {}
+    inv_latest_ym = {}
     for r in inv_rows:
         pid = r["product_id"]
-        if pid not in inv_latest or r["target_date"] > inv_latest[pid]["target_date"]:
-            inv_latest[pid] = r
-    inv_map = {pid: float(r["estimated_qty"] or 0) for pid, r in inv_latest.items()}
-    print(f"  추정 재고: {len(inv_map):,}개 제품")
+        ym = r["snapshot_date"]
+        qty = float(r["inventory_qty"] or 0)
+        if pid not in inv_latest_ym or ym > inv_latest_ym[pid]:
+            inv_latest_ym[pid] = ym
+            inv_map[pid] = qty
+        elif ym == inv_latest_ym.get(pid):
+            inv_map[pid] = inv_map.get(pid, 0) + qty  # 다중 창고 합산
+    print(f"  최신 재고: {len(inv_map):,}개 제품")
 
-    # 3) 리드타임
-    lt_rows = fetch_all("product_lead_time", "product_id,avg_lead_days,p90_lead_days")
+    # 3) 리드타임 (purchase_order에서 직접 계산)
+    po_lead_rows = fetch_all("purchase_order", "component_product_id,po_date,receipt_date,status")
+    from datetime import date as _date
+    lead_days_map = defaultdict(list)
+    for r in po_lead_rows:
+        if r.get("status") != "F" or not r.get("po_date") or not r.get("receipt_date"):
+            continue
+        try:
+            d1 = _date.fromisoformat(r["po_date"])
+            d2 = _date.fromisoformat(r["receipt_date"])
+            days = (d2 - d1).days
+            if days >= 0:
+                lead_days_map[r["component_product_id"]].append(days)
+        except ValueError:
+            pass
     lead_avg = {}
     lead_p90 = {}
-    for r in lt_rows:
-        pid = r["product_id"]
-        lead_avg[pid] = float(r["avg_lead_days"] or 0)
-        lead_p90[pid] = float(r["p90_lead_days"] or 0)
+    for pid, days_list in lead_days_map.items():
+        sorted_d = sorted(days_list)
+        lead_avg[pid] = sum(sorted_d) / len(sorted_d)
+        p90_idx = min(int(len(sorted_d) * 0.9), len(sorted_d) - 1)
+        lead_p90[pid] = float(sorted_d[p90_idx])
     print(f"  리드타임: {len(lead_avg):,}개 제품")
 
     # 4) 미처리 수주 (status='R') — 납기 리스크용
@@ -147,7 +171,7 @@ def run():
         lt_p90 = lead_p90.get(pid, 14)  # 기본 14일
         lt_mean = lead_avg.get(pid, 7)
         fc = fc_map.get(pid, {})
-        fc_30 = fc.get(30, fc.get(14, fc.get(7, {})))
+        fc_30 = fc.get(28, fc.get(30, fc.get(14, fc.get(7, {}))))
         demand_p90 = fc_30.get("p90", avg_demand * 30)
         demand_p50 = fc_30.get("p50", avg_demand * 30)
 
@@ -171,32 +195,43 @@ def run():
             stockout = 0.0
 
         # ② 과잉 리스크 (0~100)
-        monthly_demand = avg_demand * 30 if avg_demand > 0 else 1
-        months_supply = inv_qty / monthly_demand if monthly_demand > 0 else 0
-        if months_supply > 6:
-            excess = clamp(80 + (months_supply - 6) * 5)
-        elif months_supply > 3:
-            excess = clamp(40 + (months_supply - 3) * 13.3)
-        elif months_supply > 2:
-            excess = clamp(20 + (months_supply - 2) * 20)
+        if avg_demand <= 0:
+            # 수요 이력 없는 제품: 재고 있으면 경고 수준(30), 없으면 0
+            excess = 30.0 if inv_qty > 0 else 0.0
         else:
-            excess = 0.0
+            monthly_demand = avg_demand * 30
+            months_supply = inv_qty / monthly_demand
+            if months_supply > 6:
+                excess = clamp(80 + (months_supply - 6) * 5)
+            elif months_supply > 3:
+                excess = clamp(40 + (months_supply - 3) * 13.3)
+            elif months_supply > 2:
+                excess = clamp(20 + (months_supply - 2) * 20)
+            else:
+                excess = 0.0
 
         # ③ 납기 리스크 (0~100)
         delivery = 0.0
         orders = open_orders.get(pid, [])
         if orders:
             urgent_count = 0
+            overdue_count = 0
             for o in orders:
                 try:
                     dd = date.fromisoformat(o["delivery"])
                     remaining = (dd - today).days
-                    if remaining < lt_mean:
+                    if remaining < 0:
+                        overdue_count += 1
+                    elif remaining < lt_mean:
                         urgent_count += 1
                 except ValueError:
                     pass
-            if urgent_count > 0:
-                delivery = clamp(60 + urgent_count * 10)
+            if overdue_count > 0:
+                # 납기 초과: 70점 기준, 건수 비례 증가
+                delivery = clamp(70 + overdue_count * 5)
+            elif urgent_count > 0:
+                # 리드타임 내 긴급: 건수 비례 (40점 시작)
+                delivery = clamp(40 + urgent_count * 8)
 
         # ④ 마진 리스크 (0~100)
         margin = 0.0
@@ -244,7 +279,7 @@ def run():
     print(f"  등급 분포: {dict(sorted(grade_dist.items()))}")
 
     if results:
-        upsert_batch("risk_score", results)
+        upsert_batch("risk_score", results, on_conflict="product_id,eval_date")
 
     count = supabase.table("risk_score").select("id", count="exact").execute()
     print(f"[S5] 완료 — risk_score: {count.count:,}행")

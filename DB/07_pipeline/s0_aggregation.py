@@ -3,9 +3,11 @@ Step 0: 주차 캘린더 생성 + 주별·월별 집계 데이터 생성
 - 주차 캘린더(calendar_week) 차원 테이블 생성
 - 수주(daily_order), 매출(daily_revenue), 생산(daily_production) → 4개 집계 테이블
 
-입력 테이블: daily_order, daily_revenue, daily_production
+입력 테이블: daily_order, daily_revenue, daily_production, supplier
 출력 테이블: calendar_week, weekly_product_summary, weekly_customer_summary,
             monthly_product_summary, monthly_customer_summary
+
+매핑: daily_revenue.customer_id / daily_order.customer_id → supplier.customer_code
 """
 
 from datetime import date, timedelta
@@ -103,7 +105,23 @@ def load_data():
     )
     print(f"    daily_production: {len(production_rows):,}건")
 
-    return order_rows, revenue_rows, production_rows
+    # 거래처 (customer_id → customer_name 매핑용)
+    supplier_rows = fetch_all_rows(
+        "supplier",
+        "customer_code,customer_name"
+    )
+    print(f"    supplier: {len(supplier_rows):,}건")
+
+    return order_rows, revenue_rows, production_rows, supplier_rows
+
+
+def build_supplier_map(supplier_rows: list) -> dict:
+    """supplier 테이블 → {customer_code: customer_name} 딕셔너리"""
+    return {
+        r["customer_code"]: r.get("customer_name", "")
+        for r in supplier_rows
+        if r.get("customer_code")
+    }
 
 
 def to_dataframes(order_rows, revenue_rows, production_rows):
@@ -238,8 +256,8 @@ def build_weekly_product(df_order, df_revenue, df_prod) -> list:
     return rows
 
 
-def build_weekly_customer(df_order, df_revenue) -> list:
-    """주별 × 거래처 × 제품별 집계"""
+def build_weekly_customer(df_order, df_revenue, supplier_map: dict = None) -> list:
+    """주별 × 거래처 × 제품별 집계 (supplier.customer_code → customer_name 매핑)"""
     # 수주 집계
     grp_order = pd.DataFrame()
     if not df_order.empty:
@@ -278,11 +296,16 @@ def build_weekly_customer(df_order, df_revenue) -> list:
         if c in merged.columns:
             merged[c] = merged[c].fillna(0)
 
+    if supplier_map is None:
+        supplier_map = {}
+
     rows = []
     for _, r in merged.iterrows():
+        cid = r["customer_id"]
         rows.append({
             "product_id": r["product_id"],
-            "customer_id": r["customer_id"],
+            "customer_id": cid,
+            "customer_name": supplier_map.get(cid, ""),
             "year_week": r["year_week"],
             "week_start": r["week_start"],
             "week_end": r["week_end"],
@@ -373,8 +396,8 @@ def build_monthly_product(df_order, df_revenue, df_prod) -> list:
     return rows
 
 
-def build_monthly_customer(df_order, df_revenue) -> list:
-    """월별 × 거래처 × 제품별 집계"""
+def build_monthly_customer(df_order, df_revenue, supplier_map: dict = None) -> list:
+    """월별 × 거래처 × 제품별 집계 (supplier.customer_code → customer_name 매핑)"""
     grp_order = pd.DataFrame()
     if not df_order.empty:
         grp_order = df_order.groupby(["product_id", "customer_id", "year_month"]).agg(
@@ -410,11 +433,16 @@ def build_monthly_customer(df_order, df_revenue) -> list:
         if c in merged.columns:
             merged[c] = merged[c].fillna(0)
 
+    if supplier_map is None:
+        supplier_map = {}
+
     rows = []
     for _, r in merged.iterrows():
+        cid = r["customer_id"]
         rows.append({
             "product_id": r["product_id"],
-            "customer_id": r["customer_id"],
+            "customer_id": cid,
+            "customer_name": supplier_map.get(cid, ""),
             "year_month": r["year_month"],
             "order_qty": round(float(r.get("order_qty", 0)), 6),
             "order_amount": round(float(r.get("order_amount", 0)), 4),
@@ -434,8 +462,9 @@ def run():
     print("[S0] 주별·월별 집계 데이터 생성 시작")
 
     # 1) 데이터 로드
-    order_rows, revenue_rows, production_rows = load_data()
+    order_rows, revenue_rows, production_rows, supplier_rows = load_data()
     df_order, df_revenue, df_prod = to_dataframes(order_rows, revenue_rows, production_rows)
+    supplier_map = build_supplier_map(supplier_rows)
 
     # 2) 기간 컬럼 추가
     df_order = add_period_columns(df_order)
@@ -474,7 +503,7 @@ def run():
 
     # 4) 주별 거래처 집계
     print("  [주별 거래처 집계] 생성 중...")
-    wc_rows = build_weekly_customer(df_order, df_revenue)
+    wc_rows = build_weekly_customer(df_order, df_revenue, supplier_map)
     if wc_rows:
         cnt = upsert_batch("weekly_customer_summary", wc_rows,
                            on_conflict="product_id,customer_id,year_week")
@@ -494,7 +523,7 @@ def run():
 
     # 6) 월별 거래처 집계
     print("  [월별 거래처 집계] 생성 중...")
-    mc_rows = build_monthly_customer(df_order, df_revenue)
+    mc_rows = build_monthly_customer(df_order, df_revenue, supplier_map)
     if mc_rows:
         cnt = upsert_batch("monthly_customer_summary", mc_rows,
                            on_conflict="product_id,customer_id,year_month")
