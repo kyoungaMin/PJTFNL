@@ -41,11 +41,11 @@ DEV_LOG/
 ├── kyoungaMin/
 │   ├── 2026-02-27.md
 │   └── ...
-├── {개발자B}/
+├── jieun/
 │   └── ...
-├── {개발자C}/
+├── sungmin/
 │   └── ...
-└── {개발자D}/
+└── dasom/
     └── ...
 ```
 
@@ -54,9 +54,9 @@ DEV_LOG/
 | Git user.name | Git user.email | 역할 | 비고 |
 |---------------|----------------|------|------|
 | kyoungaMin | kamin@penta.co.kr | | |
-| | | | |
-| | | | |
-| | | | |
+| jieun | | | |
+| sungmin | | | |
+| dasom | | | |
 
 ---
 
