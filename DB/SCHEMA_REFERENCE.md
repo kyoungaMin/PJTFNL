@@ -2,7 +2,7 @@
 
 > **프로젝트**: 반도체 부품·소재 수요예측 AI SaaS
 > **DB**: PostgreSQL (Supabase)
-> **최종 수정일**: 2026-02-27
+> **최종 수정일**: 2026-02-28
 
 ---
 
@@ -19,12 +19,24 @@
 | 7 | `daily_production` | 일별 생산 | `01_ddl.sql` | ~110,000 | 생산수량, 라인 |
 | 8 | `daily_order` | 일별 수주 | `01_ddl.sql` | ~65,000 | **수요예측 핵심 입력** |
 | 9 | `inventory` | 재고 스냅샷 | `01_ddl.sql` | ~105,000 | 월별 재고 |
-| 10 | `economic_indicator` | 경제지표 (FRED/EIA) | `03_external_ddl.sql` | 3,589 | 시계열 통합 |
+| 10 | `economic_indicator` | 경제지표 (FRED/EIA/MARKET/BOK/CHINA) | `03_external_ddl.sql` | ~8,475 | 시계열 통합 |
 | 11 | `trade_statistics` | 무역통계 (관세청) | `03_external_ddl.sql` | 3,240 | HS코드별 수출입 |
 | 12 | `user_profile` | 사용자 프로필 | `05_auth_ddl.sql` | — | Supabase Auth 확장 |
 | 13 | `login_history` | 로그인 이력 | `05_auth_ddl.sql` | — | 접속 감사 로그 |
+| 14 | `daily_inventory_estimated` | 일간 추정 재고 | `06_analytics_ddl.sql` | — | 월간 스냅샷 기반 일간 보간 |
+| 15 | `product_lead_time` | 제품별 리드타임 | `06_analytics_ddl.sql` | — | 발주~입고 통계 |
+| 16 | `feature_store` | 피처 스토어 | `06_analytics_ddl.sql` | — | ML 입력 피처 |
+| 17 | `forecast_result` | 예측 결과 | `06_analytics_ddl.sql` | — | P10/P50/P90 밴드 |
+| 18 | `risk_score` | 리스크 스코어 | `06_analytics_ddl.sql` | — | 결품/과잉/납기/마진 |
+| 19 | `action_queue` | 조치 큐 | `06_analytics_ddl.sql` | — | 권장 조치 및 추적 |
+| 20 | `calendar_week` | 주차 캘린더 | `08_aggregation_ddl.sql` | 121 | ISO 8601 차원 테이블 |
+| 21 | `weekly_product_summary` | 주별 제품 집계 | `08_aggregation_ddl.sql` | 130,697 | 수주·매출·생산 통합 |
+| 22 | `weekly_customer_summary` | 주별 거래처×제품 집계 | `08_aggregation_ddl.sql` | 95,868 | 수주·매출 |
+| 23 | `monthly_product_summary` | 월별 제품 집계 | `08_aggregation_ddl.sql` | 65,712 | 수주·매출·생산 통합 |
+| 24 | `monthly_customer_summary` | 월별 거래처×제품 집계 | `08_aggregation_ddl.sql` | 55,149 | 수주·매출 |
+| 25 | `exchange_rate` | 일별 환율 | `09_exchange_rate_ddl.sql` | ~5,300 | USD/JPY/EUR/CNY→KRW |
 
-**총 13개 테이블** | 내부 데이터 451,093행 + 외부지표 6,829건
+**총 25개 테이블** | 내부 데이터 451,093행 + 외부지표 11,715건 + 환율 ~5,300건 + 분석 6테이블 + 집계 5테이블
 
 ---
 
@@ -158,6 +170,18 @@
 | fetched_at | TIMESTAMPTZ | DEFAULT NOW() | 수집 시각 |
 | | | **UNIQUE** | (hs_code, year_month) |
 
+#### exchange_rate — 일별 환율
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| base_currency | VARCHAR(3) | NOT NULL | 기준 통화 (USD, JPY, EUR, CNY) |
+| quote_currency | VARCHAR(3) | NOT NULL, DEFAULT 'KRW' | 표시 통화 |
+| rate_date | DATE | NOT NULL | 환율 일자 |
+| rate | NUMERIC(12,4) | NOT NULL | 환율 값 (1 base = rate quote) |
+| source | VARCHAR(20) | NOT NULL, DEFAULT 'FRED' | 데이터 소스 (FRED/BOK/GENERATED) |
+| fetched_at | TIMESTAMPTZ | DEFAULT NOW() | 수집 시각 |
+| | | **UNIQUE** | (base_currency, quote_currency, rate_date) |
+
 ### 2.4 인증/권한 테이블
 
 #### user_profile — 사용자 프로필
@@ -187,6 +211,206 @@
 
 **RLS 정책**: 본인 조회/수정 + admin 전체 관리
 **Trigger**: 회원가입 시 `user_profile` 자동 생성 (role=viewer)
+
+### 2.5 분석용 테이블 (예측형 관제 시스템)
+
+#### daily_inventory_estimated — 일간 추정 재고
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| target_date | DATE | NOT NULL | 대상일 |
+| snapshot_base | NUMERIC(18,6) | DEFAULT 0 | 월초 스냅샷 기준값 |
+| cumul_produced | NUMERIC(18,6) | DEFAULT 0 | 월초~해당일 누적 생산 |
+| cumul_shipped | NUMERIC(18,6) | DEFAULT 0 | 월초~해당일 누적 출하(=매출) |
+| estimated_qty | NUMERIC(18,6) | NOT NULL | snapshot_base + cumul_produced - cumul_shipped |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (product_id, target_date) |
+
+**산출식**: `estimated_qty = 월초 inventory 스냅샷 + 누적(daily_production) - 누적(daily_revenue)`
+
+#### product_lead_time — 제품별 리드타임 통계
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| supplier_code | VARCHAR(10) | | 공급사 코드 |
+| calc_date | DATE | NOT NULL | 산출 기준일 |
+| avg_lead_days | NUMERIC(8,2) | | 평균 리드타임(일) |
+| med_lead_days | NUMERIC(8,2) | | 중앙값 |
+| p90_lead_days | NUMERIC(8,2) | | 90분위 리드타임 |
+| min_lead_days | NUMERIC(8,2) | | 최솟값 |
+| max_lead_days | NUMERIC(8,2) | | 최댓값 |
+| sample_count | INT | | 산출 근거 건수 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (product_id, supplier_code, calc_date) |
+
+#### feature_store — 피처 스토어 (ML 입력)
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| target_date | DATE | NOT NULL | 대상일 |
+| order_qty_7d | NUMERIC(18,6) | | 최근 7일 수주량 |
+| order_qty_30d | NUMERIC(18,6) | | 최근 30일 수주량 |
+| order_qty_90d | NUMERIC(18,6) | | 최근 90일 수주량 |
+| shipped_qty_7d | NUMERIC(18,6) | | 최근 7일 출하량 |
+| shipped_qty_30d | NUMERIC(18,6) | | 최근 30일 출하량 |
+| produced_qty_7d | NUMERIC(18,6) | | 최근 7일 생산량 |
+| produced_qty_30d | NUMERIC(18,6) | | 최근 30일 생산량 |
+| inventory_qty | NUMERIC(18,6) | | 해당일 추정 재고 |
+| avg_lead_days | NUMERIC(8,2) | | 평균 리드타임 |
+| avg_unit_price | NUMERIC(18,6) | | 최근 평균 단가 |
+| usd_krw | NUMERIC(12,4) | | USD/KRW 환율 |
+| fed_funds_rate | NUMERIC(8,4) | | 미국 기준금리 |
+| wti_price | NUMERIC(12,4) | | WTI 유가 |
+| indpro_index | NUMERIC(12,4) | | 산업생산지수 |
+| semi_export_amt | NUMERIC(18,2) | | 반도체 수출액 |
+| semi_import_amt | NUMERIC(18,2) | | 반도체 수입액 |
+| dow | SMALLINT | | 요일 (0=월~6=일) |
+| month | SMALLINT | | 월 (1~12) |
+| is_holiday | BOOLEAN | DEFAULT FALSE | 공휴일 여부 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (product_id, target_date) |
+
+#### forecast_result — 예측 결과
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| model_id | VARCHAR(50) | NOT NULL | 모델 식별자 (예: lgbm_q_v1) |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| forecast_date | DATE | NOT NULL | 예측 실행일 |
+| target_date | DATE | NOT NULL | 예측 대상일 |
+| horizon_days | INT | NOT NULL | 예측 지평 (7/14/30일) |
+| p10 | NUMERIC(18,6) | | 10분위 (낙관) |
+| p50 | NUMERIC(18,6) | | 50분위 (중앙) |
+| p90 | NUMERIC(18,6) | | 90분위 (비관) |
+| actual_qty | NUMERIC(18,6) | | 실적 (사후 기입) |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+
+#### risk_score — 리스크 스코어
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| eval_date | DATE | NOT NULL | 평가일 |
+| stockout_risk | NUMERIC(5,2) | | 결품 리스크 (0~100) |
+| excess_risk | NUMERIC(5,2) | | 과잉 리스크 (0~100) |
+| delivery_risk | NUMERIC(5,2) | | 납기 리스크 (0~100) |
+| margin_risk | NUMERIC(5,2) | | 마진 리스크 (0~100) |
+| total_risk | NUMERIC(5,2) | | 종합 리스크 (가중합) |
+| risk_grade | VARCHAR(1) | | A/B/C/D/F |
+| inventory_days | NUMERIC(8,2) | | 재고일수 |
+| demand_p90 | NUMERIC(18,6) | | P90 예측 수요 |
+| safety_stock | NUMERIC(18,6) | | 안전재고 수준 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (product_id, eval_date) |
+
+**리스크 가중치**: 결품 35% + 과잉 25% + 납기 25% + 마진 15%
+**등급 기준**: A(0~20) / B(21~40) / C(41~60) / D(61~80) / F(81~100)
+
+#### action_queue — 조치 큐
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| eval_date | DATE | NOT NULL | 평가일 |
+| risk_type | VARCHAR(20) | NOT NULL | stockout/excess/delivery/margin |
+| severity | VARCHAR(10) | NOT NULL | critical/high/medium/low |
+| action_type | VARCHAR(30) | NOT NULL | expedite_po/increase_production/reduce_order/adjust_price |
+| description | TEXT | NOT NULL | 자연어 권장 조치 설명 |
+| suggested_qty | NUMERIC(18,6) | | 권장 수량 |
+| status | VARCHAR(15) | DEFAULT 'pending' | pending/in_progress/completed/dismissed |
+| assigned_to | UUID | | 담당자 (user_profile.id) |
+| resolved_at | TIMESTAMPTZ | | 해결 시각 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| updated_at | TIMESTAMPTZ | DEFAULT NOW() | 수정일 (자동 갱신) |
+
+### 2.6 집계 테이블 (주별·월별)
+
+#### calendar_week — 주차 캘린더 (차원 테이블)
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| year_week | VARCHAR(8) | **PK** | ISO 주차 (2025-W08) |
+| year | INT | NOT NULL | ISO 연도 |
+| week_num | INT | NOT NULL | 주차 번호 (1~53) |
+| week_start | DATE | NOT NULL | 주 시작일 (월요일) |
+| week_end | DATE | NOT NULL | 주 종료일 (일요일) |
+| year_month | VARCHAR(7) | NOT NULL | 목요일 기준 소속 월 |
+| quarter | SMALLINT | NOT NULL | 분기 (1~4) |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+
+#### weekly_product_summary — 주별 제품 집계
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| year_week | VARCHAR(8) | NOT NULL | ISO 주차 (2025-W08) |
+| week_start | DATE | NOT NULL | 주 시작일 (월요일) |
+| week_end | DATE | NOT NULL | 주 종료일 (일요일) |
+| order_qty | NUMERIC(18,6) | DEFAULT 0 | 수주 수량 합계 |
+| order_amount | NUMERIC(18,4) | DEFAULT 0 | 수주 금액 합계 |
+| order_count | INT | DEFAULT 0 | 수주 건수 |
+| revenue_qty | NUMERIC(18,6) | DEFAULT 0 | 매출 수량 합계 |
+| revenue_amount | NUMERIC(18,4) | DEFAULT 0 | 매출 금액 합계 |
+| revenue_count | INT | DEFAULT 0 | 매출 건수 |
+| produced_qty | NUMERIC(18,6) | DEFAULT 0 | 생산 수량 합계 |
+| production_count | INT | DEFAULT 0 | 생산 건수 |
+| customer_count | INT | DEFAULT 0 | 거래처 수 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (product_id, year_week) |
+
+#### weekly_customer_summary — 주별 거래처×제품 집계
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| customer_id | VARCHAR(10) | NOT NULL | 거래처 코드 |
+| year_week | VARCHAR(8) | NOT NULL | ISO 주차 |
+| week_start | DATE | NOT NULL | 주 시작일 |
+| week_end | DATE | NOT NULL | 주 종료일 |
+| order_qty | NUMERIC(18,6) | DEFAULT 0 | 수주 수량 합계 |
+| order_amount | NUMERIC(18,4) | DEFAULT 0 | 수주 금액 합계 |
+| order_count | INT | DEFAULT 0 | 수주 건수 |
+| revenue_qty | NUMERIC(18,6) | DEFAULT 0 | 매출 수량 합계 |
+| revenue_amount | NUMERIC(18,4) | DEFAULT 0 | 매출 금액 합계 |
+| revenue_count | INT | DEFAULT 0 | 매출 건수 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (product_id, customer_id, year_week) |
+
+#### monthly_product_summary — 월별 제품 집계
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| year_month | VARCHAR(7) | NOT NULL | 년월 (2025-02) |
+| order_qty | NUMERIC(18,6) | DEFAULT 0 | 수주 수량 합계 |
+| order_amount | NUMERIC(18,4) | DEFAULT 0 | 수주 금액 합계 |
+| order_count | INT | DEFAULT 0 | 수주 건수 |
+| revenue_qty | NUMERIC(18,6) | DEFAULT 0 | 매출 수량 합계 |
+| revenue_amount | NUMERIC(18,4) | DEFAULT 0 | 매출 금액 합계 |
+| revenue_count | INT | DEFAULT 0 | 매출 건수 |
+| produced_qty | NUMERIC(18,6) | DEFAULT 0 | 생산 수량 합계 |
+| production_count | INT | DEFAULT 0 | 생산 건수 |
+| customer_count | INT | DEFAULT 0 | 거래처 수 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (product_id, year_month) |
+
+#### monthly_customer_summary — 월별 거래처×제품 집계
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT IDENTITY | PK | 자동 증가 |
+| product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
+| customer_id | VARCHAR(10) | NOT NULL | 거래처 코드 |
+| year_month | VARCHAR(7) | NOT NULL | 년월 |
+| order_qty | NUMERIC(18,6) | DEFAULT 0 | 수주 수량 합계 |
+| order_amount | NUMERIC(18,4) | DEFAULT 0 | 수주 금액 합계 |
+| order_count | INT | DEFAULT 0 | 수주 건수 |
+| revenue_qty | NUMERIC(18,6) | DEFAULT 0 | 매출 수량 합계 |
+| revenue_amount | NUMERIC(18,4) | DEFAULT 0 | 매출 금액 합계 |
+| revenue_count | INT | DEFAULT 0 | 매출 건수 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| | | **UNIQUE** | (product_id, customer_id, year_month) |
 
 ---
 
@@ -352,6 +576,130 @@ Table trade_statistics {
   }
 }
 
+Table exchange_rate {
+  id bigint [pk, increment]
+  base_currency varchar(3) [not null, note: '기준 통화 (USD/JPY/EUR/CNY)']
+  quote_currency varchar(3) [not null, default: 'KRW', note: '표시 통화']
+  rate_date date [not null, note: '환율 일자']
+  rate numeric [not null, note: '환율 값']
+  source varchar(20) [not null, default: 'FRED', note: 'FRED/BOK/GENERATED']
+  fetched_at timestamptz [default: `now()`]
+
+  indexes {
+    rate_date [name: 'idx_exrate_date']
+    (base_currency, quote_currency) [name: 'idx_exrate_currency']
+    (base_currency, rate_date) [name: 'idx_exrate_base_date']
+    (base_currency, quote_currency, rate_date) [unique]
+  }
+}
+
+// ── 집계 ──
+Table calendar_week {
+  year_week varchar(8) [pk, note: 'ISO 주차 2025-W08']
+  year int [not null]
+  week_num int [not null]
+  week_start date [not null, note: '월요일']
+  week_end date [not null, note: '일요일']
+  year_month varchar(7) [not null, note: '목요일 기준 소속 월']
+  quarter smallint [not null]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    year
+    year_month
+  }
+}
+
+Table weekly_product_summary {
+  id bigint [pk, increment]
+  product_id varchar(20) [not null, ref: > product_master.product_code]
+  year_week varchar(8) [not null, note: 'ISO 주차 2025-W08']
+  week_start date [not null]
+  week_end date [not null]
+  order_qty numeric [default: 0]
+  order_amount numeric [default: 0]
+  order_count int [default: 0]
+  revenue_qty numeric [default: 0]
+  revenue_amount numeric [default: 0]
+  revenue_count int [default: 0]
+  produced_qty numeric [default: 0]
+  production_count int [default: 0]
+  customer_count int [default: 0]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    product_id
+    year_week
+    (product_id, year_week) [unique]
+  }
+}
+
+Table weekly_customer_summary {
+  id bigint [pk, increment]
+  product_id varchar(20) [not null, ref: > product_master.product_code]
+  customer_id varchar(10) [not null, ref: > supplier.customer_code]
+  year_week varchar(8) [not null]
+  week_start date [not null]
+  week_end date [not null]
+  order_qty numeric [default: 0]
+  order_amount numeric [default: 0]
+  order_count int [default: 0]
+  revenue_qty numeric [default: 0]
+  revenue_amount numeric [default: 0]
+  revenue_count int [default: 0]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    product_id
+    customer_id
+    year_week
+    (product_id, customer_id, year_week) [unique]
+  }
+}
+
+Table monthly_product_summary {
+  id bigint [pk, increment]
+  product_id varchar(20) [not null, ref: > product_master.product_code]
+  year_month varchar(7) [not null, note: '2025-02']
+  order_qty numeric [default: 0]
+  order_amount numeric [default: 0]
+  order_count int [default: 0]
+  revenue_qty numeric [default: 0]
+  revenue_amount numeric [default: 0]
+  revenue_count int [default: 0]
+  produced_qty numeric [default: 0]
+  production_count int [default: 0]
+  customer_count int [default: 0]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    product_id
+    year_month
+    (product_id, year_month) [unique]
+  }
+}
+
+Table monthly_customer_summary {
+  id bigint [pk, increment]
+  product_id varchar(20) [not null, ref: > product_master.product_code]
+  customer_id varchar(10) [not null, ref: > supplier.customer_code]
+  year_month varchar(7) [not null]
+  order_qty numeric [default: 0]
+  order_amount numeric [default: 0]
+  order_count int [default: 0]
+  revenue_qty numeric [default: 0]
+  revenue_amount numeric [default: 0]
+  revenue_count int [default: 0]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    product_id
+    customer_id
+    year_month
+    (product_id, customer_id, year_month) [unique]
+  }
+}
+
 // ── 인증/권한 ──
 Table user_profile {
   id uuid [pk, note: 'FK → auth.users']
@@ -400,18 +748,36 @@ product_master (제품)
   ├─< daily_revenue.product_id
   ├─< daily_production.product_id
   ├─< daily_order.product_id
-  └─< inventory.product_id
+  ├─< inventory.product_id
+  ├─< daily_inventory_estimated.product_id   ← 분석
+  ├─< product_lead_time.product_id           ← 분석
+  ├─< feature_store.product_id               ← 분석
+  ├─< forecast_result.product_id             ← 분석
+  ├─< risk_score.product_id                  ← 분석
+  ├─< action_queue.product_id                ← 분석
+  ├─< weekly_product_summary.product_id     ← 집계
+  ├─< weekly_customer_summary.product_id    ← 집계
+  ├─< monthly_product_summary.product_id    ← 집계
+  └─< monthly_customer_summary.product_id   ← 집계
+
+calendar_week (주차 캘린더)
+  ├─< weekly_product_summary.year_week     ← 집계
+  └─< weekly_customer_summary.year_week    ← 집계
 
 customer (고객사)
   ├─< daily_revenue.customer_id
   └─< daily_order.customer_id
 
 supplier (거래처)
-  └─< purchase_order.cd_partner
+  ├─< purchase_order.cd_partner
+  ├─< product_lead_time.supplier_code        ← 분석
+  ├─< weekly_customer_summary.customer_id    ← 집계
+  └─< monthly_customer_summary.customer_id   ← 집계
 
 auth.users (Supabase 내장)
   ├── user_profile.id  (1:1)
-  └─< login_history.user_id  (1:N)
+  ├─< login_history.user_id  (1:N)
+  └─< action_queue.assigned_to               ← 분석
 ```
 
 > FK 제약조건은 미설정 (데이터 유연성 우선). 위는 논리적 참조 관계입니다.
@@ -570,6 +936,28 @@ GET https://ecos.bok.or.kr/api/StatisticSearch
 
 ---
 
+### 5.5 반도체 산업 지수 (생성 데이터)
+
+> ECOS 미연동 보완 + 반도체 산업 특화 지표.
+> 실제 시세 기반 앵커 포인트로 현실적 데이터 생성, `economic_indicator` 테이블에 적재.
+
+| 지표 코드 | source | 지표명 | 단위 | 주기 | 활용 목적 |
+|-----------|--------|--------|------|------|----------|
+| SOX | MARKET | Philadelphia Semiconductor Index | Index | 일간 | 반도체 시장 심리·주가 추세 |
+| DRAM_DDR4 | MARKET | DRAM DDR4 8Gb Spot Price | USD | 주간 | 메모리 반도체 가격 동향 |
+| NAND_TLC | MARKET | NAND Flash 128Gb TLC Spot Price | USD | 주간 | 낸드 플래시 가격 동향 |
+| SILICON_WAFER | MARKET | Silicon Wafer 300mm ASP | USD | 월간 | 웨이퍼 원재료 비용 추이 |
+| BALTIC_DRY | MARKET | Baltic Dry Index | Index | 일간 | 글로벌 물류·운임 지표 |
+| COPPER_LME | MARKET | Copper LME Price | USD/ton | 일간 | 경기 선행지표 (구리 가격) |
+| KR_BASE_RATE | BOK | Korea BOK Base Rate | Percent | 월간 | 한국 기준금리 → 투자/수요 |
+| KR_CPI | BOK | Korea Consumer Price Index | Index 2020=100 | 월간 | 한국 인플레이션 |
+| KR_IPI_MFG | BOK | Korea Manufacturing Production Index | Index 2020=100 | 월간 | 한국 제조업 생산 추이 |
+| CN_PMI_MFG | CHINA | China Caixin Manufacturing PMI | Index | 월간 | 중국 제조업 경기 → 반도체 수요 |
+
+**적재 스크립트**: `DB/11_load_indices.py` (4,886건, source별 MARKET/BOK/CHINA 구분)
+
+---
+
 ## 6. 환경변수 (.env)
 
 ```env
@@ -601,6 +989,9 @@ TAVILY_API_KEY=xxxxx                          # Tavily 웹 검색
 | `DB/01_ddl.sql` | 내부 데이터 (마스터 + 트랜잭션) | 9 | 1 |
 | `DB/03_external_ddl.sql` | 외부지표 (경제지표 + 무역통계) | 2 | 2 |
 | `DB/05_auth_ddl.sql` | 인증/권한 (Supabase Auth + RBAC + RLS) | 2 | 3 |
+| `DB/06_analytics_ddl.sql` | 분석용 (예측형 관제 시스템) | 6 | 4 |
+| `DB/08_aggregation_ddl.sql` | 주별·월별 집계 (캘린더 포함) | 5 | 5 |
+| `DB/09_exchange_rate_ddl.sql` | 환율 (일별 통화별 KRW 기준) | 1 | 6 |
 
 ## 8. 데이터 적재 스크립트
 
@@ -608,6 +999,9 @@ TAVILY_API_KEY=xxxxx                          # Tavily 웹 검색
 |------|------|----------|
 | `DB/02_load_data.py` | CSV → Supabase 적재 (9테이블) | `python DB/02_load_data.py` |
 | `DB/04_load_external_data.py` | 외부 API → Supabase 적재 | `python DB/04_load_external_data.py` |
+| `DB/07_pipeline/run_pipeline.py` | 예측형 관제 파이프라인 (6단계) | `python DB/07_pipeline/run_pipeline.py` |
+| `DB/10_load_exchange_rate.py` | 환율 데이터 생성 & 적재 | `python DB/10_load_exchange_rate.py` |
+| `DB/11_load_indices.py` | 반도체 산업 지수 생성 & 적재 | `python DB/11_load_indices.py` |
 
 **스크립트 옵션:**
 ```bash
@@ -623,7 +1017,42 @@ python DB/04_load_external_data.py
 # 특정 소스만 적재
 python DB/04_load_external_data.py --only=fred
 python DB/04_load_external_data.py --only=eia,customs
+
+# 예측형 관제 파이프라인 전체 실행
+python DB/07_pipeline/run_pipeline.py
+
+# 특정 스텝만 실행
+python DB/07_pipeline/run_pipeline.py --step=1,2   # 추정재고 + 리드타임
+python DB/07_pipeline/run_pipeline.py --step=4     # 예측 모델만
+
+# 환율 데이터 전체 적재 (USD, JPY, EUR, CNY)
+python DB/10_load_exchange_rate.py
+
+# 특정 통화만 적재
+python DB/10_load_exchange_rate.py --only=usd,jpy
+
+# API 무시, 강제 생성 모드
+python DB/10_load_exchange_rate.py --generate
+
+# 외부 지수 전체 적재 (10개 지표)
+python DB/11_load_indices.py
+
+# 특정 지표만 적재
+python DB/11_load_indices.py --only=sox,dram,nand
+python DB/11_load_indices.py --only=kr_base_rate,kr_cpi,kr_ipi
 ```
+
+### 파이프라인 스텝 설명
+
+| Step | 모듈 | 입력 | 출력 | 설명 |
+|:----:|------|------|------|------|
+| 0 | `s0_aggregation.py` | daily_order, daily_revenue, daily_production | calendar_week + 집계 4테이블 | 주차 캘린더 + 주별·월별 집계 |
+| 1 | `s1_daily_inventory.py` | inventory, daily_production, daily_revenue | daily_inventory_estimated | 일간 추정 재고 |
+| 2 | `s2_lead_time.py` | purchase_order | product_lead_time | 리드타임 통계 |
+| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | feature_store | 피처 엔지니어링 |
+| 4 | `s4_forecast.py` | feature_store | forecast_result | P10/P50/P90 예측 |
+| 5 | `s5_risk_score.py` | forecast + 재고 + 리드타임 | risk_score | 리스크 스코어링 |
+| 6 | `s6_action_queue.py` | risk_score | action_queue | 권장 조치 생성 |
 
 ---
 

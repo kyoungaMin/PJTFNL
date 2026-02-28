@@ -2,7 +2,7 @@
 
 > **프로젝트명**: 반도체 부품·소재 수요 변동성 분석 및 재고 리스크 최적화 AI SaaS
 > **프로젝트 시작일**: 2026-02-27
-> **최종 수정일**: 2026-02-27
+> **최종 수정일**: 2026-02-28
 
 ---
 
@@ -64,7 +64,7 @@ DEV_LOG/
 
 | 단계 | 마일스톤 | 목표 기한 | 상태 |
 |------|----------|-----------|------|
-| Phase 1 | 데이터 탐색·전처리 파이프라인 구축 | | `대기` |
+| Phase 1 | 데이터 탐색·전처리 파이프라인 구축 | | `진행중` |
 | Phase 2 | 수요 변동성 분석 모델 개발 | | `대기` |
 | Phase 3 | 재고 리스크 점수화 엔진 개발 | | `대기` |
 | Phase 4 | 생산·발주 최적화 알고리즘 개발 | | `대기` |
@@ -79,8 +79,8 @@ DEV_LOG/
 |------|------|-----------|
 | **백엔드** | FastAPI (Python) | Python ML 연동, 자동 API 문서(Swagger), 비동기 지원 |
 | **프론트엔드** | Next.js (React) | SSR/SSG 대시보드, Supabase 공식 지원, Vercel 배포 |
-| **데이터 파이프라인** | | |
-| **ML/AI 모델** | | |
+| **데이터 파이프라인** | Python (supabase-py, pandas) | DB 직접 연동, 6단계 순차 파이프라인 |
+| **ML/AI 모델** | LightGBM Quantile / 이동평균 fallback | P10/P50/P90 분위 예측, 외부 피처 활용 |
 | **데이터베이스** | PostgreSQL (Supabase) | SaaS 프로덕션, 팀 공유, REST API 제공 |
 | **배포/인프라** | | |
 
@@ -101,6 +101,11 @@ DEV_LOG/
 | 2026-02-27 | kyoungaMin | 외부지표 DB 구조 | 소스별 분리 / 통합 테이블 | 통합 2테이블 (economic_indicator + trade_statistics) | 시계열은 통합, 무역통계는 구조가 달라 분리 |
 | 2026-02-27 | kyoungaMin | 인증 방식 | Supabase Auth / 자체 구현 | Supabase Auth | 내장 JWT, OAuth 지원, 별도 인증 로직 불필요 |
 | 2026-02-27 | kyoungaMin | 권한 구조 | 단일 역할 / RBAC / 조직+역할 | RBAC (4단계) | admin/manager/analyst/viewer, B2B SaaS 적합 |
+| 2026-02-28 | kyoungaMin | 출하 데이터 대체 | 별도 출하 테이블 / 매출 대체 | 매출(daily_revenue) 대체 | B2B 반도체 특성상 출하≈매출 래그 미미 |
+| 2026-02-28 | kyoungaMin | 일간 재고 산출 | DB 뷰 / Python 계산 테이블 | Python 계산 → 테이블 적재 | 월초 스냅샷 기반 일간 보간, 복잡한 누적 로직 |
+| 2026-02-28 | kyoungaMin | 예측 모델 | Prophet / ARIMA / LightGBM Quantile | LightGBM Quantile | P10/P50/P90 밴드 직접 산출, 외부 피처 활용 용이 |
+| 2026-02-28 | kyoungaMin | 리스크 가중치 | 균등 / 불균등 | 불균등 (결품35%/과잉25%/납기25%/마진15%) | 제조업 특성상 결품 리스크가 가장 치명적 |
+| 2026-02-28 | kyoungaMin | 조치 큐 생성 기준 | 전체 / C등급 이상 | C등급 이상 (total_risk > 40) | 과다 알림 방지, 운영 실효성 |
 
 ---
 
@@ -144,3 +149,5 @@ DEV_LOG/
 | 2026-02-27 | kyoungaMin | 개발자별 일자별 분리 구조로 전환 |
 | 2026-02-27 | kyoungaMin | DB 기술 스택 확정 (Supabase PostgreSQL), DDL/적재 스크립트 추가 |
 | 2026-02-27 | kyoungaMin | 외부지표 API 연동 (FRED/EIA/관세청), DDL·적재 스크립트 추가, 6,829건 적재 |
+| 2026-02-28 | kyoungaMin | 예측형 관제 시스템 DDL 6테이블 + 6단계 파이프라인 구축 |
+| 2026-02-28 | kyoungaMin | 주별·월별 집계 DDL 4테이블 + S0 파이프라인, 23테이블 체계 |
