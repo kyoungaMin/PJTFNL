@@ -1,8 +1,9 @@
 """
 Step 6: 조치 큐 생성
 리스크 등급 C 이상(total_risk > 40) 제품에 대해 권장 조치 자동 생성
+S7/S8 결과가 존재하면 suggested_qty를 정교하게 산출
 
-입력 테이블: risk_score, product_master
+입력 테이블: risk_score, product_master, (optional) production_plan, purchase_recommendation
 출력 테이블: action_queue
 """
 
@@ -41,6 +42,40 @@ def get_severity(individual_score: float, total_risk: float) -> str:
     return "low"
 
 
+def _load_optimization_data() -> tuple:
+    """S7/S8 결과 로드 (테이블 미존재 시 빈 dict 반환)
+    Returns: (pp_map, pr_map)
+        pp_map: {product_id: {planned_qty, daily_capacity, ...}}
+        pr_map: {component_product_id: {recommended_qty, ...}}
+    """
+    pp_map, pr_map = {}, {}
+    try:
+        pp_rows = fetch_all("production_plan",
+                            "product_id,plan_date,planned_qty,daily_capacity,plan_type")
+        if pp_rows:
+            latest_date = max(r["plan_date"] for r in pp_rows)
+            for r in pp_rows:
+                if r["plan_date"] == latest_date:
+                    pp_map[r["product_id"]] = r
+            print(f"  S7 생산계획 연동: {len(pp_map):,}개 제품")
+    except Exception:
+        pass
+
+    try:
+        pr_rows = fetch_all("purchase_recommendation",
+                            "component_product_id,plan_date,recommended_qty")
+        if pr_rows:
+            latest_date = max(r["plan_date"] for r in pr_rows)
+            for r in pr_rows:
+                if r["plan_date"] == latest_date:
+                    pr_map[r["component_product_id"]] = r
+            print(f"  S8 발주추천 연동: {len(pr_map):,}개 자재")
+    except Exception:
+        pass
+
+    return pp_map, pr_map
+
+
 def run():
     print("[S6] 조치 큐 생성 시작")
     today_str = date.today().isoformat()
@@ -58,6 +93,9 @@ def run():
     # 2) 제품명 매핑
     pm_rows = fetch_all("product_master", "product_code,product_name")
     name_map = {r["product_code"]: r["product_name"] or r["product_code"] for r in pm_rows}
+
+    # 2-1) S7/S8 결과 로드 (optional)
+    pp_map, pr_map = _load_optimization_data()
 
     # 3) C등급 이상 필터 (total_risk > 40)
     high_risk = {pid: r for pid, r in latest.items() if float(r["total_risk"] or 0) > 40}
@@ -78,10 +116,20 @@ def run():
         delivery = float(r.get("delivery_risk") or 0)
         margin = float(r.get("margin_risk") or 0)
 
+        # S7/S8 데이터 참조
+        pp = pp_map.get(pid, {})
+        planned_qty = float(pp.get("planned_qty") or 0)
+        daily_cap = float(pp.get("daily_capacity") or 0)
+        recent_avg = daily_cap / 1.2 * 7 if daily_cap > 0 else 0  # 버퍼 제거 후 주간 환산
+        pr = pr_map.get(pid, {})
+        rec_qty = float(pr.get("recommended_qty") or 0)
+
         # 결품 리스크 조치
         if stockout > 40:
             sev = get_severity(stockout, total_risk)
             if stockout > 60:
+                # expedite_po: S8 발주추천 > 기존 안전재고 > fallback
+                sq = rec_qty if rec_qty > 0 else float(r.get("safety_stock") or 0)
                 actions.append({
                     "product_id": pid,
                     "eval_date": eval_dt,
@@ -89,10 +137,12 @@ def run():
                     "severity": sev,
                     "action_type": "expedite_po",
                     "description": f"[{pname}] 재고일수 {inv_days_str}, 결품 위험 {stockout:.0f}점. 긴급 발주 또는 기존 발주 납기 단축 필요.",
-                    "suggested_qty": float(r.get("safety_stock") or 0),
+                    "suggested_qty": sq if sq > 0 else None,
                     "status": "pending",
                 })
             else:
+                # increase_production: S7 계획량 - 최근 평균
+                sq = max(0, planned_qty - recent_avg) if planned_qty > 0 else None
                 actions.append({
                     "product_id": pid,
                     "eval_date": eval_dt,
@@ -100,13 +150,15 @@ def run():
                     "severity": sev,
                     "action_type": "increase_production",
                     "description": f"[{pname}] 재고일수 {inv_days_str}, 결품 주의 {stockout:.0f}점. 생산량 증대 검토.",
-                    "suggested_qty": None,
+                    "suggested_qty": sq if sq and sq > 0 else None,
                     "status": "pending",
                 })
 
         # 과잉 리스크 조치
         if excess > 40:
             sev = get_severity(excess, total_risk)
+            # reduce_production: 최근 평균 - S7 계획량
+            sq = max(0, recent_avg - planned_qty) if recent_avg > 0 and planned_qty >= 0 else None
             actions.append({
                 "product_id": pid,
                 "eval_date": eval_dt,
@@ -114,13 +166,15 @@ def run():
                 "severity": sev,
                 "action_type": "reduce_production",
                 "description": f"[{pname}] 재고일수 {inv_days_str}, 과잉 재고 {excess:.0f}점. 생산 축소 또는 판촉 검토.",
-                "suggested_qty": None,
+                "suggested_qty": sq if sq and sq > 0 else None,
                 "status": "pending",
             })
 
         # 납기 리스크 조치
         if delivery > 40:
             sev = get_severity(delivery, total_risk)
+            # expedite_production: S7 계획량 활용
+            sq = planned_qty if planned_qty > 0 else None
             actions.append({
                 "product_id": pid,
                 "eval_date": eval_dt,
@@ -128,7 +182,7 @@ def run():
                 "severity": sev,
                 "action_type": "expedite_production",
                 "description": f"[{pname}] 납기 리스크 {delivery:.0f}점. 생산 우선순위 조정 또는 부분 납품 검토.",
-                "suggested_qty": None,
+                "suggested_qty": sq,
                 "status": "pending",
             })
 

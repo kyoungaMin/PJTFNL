@@ -26,6 +26,8 @@ import s5_risk_score
 import s6_action_queue
 import s3m_feature_store_monthly
 import s4m_forecast_monthly
+import s7_production_plan
+import s8_purchase_optimization
 
 # 숫자 스텝 (주간 파이프라인)
 STEPS = {
@@ -36,6 +38,8 @@ STEPS = {
     4: ("수요예측 모델(주간)", s4_forecast),
     5: ("리스크 스코어링", s5_risk_score),
     6: ("조치 큐 생성", s6_action_queue),
+    7: ("생산 최적화", s7_production_plan),
+    8: ("발주 최적화", s8_purchase_optimization),
 }
 
 # 문자열 스텝 (월간 파이프라인)

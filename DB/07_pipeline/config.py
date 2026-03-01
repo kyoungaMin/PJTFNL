@@ -148,6 +148,20 @@ RISK_GRADE_BOUNDS = [
 ]
 
 
+# ─── Phase 4: 생산·발주 최적화 상수 ───
+PRODUCTION_PLAN_DAYS = 7            # 주간 생산계획 기간 (일)
+PRODUCTION_CAPACITY_BUFFER = 1.2    # 캐파시티 버퍼 (20%)
+PRODUCTION_LOOKBACK_DAYS = 90       # 캐파시티 산출 기준 기간 (일)
+
+ORDERING_COST = 50000               # 1회 발주 비용 (원)
+HOLDING_RATE = 0.20                 # 연간 재고 보관비율 (단가 대비)
+SUPPLIER_WEIGHTS = {
+    "lead_time": 0.40,              # 리드타임 짧을수록 우수
+    "unit_price": 0.35,             # 단가 낮을수록 우수
+    "reliability": 0.25,            # 납기 준수율 높을수록 우수
+}
+
+
 def get_risk_grade(score: float) -> str:
     for grade, upper in RISK_GRADE_BOUNDS:
         if score <= upper:

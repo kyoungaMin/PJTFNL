@@ -181,6 +181,9 @@
 │  │ feature_store_weekly (46피처, 83K행)            │   │
 │  │ feature_store_monthly (35피처, 48K행)           │   │
 │  └───────────────────────────────────────────────┘   │
+│  ┌─ 최적화 ────────────────────────────────────────┐ │
+│  │ production_plan / purchase_recommendation       │ │
+│  └─────────────────────────────────────────────────┘ │
 │  ┌─ 집계 ────────────────────────────────────────┐   │
 │  │ weekly/monthly_product_summary                 │   │
 │  │ weekly/monthly_customer_summary                │   │
@@ -191,7 +194,7 @@
 │            데이터 파이프라인 (Python)                    │
 │                                                       │
 │  CSV 적재 → 외부 API 수집 → 환율/지수/ECOS 적재        │
-│  → 주간 파이프라인 (S0~S6) + 월간 파이프라인 (S3m~S4m)  │
+│  → 주간 파이프라인 (S0~S8) + 월간 파이프라인 (S3m~S4m)  │
 └───────────────────────────────────────────────────────┘
         ▲                                    ▲
    ERP 데이터                        외부 API
@@ -215,17 +218,17 @@
 ### 6.2 분석 파이프라인 (주간 7단계 + 월간 2단계)
 
 ```bash
-# 주간 파이프라인 전체 실행 (S0~S6)
+# 주간 파이프라인 전체 실행 (S0~S8)
 python DB/07_pipeline/run_pipeline.py
 
 # 월간 파이프라인 실행
 python DB/07_pipeline/run_pipeline.py --step=3m,4m
 
-# 주간 + 월간 한 번에 실행
-python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m
+# 주간 + 월간 + 최적화 한 번에 실행
+python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 ```
 
-**주간 파이프라인 (S0~S6)**
+**주간 파이프라인 (S0~S8)**
 
 | Step | 모듈 | 입력 | 출력 | 설명 |
 |:----:|------|------|------|------|
@@ -235,7 +238,9 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m
 | 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store_weekly` | 주간 피처 엔지니어링 (46개 피처) |
 | 4 | `s4_forecast.py` | feature_store_weekly | `forecast_result` | LightGBM Quantile 예측 (1w/2w/4w) |
 | 5 | `s5_risk_score.py` | 예측 + 재고 + 리드타임 | `risk_score` | 4유형 리스크 스코어링 |
-| 6 | `s6_action_queue.py` | risk_score | `action_queue` | C등급 이상 자동 조치 제안 |
+| 6 | `s6_action_queue.py` | risk_score + S7/S8 결과 | `action_queue` | C등급 이상 자동 조치 제안 (정교한 suggested_qty) |
+| 7 | `s7_production_plan.py` | 예측 + 재고 + 캐파 + 리스크 | `production_plan` | 제품별 최적 생산량 산출 |
+| 8 | `s8_purchase_optimization.py` | S7 + BOM + 리드타임 + 공급사 | `purchase_recommendation` | BOM 전개 + EOQ/ROP 기반 발주 추천 |
 
 **월간 파이프라인 (S3m~S4m)**
 
@@ -264,7 +269,7 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m
 
 ---
 
-## 8. DB 구조 (27개 테이블)
+## 8. DB 구조 (29개 테이블)
 
 | 구분 | 테이블 수 | 주요 테이블 | 행 수 |
 |------|----------|------------|-------|
@@ -273,6 +278,7 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m
 | 외부지표 | 3 | economic_indicator, trade_statistics, exchange_rate | ~17,000 |
 | 분석 | 6 | feature_store, forecast_result, risk_score, action_queue 등 | 파이프라인 생성 |
 | ML 피처 | 2 | feature_store_weekly, feature_store_monthly | ~132,000 |
+| 최적화 | 2 | production_plan, purchase_recommendation | 파이프라인 생성 |
 | 집계 | 5 | weekly/monthly_product_summary, weekly/monthly_customer_summary, calendar_week | ~347,000 |
 | 인증 | 2 | user_profile, login_history | — |
 
@@ -306,9 +312,9 @@ PJTFNL/
 │   ├── 04_load_external_data.py       ← FRED/EIA/관세청 수집
 │   ├── 05_auth_ddl.sql                ← 인증/권한 (RBAC + RLS)
 │   ├── 06_analytics_ddl.sql           ← 분석용 6테이블
-│   ├── 07_pipeline/                   ← 주간 7단계 + 월간 2단계 파이프라인
-│   │   ├── run_pipeline.py            ← 통합 실행기 (주간/월간 선택 가능)
-│   │   ├── config.py                  ← 공통 설정 + 피처 컬럼 정의
+│   ├── 07_pipeline/                   ← 주간 9단계 + 월간 2단계 파이프라인
+│   │   ├── run_pipeline.py            ← 통합 실행기 (주간/월간/최적화 선택)
+│   │   ├── config.py                  ← 공통 설정 + 피처 컬럼 + 최적화 상수
 │   │   ├── s0_aggregation.py          ← 주별·월별 집계
 │   │   ├── s1_daily_inventory.py      ← 일간 추정 재고
 │   │   ├── s2_lead_time.py            ← 리드타임 통계
@@ -317,7 +323,9 @@ PJTFNL/
 │   │   ├── s4_forecast.py             ← 주간 수요예측 (LightGBM)
 │   │   ├── s4m_forecast_monthly.py    ← 월간 수요예측 (LightGBM)
 │   │   ├── s5_risk_score.py           ← 리스크 스코어링
-│   │   └── s6_action_queue.py         ← 조치 큐 생성
+│   │   ├── s6_action_queue.py         ← 조치 큐 생성 (S7/S8 연동)
+│   │   ├── s7_production_plan.py      ← 생산 최적화 (캐파·리스크 기반)
+│   │   └── s8_purchase_optimization.py ← 발주 최적화 (BOM·EOQ·공급사)
 │   ├── 07_queries/                    ← 분석 쿼리
 │   │   └── monthly_aggregation.sql    ← 월별 집계 7종
 │   ├── 08_aggregation_ddl.sql         ← 집계 5테이블
@@ -327,6 +335,7 @@ PJTFNL/
 │   ├── 12_load_ecos.py               ← ECOS 한국은행 실데이터 적재
 │   ├── 13_feature_store_weekly_ddl.sql  ← 주간 ML 피처 테이블
 │   ├── 14_feature_store_monthly_ddl.sql ← 월간 ML 피처 테이블
+│   ├── 16_optimization_ddl.sql        ← 생산계획 + 발주추천 테이블
 │   └── SCHEMA_REFERENCE.md            ← DB 스키마 전체 레퍼런스
 │
 ├── DEV_LOG/                           ← 개발일지
@@ -359,6 +368,7 @@ pip install supabase python-dotenv requests lightgbm
 #    01_ddl.sql → 03_external_ddl.sql → 05_auth_ddl.sql
 #    → 06_analytics_ddl.sql → 08_aggregation_ddl.sql → 09_exchange_rate_ddl.sql
 #    → 13_feature_store_weekly_ddl.sql → 14_feature_store_monthly_ddl.sql
+#    → 16_optimization_ddl.sql
 
 # 3. 데이터 적재
 python DB/02_load_data.py                # ERP CSV 데이터
@@ -368,8 +378,9 @@ python DB/11_load_indices.py             # 산업 지수 데이터
 python DB/12_load_ecos.py               # ECOS 한국은행 실데이터
 
 # 4. 분석 파이프라인 실행
-python DB/07_pipeline/run_pipeline.py              # 주간 전체 (S0~S6)
+python DB/07_pipeline/run_pipeline.py              # 주간 전체 (S0~S8)
 python DB/07_pipeline/run_pipeline.py --step=3m,4m # 월간 (피처+예측)
+python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 ```
 
 ---
@@ -416,9 +427,9 @@ python DB/07_pipeline/run_pipeline.py --step=3m,4m # 월간 (피처+예측)
 | Phase | 내용 | 상태 | 비고 |
 |-------|------|------|------|
 | **Phase 1** | 데이터 탐색·전처리·DB 구축 | **완료** | 27테이블, 내부+외부 데이터 적재 |
-| **Phase 2** | 수요 변동성 분석 모델 개발 | **진행중** | 주간+월간 LightGBM Quantile 파이프라인 구축 완료 |
-| **Phase 3** | 재고 리스크 점수화 엔진 개발 | **진행중** | 4유형 리스크 스코어링 + 조치 큐 파이프라인 구축 완료 |
-| Phase 4 | 생산·발주 최적화 알고리즘 개발 | 대기 | |
+| **Phase 2** | 수요 변동성 분석 모델 개발 | **완료** | 주간+월간 LightGBM Quantile 파이프라인 구축 완료 |
+| **Phase 3** | 재고 리스크 점수화 엔진 개발 | **완료** | 4유형 리스크 스코어링 + 조치 큐 파이프라인 구축 완료 |
+| **Phase 4** | 생산·발주 최적화 알고리즘 개발 | **완료** | 생산계획(S7) + 발주추천(S8) + S6 보강 |
 | Phase 5 | 웹 대시보드 및 API 서버 구축 | 대기 | |
 | Phase 6 | 통합 테스트·배포 | 대기 | |
 
