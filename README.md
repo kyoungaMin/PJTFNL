@@ -338,13 +338,18 @@ PJTFNL/
 │   ├── 16_optimization_ddl.sql        ← 생산계획 + 발주추천 테이블
 │   └── SCHEMA_REFERENCE.md            ← DB 스키마 전체 레퍼런스
 │
+├── forecastai/                        ← Next.js 프론트엔드 (Phase 5)
+│   ├── src/app/                       ← 라우팅 + 레이아웃
+│   ├── src/components/pages/          ← 11개 페이지 컴포넌트
+│   ├── src/components/ui/             ← 공통 UI (Badge, Table 등)
+│   └── src/lib/data.ts                ← 테마, 목데이터, 유틸
+│
 ├── DEV_LOG/                           ← 개발일지
 │   ├── _TEMPLATE.md
 │   └── {개발자명}/YYYY-MM-DD.md
 │
 └── (향후)
     ├── backend/                        ← FastAPI 서버
-    ├── frontend/                       ← Next.js 대시보드
     └── ml/                             ← ML 모델 학습/평가
 ```
 
@@ -430,7 +435,7 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 | **Phase 2** | 수요 변동성 분석 모델 개발 | **완료** | 주간+월간 LightGBM Quantile 파이프라인 구축 완료 |
 | **Phase 3** | 재고 리스크 점수화 엔진 개발 | **완료** | 4유형 리스크 스코어링 + 조치 큐 파이프라인 구축 완료 |
 | **Phase 4** | 생산·발주 최적화 알고리즘 개발 | **완료** | 생산계획(S7) + 발주추천(S8) + S6 보강 |
-| Phase 5 | 웹 대시보드 및 API 서버 구축 | 대기 | |
+| **Phase 5** | 웹 대시보드 및 API 서버 구축 | **진행중** | Next.js 프론트엔드 개발 중 |
 | Phase 6 | 통합 테스트·배포 | 대기 | |
 
 ---
@@ -473,6 +478,54 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 - 경영진에게 **예측 기반 설명** 가능
 - 수요 변동에 대한 **사전 대응 체계** 구축
 - 조직 내 **데이터 문화** 정착
+
+---
+
+## 18. 프론트엔드 개발 팀
+
+### 담당 영역
+
+| 개발자 | 담당 영역 | 주요 파일 |
+|--------|-----------|-----------|
+| **다솜** | 대시보드, 로그인, 관리 | `Dashboard.tsx`, `Login.tsx`, `Admin.tsx` |
+| **지은** | 수요예측, 외부지표 | `WeeklyForecast.tsx`, `MonthlyForecast.tsx`, `ExternalIndicators.tsx` |
+| **성민** | 재고관리 | `Inventory.tsx`, `RiskManagement.tsx`, `ActionQueue.tsx` |
+| **경아** | 최적화 | `Simulation.tsx`, `Purchase.tsx` |
+
+### 프론트엔드 구조
+
+```
+forecastai/
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx              ← 루트 레이아웃
+│   │   └── page.tsx                ← 메인 SPA (라우팅 + 인증)
+│   ├── components/
+│   │   ├── layout/index.tsx        ← Sidebar, Header
+│   │   ├── pages/                  ← 페이지별 컴포넌트
+│   │   │   ├── Dashboard.tsx       ← [다솜] 대시보드
+│   │   │   ├── Login.tsx           ← [다솜] 로그인
+│   │   │   ├── Admin.tsx           ← [다솜] 사용자 관리
+│   │   │   ├── WeeklyForecast.tsx  ← [지은] 주간 수요예측
+│   │   │   ├── MonthlyForecast.tsx ← [지은] 월간 수요예측
+│   │   │   ├── ExternalIndicators.tsx ← [지은] 외부지표
+│   │   │   ├── Inventory.tsx       ← [성민] 재고 현황
+│   │   │   ├── RiskManagement.tsx  ← [성민] 리스크 관리
+│   │   │   ├── ActionQueue.tsx     ← [성민] 조치 큐
+│   │   │   ├── Simulation.tsx      ← [경아] 시나리오 시뮬레이션
+│   │   │   └── Purchase.tsx        ← [경아] 발주 최적화
+│   │   └── ui/index.tsx            ← 공통 UI 컴포넌트
+│   └── lib/data.ts                 ← 테마, 목데이터, 유틸
+├── package.json
+└── tsconfig.json
+```
+
+### 기술 스택
+
+- **프레임워크**: Next.js 14.2 (React 18)
+- **차트**: Recharts
+- **언어**: TypeScript
+- **스타일**: CSS-in-JS (인라인 스타일)
 
 ---
 
