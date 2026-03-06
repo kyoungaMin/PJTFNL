@@ -78,7 +78,7 @@ function PageHeader({ title, sub, action }) {
   );
 }
 
-function Btn({ children, variant="primary", onClick, style:s={} }) {
+function Btn({ children, variant="primary", onClick=undefined, style:s={} }: any) {
   const base = { fontSize:12, fontWeight:700, borderRadius:7, padding:"8px 16px", cursor:"pointer", border:"none", transition:"filter 0.15s" };
   const variants = {
     primary:   { ...base, background:T.blue,     color:"#fff",    boxShadow:"0 2px 8px rgba(37,99,235,0.28)" },
@@ -94,7 +94,7 @@ function FilterBar({ children }) {
   return <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, flexWrap:"wrap" }}>{children}</div>;
 }
 
-function Select({ label, value, onChange, options }) {
+function Select({ label=undefined, value, onChange, options }: any) {
   return (
     <select value={value} onChange={e=>onChange(e.target.value)} style={{
       fontSize:12, color:T.text1, background:T.surface, border:`1px solid ${T.border}`,
@@ -117,7 +117,7 @@ function SearchInput({ value, onChange, placeholder="검색..." }) {
   );
 }
 
-function Table({ headers, rows, onRowClick }) {
+function Table({ headers, rows, onRowClick=undefined }: any) {
   return (
     <div style={{ overflowX:"auto" }}>
       <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
@@ -145,5 +145,4 @@ function Table({ headers, rows, onRowClick }) {
   );
 }
 
-// Re-export card style for pages that use it inline
-export { card }
+export { card, Badge, StatusBadge, GradeBadge, RiskTypeBadge, ScoreBar, Sparkline, PageHeader, Btn, FilterBar, Select, SearchInput, Table }

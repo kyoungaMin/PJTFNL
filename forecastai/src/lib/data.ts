@@ -186,6 +186,22 @@ export const AI_PRESETS = [
    params:{demandDelta:-8,productionDelta:-10,safetyBuffer:0,orderQty:500,leadTimeDelta:2}},
 ]
 
+export function runSimulation(sku: typeof SIM_SKUS[number], params: {demandDelta:number,productionDelta:number,safetyBuffer:number,orderQty:number,leadTimeDelta:number}, weeks: number) {
+  const demand = Math.round(sku.weeklyDemand * (1 + params.demandDelta / 100));
+  const production = Math.round(sku.productionCap * (1 + params.productionDelta / 100));
+  const safe = Math.round(sku.safeStock * (1 + params.safetyBuffer / 100));
+  const leadWeek = Math.max(1, Math.ceil((sku.leadTime + params.leadTimeDelta) / 7));
+  const result: {w:string, asis:number, tobe:number, safe:number}[] = [];
+  let asisStock = sku.currentStock;
+  let tobeStock = sku.currentStock;
+  for (let i = 1; i <= weeks; i++) {
+    asisStock = asisStock - sku.weeklyDemand + sku.productionCap;
+    tobeStock = tobeStock - demand + production + (i === leadWeek ? params.orderQty : 0);
+    result.push({ w: `W${i}`, asis: Math.round(asisStock), tobe: Math.round(tobeStock), safe });
+  }
+  return result;
+}
+
 // ─── Auth / Members ───────────────────────────────────────────────────────────
 export const ALL_MEMBERS: Member[] = [
   {id:1,name:'나기업',role:'Manager',dept:'생산계획팀',email:'na@company.com',  grad:'linear-gradient(135deg,#3B82F6,#7C3AED)',initial:'나'},
@@ -202,6 +218,13 @@ export const LOGIN_ACCOUNTS = [
   {email:'choi@company.com',password:'1234',member:ALL_MEMBERS[3]},
   {email:'jung@company.com',password:'1234',member:ALL_MEMBERS[4]},
 ]
+
+export const ROLE_PERMISSIONS: Record<string, Record<string, boolean>> = {
+  Admin:   { dashboard:true, forecast:true, action:true, dataInput:true, userMgmt:true },
+  Manager: { dashboard:true, forecast:true, action:true, dataInput:true, userMgmt:false },
+  Analyst: { dashboard:true, forecast:true, action:false,dataInput:true, userMgmt:false },
+  Viewer:  { dashboard:true, forecast:false,action:false,dataInput:false,userMgmt:false },
+}
 
 export const ROLE_LABEL: Record<RoleType,string> = {
   Admin:'관리자', Manager:'팀장', Analyst:'분석가', Viewer:'뷰어',

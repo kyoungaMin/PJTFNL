@@ -2,7 +2,7 @@
 import React, { useState } from 'react'
 import { AreaChart, Area, ComposedChart, Bar, Line, LineChart, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { T, card, sectionTitle, MONTHLY_FORECAST_DATA } from '@/lib/data'
-import { Badge, PageHeader, Btn, FilterBar, Select } from '@/components/ui'
+import { Badge, PageHeader, Btn, FilterBar, Select, Table } from '@/components/ui'
 
 export default function PageMonthlyForecast() {
   const [showFX, setShowFX]   = useState(true);

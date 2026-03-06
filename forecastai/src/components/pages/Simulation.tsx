@@ -1,8 +1,8 @@
 'use client'
 import React, { useState } from 'react'
-import { AreaChart, Area, ComposedChart, Bar, XAxis, YAxis, Tooltip,
+import { AreaChart, Area, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine, Cell } from 'recharts'
-import { T, card, sectionTitle, SIM_SKUS, SIM_CUSTOMERS, SIM_PERIODS, AI_PRESETS } from '@/lib/data'
+import { T, card, sectionTitle, SIM_SKUS, SIM_CUSTOMERS, SIM_PERIODS, AI_PRESETS, runSimulation } from '@/lib/data'
 import { Badge, PageHeader, Btn, Select } from '@/components/ui'
 
 function SimSlider({ label, value, onChange, min, max, step=1, unit="", color=T.blue }) {

@@ -1,6 +1,6 @@
 'use client'
 import React, { useState } from 'react'
-import { T, card, sectionTitle, USERS, ROLE_LABEL } from '@/lib/data'
+import { T, card, sectionTitle, USERS, ROLE_LABEL, ROLE_PERMISSIONS } from '@/lib/data'
 import { Badge, StatusBadge, PageHeader, Btn, FilterBar, Select, SearchInput, Table } from '@/components/ui'
 
 export default function PageAdmin() {
