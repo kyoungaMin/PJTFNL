@@ -1,6 +1,6 @@
 'use client'
 import React, { useState } from 'react'
-import { T, card, sectionTitle, USERS, ROLE_LABEL, ROLE_PERMISSIONS } from '@/lib/data'
+import { T, card, sectionTitle, USERS, ROLE_LABEL, ROLE_PERMISSIONS, type RoleType } from '@/lib/data'
 import { Badge, StatusBadge, PageHeader, Btn, FilterBar, Select, SearchInput, Table } from '@/components/ui'
 
 export default function PageAdmin() {
@@ -54,7 +54,7 @@ export default function PageAdmin() {
             </div>,
             <span style={{ fontSize:12, color:T.text3 }}>{u.email}</span>,
             editRole[u.id] ? (
-              <select value={u.role} onChange={e=>{setUsers(p=>p.map(x=>x.id===u.id?{...x,role:e.target.value}:x));setEditRole(p=>({...p,[u.id]:false}));}}
+              <select value={u.role} onChange={e=>{setUsers(p=>p.map(x=>x.id===u.id?{...x,role:e.target.value as RoleType}:x));setEditRole(p=>({...p,[u.id]:false}));}}
                 style={{ fontSize:11, padding:"3px 8px", border:`1px solid ${T.border}`, borderRadius:5, outline:"none" }}>
                 {["Admin","Manager","Analyst","Viewer"].map(r=><option key={r}>{r}</option>)}
               </select>

@@ -66,7 +66,7 @@ function Sparkline({ data, color, inverse=false }) {
   );
 }
 
-function PageHeader({ title, sub, action }) {
+function PageHeader({ title, sub, action }: { title: any; sub: any; action?: any }) {
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
       <div>

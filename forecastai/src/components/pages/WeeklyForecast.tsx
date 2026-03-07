@@ -10,7 +10,7 @@ export default function PageWeeklyForecast() {
   const [sku, setSku] = useState("SKU-0421");
   const skus = ["SKU-0421","SKU-1183","SKU-0887","SKU-2201","SKU-0312"];
   const data = WEEKLY_FORECAST_DATA.slice(0, weeks==="8"?8:weeks==="4"?4:WEEKLY_FORECAST_DATA.length);
-  const BandTooltip = ({active,payload,label}) => {
+  const BandTooltip = ({active,payload,label}: any) => {
     if(!active||!payload?.length) return null;
     const p = Object.fromEntries(payload.map(p=>[p.dataKey,p.value]));
     return (

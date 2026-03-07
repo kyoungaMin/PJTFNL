@@ -572,6 +572,7 @@ export const NAV_STRUCTURE = [
   {id:'risk',            label:'리스크 관리',  parent:'재고 관리', dot:'#FCA5A5',badge:40},
   {id:'weekly-forecast', label:'주간 예측',    parent:'수요예측',  dot:'#93C5FD'},
   {id:'monthly-forecast',label:'월간 예측',    parent:'수요예측',  dot:'#93C5FD'},
+  {id:'model-eval',      label:'모델 평가',    parent:'수요예측',  dot:'#93C5FD'},
   {id:'action-queue',    label:'생산 권고',    parent:'최적화',    dot:'#93C5FD',badge:3},
   {id:'purchase',        label:'구매 권고',    parent:'최적화',    dot:'#93C5FD'},
   {id:'simulation',      label:'시나리오 분석',parent:'최적화',    dot:'#93C5FD'},
@@ -598,6 +599,7 @@ export const SEARCH_INDEX = [
   {type:'페이지',label:'물류',           sub:'BDI·해상운임',       page:'ext-supply'},
   {type:'페이지',label:'원자재',         sub:'구리·WTI·금',        page:'ext-raw'},
   {type:'페이지',label:'예측 시뮬레이션',sub:'시나리오 분석',      page:'simulation'},
+  {type:'페이지',label:'모델 평가',      sub:'7개 모델 비교·분석',page:'model-eval'},
 ]
 
 export const TK: Record<string,{c:string,bg:string,b:string}> = {

@@ -25,7 +25,7 @@ export default function PageInventory() {
       acc[i.category] = (acc[i.category]||0) + i.stock*i.unitCost;
       return acc;
     },{})
-  ).map(([name,value])=>({name, value, color:catColors[name]||"#94A3B8"}));
+  ).map(([name,value])=>({name, value: value as number, color:(catColors as any)[name]||"#94A3B8"}));
 
   // 필터 + 정렬
   const cats = ["전체", ...new Set(INV_ITEMS.map(i=>i.category))];
@@ -48,7 +48,7 @@ export default function PageInventory() {
   const coverage = (item) => Math.round(item.stock / item.weeklyDemand * 7);
 
   // Tooltip
-  const TrendTT = ({active,payload,label}) => {
+  const TrendTT = ({active,payload,label}: any) => {
     if(!active||!payload?.length) return null;
     return (
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px 14px",boxShadow:"0 4px 12px rgba(15,23,42,0.1)"}}>
@@ -129,7 +129,7 @@ export default function PageInventory() {
                   startAngle={90} endAngle={-270}>
                   {donutData.map((e,i)=><Cell key={i} fill={e.color} stroke="white" strokeWidth={2}/>)}
                 </Pie>
-                <Tooltip formatter={(v)=>`₩${(v/1000000).toFixed(1)}M`}
+                <Tooltip formatter={(v: any)=>`₩${(v/1000000).toFixed(1)}M`}
                   contentStyle={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:8}}/>
               </PieChart>
               <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",pointerEvents:"none"}}>

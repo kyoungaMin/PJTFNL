@@ -111,8 +111,8 @@ export default function LoginPage({ onLogin }) {
             {LOGIN_ACCOUNTS.map((acc,i)=>(
               <button key={i} onClick={()=>quickLogin(acc)}
                 style={{ fontSize:11, color:"#94A3B8", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:6, padding:"4px 10px", cursor:"pointer", transition:"all 0.15s" }}
-                onMouseEnter={e=>{ e.target.style.background="rgba(37,99,235,0.15)"; e.target.style.color="#93C5FD"; }}
-                onMouseLeave={e=>{ e.target.style.background="rgba(255,255,255,0.05)"; e.target.style.color="#94A3B8"; }}>
+                onMouseEnter={e=>{ (e.target as HTMLElement).style.background="rgba(37,99,235,0.15)"; (e.target as HTMLElement).style.color="#93C5FD"; }}
+                onMouseLeave={e=>{ (e.target as HTMLElement).style.background="rgba(255,255,255,0.05)"; (e.target as HTMLElement).style.color="#94A3B8"; }}>
                 {acc.member.name} ({acc.member.role})
               </button>
             ))}

@@ -39,7 +39,7 @@ function KpiCard({ kpi, delay=0 }) {
 }
 
 function RevenueForecastChart() {
-  const RevTT = ({active,payload,label}) => {
+  const RevTT = ({active,payload,label}: any) => {
     if(!active||!payload?.length) return null;
     const vals = Object.fromEntries(payload.map(p=>[p.dataKey, p.value]));
     return (
@@ -66,7 +66,7 @@ function RevenueForecastChart() {
         {nextFcstRow&&<div style={{padding:"8px 14px",background:isUp?T.greenSoft:T.redSoft,border:`1px solid ${isUp?T.greenMid:T.redMid}`,borderRadius:9,textAlign:"center",flexShrink:0}}>
           <div style={{fontSize:9,color:T.text3,marginBottom:3}}>다음달 P50 예측</div>
           <div style={{fontSize:17,fontWeight:800,color:isUp?T.green:T.red,fontFamily:"'IBM Plex Mono',monospace",lineHeight:1}}>₩{nextFcstRow.p50.toLocaleString()}M</div>
-          <div style={{fontSize:10,color:isUp?T.green:T.red,fontWeight:600,marginTop:3}}>{isUp?"▲":"▼"} {Math.abs(mom)}% MoM</div>
+          <div style={{fontSize:10,color:isUp?T.green:T.red,fontWeight:600,marginTop:3}}>{isUp?"▲":"▼"} {Math.abs(parseFloat(mom as string))}% MoM</div>
         </div>}
       </div>
       <ResponsiveContainer width="100%" height={190}>
@@ -92,7 +92,7 @@ function RevenueForecastChart() {
         </ComposedChart>
       </ResponsiveContainer>
       <div style={{display:"flex",gap:18,marginTop:10,paddingTop:10,borderTop:`1px solid ${T.border}`,flexWrap:"wrap"}}>
-        {[["실적",T.orange,"solid",2.5],["P50 예측",T.blue,"dashed",2],["P10~P90 밴드","#93C5FD","dashed",1]].map(([lbl,col,dash,w])=>(
+        {([["실적",T.orange,"solid",2.5],["P50 예측",T.blue,"dashed",2],["P10~P90 밴드","#93C5FD","dashed",1]] as [string,string,string,number][]).map(([lbl,col,dash,w])=>(
           <div key={lbl} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.text2}}>
             <svg width={18} height={10}><line x1={0} y1={5} x2={18} y2={5} stroke={col} strokeWidth={w} strokeDasharray={dash==="dashed"?"5 3":"0"}/></svg>
             {lbl}

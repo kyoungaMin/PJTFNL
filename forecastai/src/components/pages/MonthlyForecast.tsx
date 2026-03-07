@@ -7,7 +7,7 @@ import { Badge, PageHeader, Btn, FilterBar, Select, Table } from '@/components/u
 export default function PageMonthlyForecast() {
   const [showFX, setShowFX]   = useState(true);
   const [showSOX, setShowSOX] = useState(true);
-  const TT = ({active,payload,label}) => {
+  const TT = ({active,payload,label}: any) => {
     if(!active||!payload?.length) return null;
     return (
       <div style={{...card,padding:"10px 14px",boxShadow:"0 4px 14px rgba(15,23,42,0.1)"}}>
@@ -83,7 +83,7 @@ export default function PageMonthlyForecast() {
                 (() => {
                   const diff = d.p50 - MONTHLY_FORECAST_DATA[i-1].p50;
                   const pct = ((diff/MONTHLY_FORECAST_DATA[i-1].p50)*100).toFixed(1);
-                  return <span style={{color:diff>0?T.green:T.red,fontWeight:600}}>{diff>0?"↑":"↓"} {Math.abs(pct)}%</span>;
+                  return <span style={{color:diff>0?T.green:T.red,fontWeight:600}}>{diff>0?"↑":"↓"} {Math.abs(parseFloat(pct))}%</span>;
                 })()
             ]}))}
           />

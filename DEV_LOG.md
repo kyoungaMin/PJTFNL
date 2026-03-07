@@ -117,9 +117,25 @@ DEV_LOG/
 
 ## 모델 실험 종합 추적표
 
-| 실험 ID | 날짜 | 작성자 | 대상 | 모델/방법 | 핵심 파라미터 | 주요 지표 (MAPE/RMSE 등) | 비고 |
-|---------|------|--------|------|----------|--------------|--------------------------|------|
-| — | — | — | — | — | — | — | — |
+| 실험 ID | 날짜 | 작성자 | 대상 | 모델/방법 | 핵심 파라미터 | 주요 지표 | 비고 |
+|---------|------|--------|------|----------|--------------|-----------|------|
+| v1_baseline | 2026-03-07 | kyoungaMin | 주간 (target_1w) | LightGBM 5-Fold CV 앙상블 | max_depth=6, lr=0.05, reg_alpha=0.1, reg_lambda=1.0 | R²=0.2642, MAE=50.6, Gap=0.20 | 기본 설정 |
+| v2_log_transform | 2026-03-07 | kyoungaMin | 주간 | LightGBM + log1p 변환 | 동일 + log1p/expm1 | R²=-0.0005, MAE=39.2, Gap=0.03 | R² 악화, 부적합 |
+| v3_strong_reg | 2026-03-07 | kyoungaMin | 주간 | LightGBM 정규화 강화 | max_depth=4, num_leaves=15, reg_alpha=1.0, reg_lambda=5.0, min_child=50, lr=0.03 | R²=0.2667, MAE=49.7, Gap=0.09 | **★ 주간 BEST** |
+| v4_log_reg | 2026-03-07 | kyoungaMin | 주간 | LightGBM Log+정규화 | v2+v3 결합 | R²=-0.0016, MAE=39.2, Gap=0.02 | R² 악화 |
+| v5_full | 2026-03-07 | kyoungaMin | 주간 | LightGBM 종합 | v4+파생피처+P99캡핑 | R²=0.0001, MAE=39.2, Gap=0.04 | R² 악화 |
+| monthly_v1_baseline | 2026-03-07 | kyoungaMin | 월간 (target_1m) | LightGBM 5-Fold CV 앙상블 | max_depth=6, lr=0.05, min_child=15 | R²=0.6403, MAE=59.6, Gap=0.11 | **★ 월간 BEST** |
+| monthly_v2_log | 2026-03-07 | kyoungaMin | 월간 | LightGBM + log1p 변환 | 동일 + log1p/expm1 | R²=0.2940, MAE=62.1, Gap=0.01 | R² 대폭 하락 |
+| monthly_v3_reg | 2026-03-07 | kyoungaMin | 월간 | LightGBM 정규화 강화 | max_depth=4, num_leaves=15, reg_alpha=1.0, reg_lambda=5.0 | R²=0.5984, MAE=60.1, Gap=0.02 | 과적합↓ but R²↓ |
+| monthly_v4_log_reg | 2026-03-07 | kyoungaMin | 월간 | LightGBM Log+정규화 | v2+v3 결합 | R²=0.3179, MAE=60.5, Gap=-0.03 | R² 하락 |
+| monthly_v5_full | 2026-03-07 | kyoungaMin | 월간 | LightGBM 종합 | v4+파생피처+P99캡핑 | R²=0.2450, MAE=62.5, Gap=-0.02 | R² 최저 |
+| mc_lgbm_base | 2026-03-07 | kyoungaMin | 주간+월간 | LightGBM Baseline | max_depth=6, lr=0.05, reg_alpha=0.1 | 주간 R²=0.26/MAE=52.6/±5=6.7%, 월간 R²=0.67/MAE=60.0/±5=5.8% | 멀티모델 비교 |
+| mc_lgbm_reg | 2026-03-07 | kyoungaMin | 주간+월간 | LightGBM 정규화 강화 | max_depth=4, num_leaves=15, reg_lambda=5.0 | 주간 R²=0.27/MAE=50.8/±5=6.5%, 월간 R²=0.61/MAE=60.8/±5=5.7% | 주간 R² 최고 |
+| mc_lgbm_deep | 2026-03-07 | kyoungaMin | 주간+월간 | LightGBM Deep | max_depth=8, num_leaves=127, min_child=5 | 주간 R²=0.26/MAE=53.4/±5=5.4%, 월간 R²=0.67/MAE=64.0/±5=3.9% | 과적합 경향 |
+| mc_lgbm_cons | 2026-03-07 | kyoungaMin | 주간+월간 | LightGBM Conservative | max_depth=3, num_leaves=7, lr=0.01 | 주간 R²=0.26/MAE=51.1/±5=6.3%, 월간 R²=0.52/MAE=65.1/±5=4.6% | 언더피팅 |
+| mc_rf | 2026-03-07 | kyoungaMin | 주간+월간 | Random Forest | n_estimators=300, max_depth=8, min_samples_leaf=10 | 주간 R²=0.27/MAE=50.2/±5=15.4%, 월간 R²=0.68/MAE=55.3/±5=35.7% | ±5 양호 |
+| mc_svr | 2026-03-07 | kyoungaMin | 주간+월간 | Linear SVR (scaled) | C=1.0, epsilon=0.1, StandardScaler | 주간 R²=0.02/MAE=39.3/±5=62.6%, 월간 R²=0.68/MAE=49.2/±5=47.8% | **±5 최고** |
+| mc_ridge | 2026-03-07 | kyoungaMin | 주간+월간 | Ridge Regression (scaled) | alpha=1.0, StandardScaler | 주간 R²=0.26/MAE=42.3/±5=60.2%, 월간 R²=0.69/MAE=54.3/±5=27.6% | **월간 R² 최고** |
 
 ---
 
@@ -160,3 +176,6 @@ DEV_LOG/
 | 2026-02-28 | kyoungaMin | ECOS 한국은행 API 연동 (10종 실데이터 1,810건), ISS-001 해결 |
 | 2026-03-01 | kyoungaMin | Phase 3 리스크 실데이터 검증: 등급경계 갭 버그, 과잉 리스크 폴백, 납기 스케일링, 심각도 로직 수정 |
 | 2026-03-01 | kyoungaMin | Phase 4 생산·발주 최적화: S7(생산계획)+S8(발주추천) 신규 모듈, DDL 2테이블, S6 suggested_qty 보강 |
+| 2026-03-07 | kyoungaMin | LightGBM 주간 5-Fold CV 평가 + 5개 실험 비교 프레임워크 구축, 주간 최적 V3(정규화 강화, R²=0.27) |
+| 2026-03-07 | kyoungaMin | LightGBM 월간 5-Fold CV 평가 + 5개 실험 비교, 월간 최적 V1(베이스라인, R²=0.64) |
+| 2026-03-07 | kyoungaMin | 멀티 모델 비교 (LightGBM 4종+RF+SVR+Ridge), ±5 허용 오차 분석, 경영진 요약 대시보드 생성 |
