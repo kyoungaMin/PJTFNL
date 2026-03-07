@@ -179,3 +179,5 @@ DEV_LOG/
 | 2026-03-07 | kyoungaMin | LightGBM 주간 5-Fold CV 평가 + 5개 실험 비교 프레임워크 구축, 주간 최적 V3(정규화 강화, R²=0.27) |
 | 2026-03-07 | kyoungaMin | LightGBM 월간 5-Fold CV 평가 + 5개 실험 비교, 월간 최적 V1(베이스라인, R²=0.64) |
 | 2026-03-07 | kyoungaMin | 멀티 모델 비교 (LightGBM 4종+RF+SVR+Ridge), ±5 허용 오차 분석, 경영진 요약 대시보드 생성 |
+| 2026-03-07 | kyoungaMin | 프론트엔드 모델 평가 대시보드 UI (4탭, Recharts), API route, 기존 타입 에러 수정 |
+| 2026-03-07 | kyoungaMin | 브랜치 통합: main→dev/kyoungaMin merge + 모델 평가 작업물 커밋·push (41d945f, 37파일) |
