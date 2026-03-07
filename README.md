@@ -78,10 +78,6 @@
 
 반도체 산업은 단순 수주 흐름만으로 예측할 수 없습니다.
 
-| 카테고리 | 지표 | 소스 | 연동 주기 | 활용 목적 |
-|----------|------|------|-----------|----------|
-| **환율** | USD/KRW, JPY/KRW, EUR/KRW, CNY/KRW | 한국은행, 외환API | **일간** (영업일) | 수출입 가격 변동 |
-| **반도체 시장** | SOX 지수 | Yahoo Finance / 나스닥 | **일간** (거래일) | 산업 사이클 판단 |
 | | DRAM 현물가, NAND 현물가 | DRAMeXchange / TrendForce | **주간** (매주 목) | 메모리 시장 동향 |
 | | 웨이퍼 ASP | SEMI | **월간** | 소재 원가 추이 |
 | **거시경제** | 미국 기준금리 | FRED | **비정기** (FOMC, 연 8회) | 글로벌 수요 환경 |
@@ -278,7 +274,7 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 
 ---
 
-## 8. DB 구조 (29개 테이블)
+## 8. DB 구조 (33개 테이블)
 
 | 구분 | 테이블 수 | 주요 테이블 | 행 수 |
 |------|----------|------------|-------|
@@ -288,6 +284,8 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | 분석 | 6 | feature_store, forecast_result, risk_score, action_queue 등 | 파이프라인 생성 |
 | ML 피처 | 2 | feature_store_weekly, feature_store_monthly | ~132,000 |
 | 최적화 | 2 | production_plan, purchase_recommendation | 파이프라인 생성 |
+| 모델 평가 | 3 | model_evaluation, feature_importance, tuning_result | 파이프라인 생성 |
+| 평가 리포트 | 1 | evaluation_report | 파이프라인 생성 |
 | 집계 | 5 | weekly/monthly_product_summary, weekly/monthly_customer_summary, calendar_week | ~347,000 |
 | 인증 | 2 | user_profile, login_history | — |
 
@@ -349,12 +347,21 @@ PJTFNL/
 │   ├── 12_load_ecos.py               ← ECOS 한국은행 실데이터 적재
 │   ├── 13_feature_store_weekly_ddl.sql  ← 주간 ML 피처 테이블
 │   ├── 14_feature_store_monthly_ddl.sql ← 월간 ML 피처 테이블
+│   ├── 15_model_evaluation_ddl.sql    ← 모델 평가 3테이블
 │   ├── 16_optimization_ddl.sql        ← 생산계획 + 발주추천 테이블
+│   ├── 17_evaluation_report_ddl.sql   ← 평가 리포트 테이블
 │   └── SCHEMA_REFERENCE.md            ← DB 스키마 전체 레퍼런스
 │
 ├── forecastai/                        ← Next.js 프론트엔드 (Phase 5)
 │   ├── src/app/                       ← 라우팅 + 레이아웃
-│   ├── src/components/pages/          ← 11개 페이지 컴포넌트
+│   │   └── api/                       ← API 라우트 (7개)
+│   │       ├── dashboard/             ← 대시보드 KPI·매출·재고
+│   │       ├── production-plan/       ← 생산 권고
+│   │       ├── purchase-recommendation/ ← 구매 권고
+│   │       ├── model-evaluation/      ← 모델 평가 (종합·기간별·리포트)
+│   │       ├── model-scenario/        ← 모델 시나리오
+│   │       └── simulation-skus/       ← 시뮬레이션 SKU
+│   ├── src/components/pages/          ← 13개 페이지 컴포넌트
 │   ├── src/components/ui/             ← 공통 UI (Badge, Table 등)
 │   └── src/lib/data.ts                ← 테마, 목데이터, 유틸
 │
@@ -387,7 +394,8 @@ pip install supabase python-dotenv requests lightgbm
 #    01_ddl.sql → 03_external_ddl.sql → 05_auth_ddl.sql
 #    → 06_analytics_ddl.sql → 08_aggregation_ddl.sql → 09_exchange_rate_ddl.sql
 #    → 13_feature_store_weekly_ddl.sql → 14_feature_store_monthly_ddl.sql
-#    → 16_optimization_ddl.sql
+#    → 15_model_evaluation_ddl.sql → 16_optimization_ddl.sql
+#    → 17_evaluation_report_ddl.sql
 
 # 3. 데이터 적재
 python DB/02_load_data.py                # ERP CSV 데이터
@@ -420,13 +428,13 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 
 | 예측 단위 | 최적 모델 | R² | MAE | RMSE | 과적합 Gap | 판정 |
 |-----------|----------|-----|-----|------|-----------|------|
-| **월간** (target_1m) | V1 베이스라인 | **0.6403** | 59.6 | 220.9 | 0.11 | ✅ 실무 활용 가능 |
-| **주간** (target_1w) | V3 정규화 강화 | **0.2667** | 49.7 | 166.4 | 0.09 | ⚠️ 보조 지표용 |
+| **월간** (target_1m) | Ridge Regression | **0.6908** | 54.3 | — | — | ✅ 실무 활용 가능 |
+| **주간** (target_1w) | LightGBM 정규화 강화 | **0.2749** | 50.8 | 166.4 | 0.09 | ⚠️ 보조 지표용 |
 
 > **R²**: 모델이 실제 수주 변동의 몇 %를 설명하는지 (0~1, 높을수록 좋음)
 > **MAE**: 예측값과 실제값의 평균 오차 (개 단위, 낮을수록 좋음)
 
-### 11.3 실험 비교 (10건)
+### 11.3 LightGBM 실험 비교 (10건)
 
 총 5가지 접근 방식을 주간·월간 각각 적용하여 비교 평가하였습니다.
 
@@ -443,7 +451,31 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 - **월간이 주간보다 2.4배 정확** — 월 집계 시 노이즈 감소 효과
 - **정규화 강화는 주간에만 효과** — 과적합 55% 감소 (Gap 0.20→0.09)
 
-### 11.4 예측 핵심 영향 요인 (Feature Importance TOP 10)
+### 11.4 멀티 모델 비교 (7개 모델 × 주간/월간)
+
+LightGBM 외 Random Forest, Linear SVR, Ridge Regression을 포함한 7개 모델 비교 평가를 수행하였습니다.
+
+| 모델 | 주간 R² | 주간 MAE | 주간 ±5 | 월간 R² | 월간 MAE | 월간 ±5 | 비고 |
+|------|---------|---------|---------|---------|---------|---------|------|
+| LightGBM 베이스라인 | 0.2635 | 52.6 | 6.7% | 0.6717 | 60.0 | 5.8% | |
+| LightGBM 정규화 강화 | **0.2749** | 50.8 | 6.5% | 0.6052 | 60.8 | 5.7% | **★ 주간 R² 1위** |
+| LightGBM 깊은 트리 | 0.2622 | 53.4 | 5.4% | 0.6651 | 64.0 | 3.9% | 과적합 심화 |
+| LightGBM 보수적 | 0.2551 | 51.1 | 6.3% | 0.5237 | 65.1 | 4.6% | R² 하락 |
+| Random Forest | 0.2700 | 50.2 | 15.4% | 0.6777 | 55.3 | 35.7% | ±5 높음 |
+| Linear SVR | 0.0249 | 39.3 | **62.6%** | 0.6791 | **49.2** | **47.8%** | R² 낮음/MAE 최저 |
+| Ridge Regression | 0.2623 | 42.3 | 60.2% | **0.6908** | 54.3 | 27.6% | **★ 월간 R² 1위** |
+
+> **±5**: 예측값과 실제값의 차이가 ±5개 이내인 비율 (정밀 예측 지표)
+
+**핵심 발견:**
+- **Ridge Regression이 월간 R² 1위 (0.6908)** — LightGBM(0.6717)보다 +2.8%p 높음
+- **Linear SVR이 월간 MAE 최저 (49.2)** — LightGBM(60.0) 대비 18% 개선
+- **±5 허용 오차와 R²는 다른 이야기를 한다:**
+  - Linear SVR: 주간 ±5 성공률 62.6%이지만 R²=0.02 → 제로 수주 예측에 강하나 대규모 수주 변동 설명 못함
+  - LightGBM: R² 높으나 ±5 성공률 5~7% → 대규모 변동 설명은 좋으나 정밀 예측은 약함
+- **R²와 ±5는 상호보완적 지표** — R²=트렌드 예측, ±5=개별 정밀 예측
+
+### 11.5 예측 핵심 영향 요인 (Feature Importance TOP 10)
 
 | 순위 | 요인 | 카테고리 |
 |------|------|----------|
@@ -460,20 +492,23 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 
 > 내부 수주/매출 데이터뿐 아니라 **외부 경제지표**(구리, 환율, DRAM, SOX)도 예측에 유의미하게 기여
 
-### 11.5 평가 리포트 & 실험 결과
+### 11.6 평가 리포트 & 실험 결과
 
 ```
 DB/07_pipeline/
 ├── lgbm_cv_evaluation.py               ← 주간 베이스라인 평가 스크립트
 ├── lgbm_experiments.py                  ← 주간 5개 실험 비교 프레임워크
 ├── lgbm_experiments_monthly.py          ← 월간 5개 실험 비교 프레임워크
+├── model_comparison.py                  ← 멀티 모델 비교 프레임워크 (7개 모델)
 ├── lgbm_evaluation_report.html          ← 주간 베이스라인 상세 리포트 (6탭)
 ├── lgbm_comparison_report.html          ← 주간 실험 비교 대시보드 (4탭)
 ├── lgbm_monthly_comparison_report.html  ← 월간 실험 비교 대시보드 (5탭)
+├── model_comparison_report.html         ← 멀티 모델 비교 대시보드 (5탭)
 ├── executive_summary.html               ← 경영진 요약 보고서 (7개 섹션)
 └── experiments/                         ← 실험 결과 JSON (영구 보관)
     ├── v1_baseline.json ~ v5_full.json              ← 주간 5건
-    └── monthly_v1_baseline.json ~ monthly_v5_full.json  ← 월간 5건
+    ├── monthly_v1_baseline.json ~ monthly_v5_full.json  ← 월간 5건
+    └── model_comparison.json                        ← 멀티 모델 비교 결과
 ```
 
 ---
@@ -579,7 +614,7 @@ DB/07_pipeline/
 | **다솜** | 대시보드, 로그인, 관리 | `Dashboard.tsx`, `Login.tsx`, `Admin.tsx` |
 | **지은** | 수요예측, 외부지표 | `WeeklyForecast.tsx`, `MonthlyForecast.tsx`, `ExternalIndicators.tsx` |
 | **성민** | 재고관리 | `Inventory.tsx`, `RiskManagement.tsx`, `ActionQueue.tsx` |
-| **경아** | 최적화 | `Simulation.tsx`, `Purchase.tsx` |
+| **경아** | 최적화, 모델 평가 | `Simulation.tsx`, `Purchase.tsx`, `ModelEvaluation.tsx`, `ModelScenario.tsx` |
 
 ### 프론트엔드 구조
 
@@ -602,7 +637,9 @@ forecastai/
 │   │   │   ├── RiskManagement.tsx  ← [성민] 리스크 관리
 │   │   │   ├── ActionQueue.tsx     ← [성민] 조치 큐
 │   │   │   ├── Simulation.tsx      ← [경아] 시나리오 시뮬레이션
-│   │   │   └── Purchase.tsx        ← [경아] 발주 최적화
+│   │   │   ├── Purchase.tsx        ← [경아] 발주 최적화
+│   │   │   ├── ModelEvaluation.tsx ← [경아] 모델 평가 대시보드
+│   │   │   └── ModelScenario.tsx   ← [경아] 모델 시나리오
 │   │   └── ui/index.tsx            ← 공통 UI 컴포넌트
 │   └── lib/data.ts                 ← 테마, 목데이터, 유틸
 ├── package.json
