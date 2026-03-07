@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demand-Link AI: 통합 기획 및 개발 마스터 덱</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        /* CORE SETUP */
+        * { box-sizing: border-box; }
+        body { background-color: #020617; margin: 0; padding: 20px 0; display: flex; flex-direction: column; align-items: center; gap: 40px; }
+
+        .slide-container {
+            width: 1280px; height: 720px;
+            background-color: #ffffff;
+            overflow: hidden; padding: 50px 70px;
+            position: relative; display: none; flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            font-family: 'Noto Sans KR', sans-serif;
+            color: #1e293b;
+        }
+        .slide-container.active { display: flex; }
+
+        /* THEME DECORATION */
+        .slide-container::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 6px;
+            background: linear-gradient(90deg, #38bdf8 0%, #1d4ed8 100%);
+        }
+        .slide-footer {
+            position: absolute; bottom: 30px; left: 70px; right: 70px;
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 12px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 15px;
+        }
+
+        /* TYPOGRAPHY */
+        h1, h2, h3 { margin: 0; }
+        h1 { font-family: 'Poppins', sans-serif; font-size: 58px; font-weight: 700; color: #0f172a; line-height: 1.1; }
+        .slide-title { font-size: 32px; font-weight: 700; margin-bottom: 25px; color: #0f172a; display: flex; align-items: center; gap: 15px; }
+        .slide-title span { color: #38bdf8; font-family: 'Poppins'; font-size: 22px; }
+        p, li { font-size: 17px; line-height: 1.6; color: #475569; }
+        .subtitle { font-size: 22px; color: #64748b; margin-top: 15px; font-weight: 300; }
+
+        /* COMPONENTS */
+        .content-area { flex-grow: 1; display: flex; flex-direction: column; width: 100%; position: relative; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 35px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        .card { background: #f8fafc; padding: 22px; border-radius: 12px; border: 1px solid #e2e8f0; height: 100%; }
+        .card-title { font-weight: 700; font-size: 19px; margin-bottom: 10px; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+        
+        /* TABLES */
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; border-radius: 8px; overflow: hidden; font-size: 13px; }
+        th { background: #1e293b; color: white; text-align: left; padding: 10px 12px; }
+        td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+
+        /* KPI BADGES */
+        .kpi-box { border-left: 4px solid #38bdf8; padding-left: 12px; background: white; padding: 10px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .kpi-val { font-size: 24px; font-weight: 700; color: #0f172a; }
+        .kpi-label { font-size: 12px; color: #64748b; }
+
+        /* JOURNEY MAP */
+        .journey-step { flex: 1; border-top: 4px solid #e2e8f0; padding-top: 15px; position: relative; }
+        .journey-step.active { border-top-color: #38bdf8; }
+        .step-num { position: absolute; top: -14px; left: 0; background: #38bdf8; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+
+        /* CODE BLOCK */
+        pre { background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; font-size: 13px; line-height: 1.4; overflow: auto; }
+        
+        /* NAVIGATION */
+        .nav-btn { background: #1e293b; color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; transition: 0.2s; pointer-events: auto; }
+        .nav-btn:hover { background: #38bdf8; }
+    </style>
+</head>
+<body>
+
+    <div id="presentation">
+        <!-- Slide 1: Cover -->
+        <div class="slide-container active">
+            <div class="content-area justify-center text-center">
+                <div class="inline-block px-5 py-2 bg-slate-900 text-sky-400 rounded-full font-bold text-sm tracking-widest mb-8">INTEGRATED SOLUTION MASTER DECK</div>
+                <h1 class="text-7xl font-bold mb-4">Demand-Link AI</h1>
+                <p class="subtitle text-3xl">ERP 위의 AI 의사결정 레이어: 제조 수요 예측 및 재고 최적화</p>
+                <div class="grid grid-cols-3 gap-6 w-3/4 mx-auto mt-16 text-left">
+                    <div class="kpi-box"><div class="kpi-label">예측 정확도(MAPE)</div><div class="kpi-val">10~15%</div></div>
+                    <div class="kpi-box"><div class="kpi-label">업무 시간 절감</div><div class="kpi-val">50~80%</div></div>
+                    <div class="kpi-box"><div class="kpi-label">조치 실행률</div><div class="kpi-val">80% ↑</div></div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | TOTAL INTEGRATION</span><span class="page-num">01 / 16</span></div>
+        </div>
+
+        <!-- Slide 2: Problem - 뒤처지는 대응의 반복 -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>01.</span> 문제 정의: "뒤처지는 대응의 반복"</h2>
+            <div class="content-area">
+                <div class="grid-2">
+                    <div class="card border-l-4 border-red-500 flex flex-col justify-center p-8">
+                        <p class="text-2xl font-bold leading-relaxed">
+                            "수주 데이터는 넘쳐나지만 정작 <span class="text-red-600">'다음 주에 얼마나 더 찍어내야 할지'</span>에 대한 답은 여전히 안갯속입니다."
+                        </p>
+                        <p class="mt-6 text-slate-500 italic">
+                            반도체 시장의 급격한 변동 속에서 수주 급증 시 납기 지연, 급감 시 재고 과잉이 반복되는 사후 대응의 굴레에 갇혀 있습니다.
+                        </p>
+                    </div>
+                    <div class="flex flex-col gap-4">
+                        <div class="card p-6 bg-red-50">
+                            <h4 class="font-bold text-red-700 mb-2"><i class="fas fa-triangle-exclamation mr-2"></i>생산 현장의 혼란</h4>
+                            <p class="text-sm">잦은 계획 변경으로 인한 가동률 저하 및 물류 병목 현상 발생</p>
+                        </div>
+                        <div class="card p-6 bg-red-50">
+                            <h4 class="font-bold text-red-700 mb-2"><i class="fas fa-user-tie mr-2"></i>경영진의 압박</h4>
+                            <p class="text-sm">재고 자산 증가 및 고객사 신뢰도 하락에 따른 의사결정 책임 가중</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | PROBLEM</span><span class="page-num">02 / 16</span></div>
+        </div>
+
+        <!-- Slide 3: Limits - 과거 기록에 갇힌 엑셀 -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>02.</span> 현재 방식의 한계: "과거 기록에 갇힌 엑셀"</h2>
+            <div class="content-area">
+                <div class="grid-2 items-center">
+                    <div class="space-y-6">
+                        <div class="card">
+                            <h3 class="font-bold mb-2 text-indigo-600">ERP: 미래를 보여주지 못하는 기록장</h3>
+                            <p class="text-sm text-slate-600">지금 사용하시는 ERP는 과거의 기록일 뿐입니다. 수천 개의 품목을 매주 엑셀로 취합하는 과정에서 데이터 정합성 이슈와 시간 지연이 발생합니다.</p>
+                        </div>
+                        <div class="card">
+                            <h3 class="font-bold mb-2 text-indigo-600">Excel: 외부 변수를 담지 못하는 계산기</h3>
+                            <p class="text-sm text-slate-600">담당자의 '경험과 감'만으로는 환율, 반도체 지수 등 핵심 외부 변수를 생산 계획에 넣을 엄두도 내지 못하는 것이 현실입니다.</p>
+                        </div>
+                    </div>
+                    <div class="text-center p-10 bg-slate-900 rounded-2xl">
+                        <i class="fas fa-file-excel text-6xl text-emerald-500 opacity-30 mb-4"></i>
+                        <p class="text-white text-xl font-bold leading-relaxed">
+                            수작업 분석의 한계<br>
+                            <span class="text-sky-400">의사결정 리드타임 3일 이상</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | CURRENT LIMITS</span><span class="page-num">03 / 16</span></div>
+        </div>
+
+        <!-- Slide 4: Solution - ERP 위의 AI 의사결정 레이어 -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>03.</span> 솔루션: "ERP 위의 AI 의사결정 레이어"</h2>
+            <div class="content-area">
+                <div class="card bg-sky-50 border-sky-200 p-10 mb-8">
+                    <p class="text-3xl font-bold text-sky-900 leading-tight">
+                        "ERP를 바꾸는 것이 아니라, 그 위에 얹는 <span class="underline decoration-sky-500">지능형 의사결정 레이어</span>입니다."
+                    </p>
+                    <p class="mt-6 text-lg text-sky-800">
+                        기존 수주 데이터와 30여 개의 글로벌 산업 지표를 결합하여,<br>
+                        향후 24주간의 수요를 <b>확률 기반으로 예측</b>하고 <b>즉각적인 조치 사항</b>을 제안합니다.
+                    </p>
+                </div>
+                <div class="grid grid-cols-3 gap-6">
+                    <div class="card text-center"><i class="fas fa-link text-3xl text-sky-500 mb-4"></i><div class="font-bold">Seamless Sync</div><p class="text-xs text-slate-500 mt-2">기존 ERP 데이터 연동</p></div>
+                    <div class="card text-center"><i class="fas fa-chart-area text-3xl text-sky-500 mb-4"></i><div class="font-bold">24-Week Forecast</div><p class="text-xs text-slate-500 mt-2">P10/50/90 확률 밴드</p></div>
+                    <div class="card text-center"><i class="fas fa-bolt-lightning text-3xl text-sky-500 mb-4"></i><div class="font-bold">Action Queue</div><p class="text-xs text-slate-500 mt-2">AI 기반 조치 추천</p></div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | SOLUTION</span><span class="page-num">04 / 16</span></div>
+        </div>
+
+        <!-- Slide 5: 나기획 팀장 페르소나 중심 Journey Map -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>04.</span> 나기획 팀장 중심의 업무 여정 변화</h2>
+            <div class="content-area">
+                <div class="flex gap-4 h-full">
+                    <div class="flex-1 flex flex-col gap-4">
+                        <div class="journey-step active"><div class="step-num">1</div><div class="font-bold text-sky-700 mb-2">출근 직후: 리스크 자동 식별</div>
+                        <p class="text-xs leading-relaxed text-slate-600">"오늘 아침 엑셀 대신 AI 대시보드를 켭니다. 밤새 업데이트된 ERP 데이터를 바탕으로 긴급 대응이 필요한 1,512건의 위험 품목을 1초 만에 확인합니다."</p></div>
+                        <div class="journey-step active"><div class="step-num">2</div><div class="font-bold text-sky-700 mb-2">오전: 데이터 기반 원인 분석</div>
+                        <p class="text-xs leading-relaxed text-slate-600">"확률 밴드를 통해 환율 변동이 수요에 미친 영향을 파악합니다. '감'이 아닌 외부 지표 가중치를 확인하며 예측 범위를 신뢰하게 됩니다."</p></div>
+                    </div>
+                    <div class="flex-1 flex flex-col gap-4">
+                        <div class="journey-step active"><div class="step-num">3</div><div class="font-bold text-sky-700 mb-2">오후: 의사결정 확정 및 전송</div>
+                        <p class="text-xs leading-relaxed text-slate-600">"AI가 제안한 '10% 증산' 안을 승인하거나, 현장 상황을 반영해 수기 보정합니다. 확정된 안은 즉시 ERP로 전송되어 생산 현장에 반영됩니다."</p></div>
+                        <div class="journey-step active"><div class="step-num">4</div><div class="font-bold text-sky-700 mb-2">퇴근 전: 성과 검증 및 피드백</div>
+                        <p class="text-xs leading-relaxed text-slate-600">"오늘의 예측이 실제 수주와 얼마나 일치했는지 MAPE 리포트로 확인합니다. 점점 높아지는 정확도와 줄어든 업무 시간에 만족하며 하루를 마무리합니다."</p></div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | JOURNEY MAP</span><span class="page-num">05 / 16</span></div>
+        </div>
+
+        <!-- Slide 6: User Scenario Flowchart -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>05.</span> 시스템 활용 시나리오 (Step-by-Step)</h2>
+            <div class="content-area justify-center px-20">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">1</div><div class="card flex-grow py-2 px-6 text-sm font-bold">생산기획 담당자 로그인 → 대시보드 리스크 확인</div></div>
+                    <div class="flex items-center gap-4 ml-6"><i class="fas fa-arrow-down text-slate-300"></i></div>
+                    <div class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">2</div><div class="card flex-grow py-2 px-6 text-sm">주별 또는 월별 예측 단위 선택</div></div>
+                    <div class="flex items-center gap-4 ml-6"><i class="fas fa-arrow-down text-slate-300"></i></div>
+                    <div class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">3</div><div class="card flex-grow py-2 px-6 text-sm">시스템이 향후 수요 예측 제시 (P10/P50/P90 밴드)</div></div>
+                    <div class="flex items-center gap-4 ml-6"><i class="fas fa-arrow-down text-slate-300"></i></div>
+                    <div class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">4</div><div class="card flex-grow py-2 px-6 text-sm font-bold bg-amber-50">변동성 큰 품목 자동 식별 (리스크 등급 C 이상)</div></div>
+                    <div class="flex items-center gap-4 ml-6"><i class="fas fa-arrow-down text-slate-300"></i></div>
+                    <div class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">5</div><div class="card flex-grow py-2 px-6 text-sm">권장 조치 확인 → 생산계획 수정</div></div>
+                    <div class="flex items-center gap-4 ml-6"><i class="fas fa-arrow-down text-slate-300"></i></div>
+                    <div class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">6</div><div class="card flex-grow py-2 px-6 text-sm">예측 vs 실적 비교 리포트로 모델 신뢰도 확인</div></div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | SCENARIO</span><span class="page-num">06 / 16</span></div>
+        </div>
+
+        <!-- Slide 7: Demo 1 - 통합 대시보드 -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>06.</span> MVP 시연 01: 통합 대시보드</h2>
+            <div class="content-area">
+                <div class="grid-2 gap-10">
+                    <div class="space-y-6">
+                        <p class="text-xl leading-relaxed">
+                            "출근 후 접속하자마자 리스크 등급이 <span class="text-sky-600 font-bold">C등급 이상인 위험 품목 1,512건</span>이 자동으로 식별되어 상단에 노출됩니다."
+                        </p>
+                        <div class="card p-6 bg-slate-50 border-2 border-dashed">
+                            <h4 class="font-bold text-slate-700 mb-4">구현 핵심 로직</h4>
+                            <ul class="text-xs space-y-2 text-slate-500">
+                                <li>- 주/월 예측 요약 데이터 Fetch 후 시계열 렌더링</li>
+                                <li>- 임계치 초과 수요 변동 품목 Alert 리스트 자동 생성</li>
+                                <li>- 외부 지표(환율·지수 등) 최신 현황 실시간 위젯 출력</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="card bg-slate-900 flex items-center justify-center relative">
+                        <div class="text-center">
+                            <div class="text-6xl font-bold text-sky-400 mb-2">1,512</div>
+                            <div class="text-white opacity-50 text-sm tracking-widest uppercase">Risk Items Detected</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | DEMO 01</span><span class="page-num">07 / 16</span></div>
+        </div>
+
+        <!-- Slide 8: Demo 2 - 확률 밴드 예측 -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>07.</span> MVP 시연 02: 확률 밴드 예측</h2>
+            <div class="content-area">
+                <div class="grid-2 gap-10 items-center">
+                    <div class="card bg-slate-50 p-6">
+                        <svg viewBox="0 0 400 200" class="w-full">
+                            <path d="M0 150 Q100 50 200 120 T400 80" stroke="#0ea5e9" stroke-width="3" fill="none" />
+                            <path d="M0 130 Q100 30 200 100 T400 60" stroke="#0ea5e9" stroke-width="1" stroke-dasharray="4" fill="none" opacity="0.4" />
+                            <path d="M0 170 Q100 70 200 140 T400 100" stroke="#0ea5e9" stroke-width="1" stroke-dasharray="4" fill="none" opacity="0.4" />
+                            <path d="M0 150 Q100 50 200 120 T400 80 L400 100 Q300 140 200 140 T0 170 Z" fill="#0ea5e9" fill-opacity="0.1" />
+                        </svg>
+                        <div class="flex justify-between text-[10px] text-slate-400 mt-4">
+                            <span>P10 (비관)</span><span>P50 (중앙)</span><span>P90 (낙관)</span>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                        <p class="text-xl leading-relaxed">
+                            "LightGBM 모델이 계산한 <span class="text-sky-600 font-bold">P10부터 P90까지의 확률 밴드</span>가 시각화됩니다. 환율 변동성까지 반영된 미래 수주 범위를 한눈에 확인합니다."
+                        </p>
+                        <ul class="text-sm space-y-3">
+                            <li class="flex items-center gap-3"><i class="fas fa-check text-sky-500"></i> 단순 수치가 아닌 '수주 범위' 확인</li>
+                            <li class="flex items-center gap-3"><i class="fas fa-check text-sky-500"></i> 외부 변수 가중치 실시간 재계산</li>
+                            <li class="flex items-center gap-3"><i class="fas fa-check text-sky-500"></i> 향후 24주 가시성 확보</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | DEMO 02</span><span class="page-num">08 / 16</span></div>
+        </div>
+
+        <!-- Slide 9: Demo 3 - 자동 조치 큐 (Action Queue) -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>08.</span> MVP 시연 03: 자동 조치 큐 (Action Queue)</h2>
+            <div class="content-area">
+                <div class="grid-2 gap-10">
+                    <div class="space-y-6">
+                        <p class="text-xl leading-relaxed">
+                            "결품 위험이 크니 <span class="text-indigo-600 font-bold">P90 기반으로 10% 증산</span>하거나 재고 과잉 시 발주를 보류하라는 구체적인 대응안을 제안합니다."
+                        </p>
+                        <div class="card p-6 bg-slate-900 text-white">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                                <span class="font-bold">시스템 권장 조치</span>
+                            </div>
+                            <div class="text-sm space-y-4 opacity-80">
+                                <p>품목: SEMICON-X102</p>
+                                <p>조치: <span class="text-sky-400 font-bold">10% 증산 (확정 권고)</span></p>
+                                <p>사유: 주간 수요 15% 급증 예측 및 환율 가중치 반영</p>
+                            </div>
+                            <div class="mt-6 flex gap-2">
+                                <button class="bg-sky-600 text-xs px-4 py-2 rounded">승인</button>
+                                <button class="bg-slate-700 text-xs px-4 py-2 rounded">수기 보정</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col justify-center">
+                        <div class="card p-8 border-l-4 border-sky-500">
+                            <h4 class="font-bold mb-4">Human-in-the-Loop</h4>
+                            <p class="text-sm text-slate-500 leading-relaxed">
+                                시스템은 제안하고 담당자는 확정합니다. <br>
+                                현장 상황에 맞춰 수기 보정만 하시면 됩니다. <br>
+                                <b>"전문가의 권위는 지키고 분석 업무는 자동화합니다."</b>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | DEMO 03</span><span class="page-num">09 / 16</span></div>
+        </div>
+
+        <!-- Slide 10: Technical Specification - 7-Stage Pipeline -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>09.</span> 7단계 데이터 분석 파이프라인 상세</h2>
+            <div class="content-area justify-center">
+                <div class="grid grid-cols-4 gap-4">
+                    <div class="card p-4 text-center border-t-4 border-slate-900">
+                        <div class="text-xs font-bold mb-2">Step 01-02</div>
+                        <div class="text-sm text-sky-600 font-bold mb-2">집계 및 재고</div>
+                        <p class="text-[10px] text-slate-500">ISO 주별 집계 및<br>일간 재고 스냅샷 생성</p>
+                    </div>
+                    <div class="card p-4 text-center border-t-4 border-slate-900">
+                        <div class="text-xs font-bold mb-2">Step 03-04</div>
+                        <div class="text-sm text-sky-600 font-bold mb-2">피처 및 예측</div>
+                        <p class="text-[10px] text-slate-500">46개 피처 스토어 구축 및<br>LightGBM 분위수 회귀</p>
+                    </div>
+                    <div class="card p-4 text-center border-t-4 border-slate-900">
+                        <div class="text-xs font-bold mb-2">Step 05-06</div>
+                        <div class="text-sm text-sky-600 font-bold mb-2">리스크 및 조치</div>
+                        <p class="text-[10px] text-slate-500">4대 유형 리스크 평가 및<br>Action Queue 생성</p>
+                    </div>
+                    <div class="card p-4 text-center border-t-4 border-slate-900">
+                        <div class="text-xs font-bold mb-2">Step 07</div>
+                        <div class="text-sm text-sky-600 font-bold mb-2">실행 및 성과</div>
+                        <p class="text-[10px] text-slate-500">ERP 전송 인터페이스 및<br>MAPE 추이 리포트</p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | PIPELINE DETAIL</span><span class="page-num">10 / 16</span></div>
+        </div>
+
+        <!-- Slide 11: Technical Stack & API Specification -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>10.</span> 기술 스택 및 API 명세</h2>
+            <div class="content-area">
+                <div class="grid-2 gap-10">
+                    <div>
+                        <h4 class="font-bold mb-4"><i class="fas fa-layer-group mr-2 text-sky-500"></i> Tech Stack</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="card p-4">
+                                <p class="text-[10px] text-slate-400">Frontend</p>
+                                <p class="text-xs font-bold">Next.js 14 / Tailwind</p>
+                            </div>
+                            <div class="card p-4">
+                                <p class="text-[10px] text-slate-400">Backend</p>
+                                <p class="text-xs font-bold">FastAPI / Pandas</p>
+                            </div>
+                            <div class="card p-4">
+                                <p class="text-[10px] text-slate-400">Database</p>
+                                <p class="text-xs font-bold">PostgreSQL</p>
+                            </div>
+                            <div class="card p-4">
+                                <p class="text-[10px] text-slate-400">Visualization</p>
+                                <p class="text-xs font-bold">Recharts</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="font-bold mb-4"><i class="fas fa-code mr-2 text-sky-500"></i> API Endpoints</h4>
+                        <table class="w-full text-[11px]">
+                            <thead><tr><th>Method</th><th>Endpoint</th></tr></thead>
+                            <tbody>
+                                <tr><td class="font-bold text-sky-600">GET</td><td>/api/v1/dashboard/summary</td></tr>
+                                <tr><td class="font-bold text-sky-600">GET</td><td>/api/v1/forecast/search</td></tr>
+                                <tr><td class="font-bold text-emerald-600">POST</td><td>/api/v1/simulation/recalculate</td></tr>
+                                <tr><td class="font-bold text-emerald-600">POST</td><td>/api/v1/decisions</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | TECH SPEC</span><span class="page-num">11 / 16</span></div>
+        </div>
+
+        <!-- Slide 12: Work Breakdown Structure (WBS) -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>11.</span> 3개월 PoC 가속화 로드맵 (WBS)</h2>
+            <div class="content-area">
+                <table>
+                    <thead>
+                        <tr><th style="width: 20%">Task</th><th style="width: 10%">Period</th><th>Description</th><th>Risk & Mitigation</th></tr>
+                    </thead>
+                    <tbody class="text-[11px]">
+                        <tr><td><b>ERP 연동 정의</b></td><td>3일</td><td>9개 CSV 항목 표준 매핑</td><td>양식 상이 → 표준 가이드 조기 배포</td></tr>
+                        <tr><td><b>집계 엔진 개발</b></td><td>4일</td><td>S0~S1 다차원 집계 엔진 구축</td><td>과거 결손 → 통계적 보간법 적용</td></tr>
+                        <tr><td><b>LightGBM 모델링</b></td><td>5일</td><td>P10/50/90 확률 예측 알고리즘</td><td>과적합 → Feature Selection 강화</td></tr>
+                        <tr><td><b>외부 API 연동</b></td><td>5일</td><td>FRED, EIA 등 30+ 지표 수집</td><td>서버 장애 → 데이터 이중 적재 로직</td></tr>
+                        <tr><td><b>조치 알고리즘 개발</b></td><td>8일</td><td>4대 리스크 스코어링 및 Action Queue</td><td>캐파 괴리 → 수기 보정 파라미터 반영</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | WBS</span><span class="page-num">12 / 16</span></div>
+        </div>
+
+        <!-- Slide 13: Risk Management Strategy -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>12.</span> 리스크 관리 및 대응 전략</h2>
+            <div class="content-area">
+                <div class="grid-3">
+                    <div class="card border-t-4 border-red-500">
+                        <div class="card-title text-sm">기능 리스크</div>
+                        <p class="text-[11px] text-slate-500">생산 캐파 미반영 우려</p>
+                        <div class="bg-red-50 p-2 text-[10px] mt-4">캐파 제약 파라미터($x1.2$ 등) 설정 및 사용자 수기 보정 UI 제공</div>
+                    </div>
+                    <div class="card border-t-4 border-amber-500">
+                        <div class="card-title text-sm">협업 리스크</div>
+                        <p class="text-[11px] text-slate-500">AI 모델 신뢰도 저하</p>
+                        <div class="bg-amber-50 p-2 text-[10px] mt-4">"예측 vs 실적" 백테스팅 리포트로 정량적 신뢰 증명 및 시간 절감 수치 제시</div>
+                    </div>
+                    <div class="card border-t-4 border-emerald-500">
+                        <div class="card-title text-sm">기술 리스크</div>
+                        <p class="text-[11px] text-slate-500">외부 데이터 수집 불안정</p>
+                        <div class="bg-emerald-50 p-2 text-[10px] mt-4">API 장애 시 이동평균(MA) Fallback 가동 및 3단계 무결성 검증 프로세스</div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | RISK STRATEGY</span><span class="page-num">13 / 16</span></div>
+        </div>
+
+        <!-- Slide 14: AS-IS vs TO-BE Innovation -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>13.</span> 도입 전후 프로세스 혁신 요약</h2>
+            <div class="content-area">
+                <div class="grid-2 gap-10">
+                    <div class="card bg-slate-100">
+                        <div class="card-title text-slate-500 text-sm">AS-IS: 데이터 취합 중심</div>
+                        <ul class="text-xs space-y-4 mt-6 text-red-600">
+                            <li>❌ 5시간 이상의 엑셀 수동 취합 (월요일 오전 소진)</li>
+                            <li>❌ 단순 과거 실적에만 기반한 보수적 계획</li>
+                            <li>❌ 거시 지표가 빠진 '감' 위주의 불안한 기안</li>
+                            <li>❌ 사후 대응에 따른 만성적 재고/결품 리스크</li>
+                        </ul>
+                    </div>
+                    <div class="card border-2 border-sky-400 bg-sky-50 shadow-xl">
+                        <div class="card-title text-sky-600 text-sm">TO-BE: 의사결정 중심</div>
+                        <ul class="text-xs space-y-4 mt-6 text-sky-800 font-bold">
+                            <li>✅ 실시간 동기화로 5분 만에 리스크 확인 완료</li>
+                            <li>✅ 30개 글로벌 지표가 반영된 과학적 예측</li>
+                            <li>✅ 시스템 추천과 전문가 보정이 결합된 확신 기안</li>
+                            <li>✅ 선제적 대응을 통한 재고 비용 20% 절감</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | INNOVATION</span><span class="page-num">14 / 16</span></div>
+        </div>
+
+        <!-- Slide 15: Expected Effects -->
+        <div class="slide-container">
+            <h2 class="slide-title"><span>14.</span> 기대 효과: "시간은 줄이고 정확도는 높이고"</h2>
+            <div class="content-area">
+                <div class="grid-3 text-center">
+                    <div class="card flex flex-col items-center justify-center p-8">
+                        <div class="text-sky-500 text-5xl mb-4"><i class="fas fa-clock"></i></div>
+                        <div class="text-3xl font-bold mb-2">80% 절감</div>
+                        <p class="text-xs text-slate-500">엑셀 분석 및 회의 준비 시간</p>
+                    </div>
+                    <div class="card flex flex-col items-center justify-center p-8">
+                        <div class="text-emerald-500 text-5xl mb-4"><i class="fas fa-box"></i></div>
+                        <div class="text-3xl font-bold mb-2">20% 최적화</div>
+                        <p class="text-xs text-slate-500">과잉 생산 방지 및 결품 차단</p>
+                    </div>
+                    <div class="card flex flex-col items-center justify-center p-8">
+                        <div class="text-indigo-500 text-5xl mb-4"><i class="fas fa-bullseye"></i></div>
+                        <div class="text-3xl font-bold mb-2">10~15%</div>
+                        <p class="text-xs text-slate-500">예측 정확도(MAPE) 확보</p>
+                    </div>
+                </div>
+                <div class="mt-10 text-center">
+                    <p class="text-xl font-bold text-slate-700 leading-relaxed">
+                        "이제 타 부서와 <span class="text-sky-600 underline decoration-sky-300 decoration-4">정교한 데이터를 근거로</span> 자신 있게 소통하십시오."
+                    </p>
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | EXPECTED EFFECTS</span><span class="page-num">15 / 16</span></div>
+        </div>
+
+        <!-- Slide 16: Closing -->
+        <div class="slide-container">
+            <div class="content-area justify-center text-center">
+                <h2 class="text-6xl font-bold mb-8">감에서 데이터로, <br><span class="text-sky-500">확신의 생산기획.</span></h2>
+                <div class="bg-slate-900 text-white px-10 py-5 inline-block rounded-xl shadow-2xl">
+                    <p class="text-2xl font-bold">Demand-Link AI</p>
+                    <p class="text-sm text-sky-400 mt-2">Decision Intelligence Layer for Manufacturing</p>
+                </div>
+                <div class="mt-20 text-slate-400 text-sm">
+                    Q&A | contact@demand-link.ai | demo.demand-link.ai
+                </div>
+            </div>
+            <div class="slide-footer"><span>Demand-Link AI | THANK YOU</span><span class="page-num">16 / 16</span></div>
+        </div>
+    </div>
+
+    <!-- Navigation Overlay -->
+    <div class="fixed bottom-10 left-10 right-10 flex justify-between pointer-events-none z-50">
+        <button onclick="changeSlide(-1)" class="nav-btn"><i class="fas fa-chevron-left mr-2"></i>PREV</button>
+        <div class="flex gap-2 pointer-events-auto">
+            <button onclick="changeSlide(1)" class="nav-btn bg-sky-600 hover:bg-sky-500">NEXT<i class="fas fa-chevron-right ml-2"></i></button>
+        </div>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide-container');
+        
+        function changeSlide(direction) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (currentSlide + direction + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') changeSlide(1);
+            if (e.key === 'ArrowLeft') changeSlide(-1);
+        });
+    </script>
+</body>
+</html>

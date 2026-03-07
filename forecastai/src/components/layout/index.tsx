@@ -5,7 +5,7 @@ import { Badge, Btn } from '@/components/ui'
 
 export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { page:string, setPage:(p:string)=>void, collapsed:boolean, onToggle:()=>void, currentUser?: import('@/lib/data').Member|null }) {
   const [openGroups, setOpenGroups] = useState({"재고 관리":true,"수요예측":true,"최적화":true,"외부 지표":true});
-  const groups = [...new Set(NAV_STRUCTURE.filter(n=>n.parent).map(n=>n.parent))];
+  const groups = Array.from(new Set(NAV_STRUCTURE.filter(n=>n.parent).map(n=>n.parent)));
   const grouped = {
     top:    NAV_STRUCTURE.filter(n=>!n.parent && n.id!=="admin"),
     groups: groups.map(g=>({ name:g, items:NAV_STRUCTURE.filter(n=>n.parent===g) })),

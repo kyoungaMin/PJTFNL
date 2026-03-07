@@ -101,6 +101,118 @@ export const PURCHASE_ITEMS = [
   {id:5,code:'MAT-0055',name:'납땜 와이어', supplier:'S공급사',qty:300,  unit:'kg',price:6800, urgency:'검토',deadline:'1/28'},
 ]
 
+/* ─── Purchase Recommendation (구매 권고) Mock ─── */
+export const PURCHASE_PLAN_DATA = [
+  { id:1, componentId:'00001-B010001', componentName:'실리콘 고무 컴파운드', category:'원자재',
+    parentProducts:'SL-301S, 5080W', grossRequirement:8500, currentInventory:1200, pendingPo:500,
+    netRequirement:6800, safetyStock:2000, reorderPoint:3500,
+    recommendedQty:7200, orderMethod:'eoq' as const,
+    supplier:'01016', supplierName:'(주)그로피아', leadDays:14, unitPrice:27836, orderAmount:200419200,
+    altSupplier:'02355', altSupplierName:'(주)대한화성',
+    latestOrderDate:'02/24', expectedReceiptDate:'03/10', needDate:'03/13',
+    urgency:'critical' as const, description:'BOM 소요량 대비 재고 부족 — 즉시 발주 필요', status:'pending' as const },
+  { id:2, componentId:'00001-B010005', componentName:'카본블랙 마스터배치', category:'원자재',
+    parentProducts:'INS-1271, KI-100', grossRequirement:5200, currentInventory:-300, pendingPo:0,
+    netRequirement:5500, safetyStock:1500, reorderPoint:2800,
+    recommendedQty:5800, orderMethod:'lot_for_lot' as const,
+    supplier:'02355', supplierName:'(주)대한화성', leadDays:18, unitPrice:15400, orderAmount:89320000,
+    altSupplier:'01016', altSupplierName:'(주)그로피아',
+    latestOrderDate:'02/23', expectedReceiptDate:'03/13', needDate:'03/12',
+    urgency:'critical' as const, description:'재고 마이너스 — 긴급 발주 필수', status:'pending' as const },
+  { id:3, componentId:'00001-B020003', componentName:'에폭시 수지 A타입', category:'부자재',
+    parentProducts:'5080W, ASMM-65', grossRequirement:4100, currentInventory:1800, pendingPo:200,
+    netRequirement:2100, safetyStock:1000, reorderPoint:1800,
+    recommendedQty:2500, orderMethod:'eoq' as const,
+    supplier:'01789', supplierName:'삼화화학(주)', leadDays:12, unitPrice:8500, orderAmount:21250000,
+    altSupplier:'02066', altSupplierName:'(주)한국화학',
+    latestOrderDate:'02/26', expectedReceiptDate:'03/10', needDate:'03/11',
+    urgency:'high' as const, description:'안전재고 접근 중 — 리드타임 고려 선제 발주', status:'pending' as const },
+  { id:4, componentId:'00001-B020010', componentName:'경화제 B-7', category:'부자재',
+    parentProducts:'SL-301S, INS-1271', grossRequirement:3600, currentInventory:900, pendingPo:400,
+    netRequirement:2300, safetyStock:800, reorderPoint:1500,
+    recommendedQty:2600, orderMethod:'eoq' as const,
+    supplier:'01016', supplierName:'(주)그로피아', leadDays:10, unitPrice:12400, orderAmount:32240000,
+    altSupplier:'03308', altSupplierName:'(주)케미솔',
+    latestOrderDate:'02/27', expectedReceiptDate:'03/09', needDate:'03/10',
+    urgency:'high' as const, description:'순소요 발생 — EOQ 기준 발주', status:'pending' as const },
+  { id:5, componentId:'00001-B030015', componentName:'충전제 CaCO3', category:'원자재',
+    parentProducts:'KI-100, 5080W, SL-301S', grossRequirement:6200, currentInventory:3500, pendingPo:1000,
+    netRequirement:1700, safetyStock:1200, reorderPoint:2400,
+    recommendedQty:2000, orderMethod:'eoq' as const,
+    supplier:'02066', supplierName:'(주)한국화학', leadDays:8, unitPrice:4200, orderAmount:8400000,
+    altSupplier:'01789', altSupplierName:'삼화화학(주)',
+    latestOrderDate:'03/01', expectedReceiptDate:'03/09', needDate:'03/13',
+    urgency:'medium' as const, description:'재고 충분하나 ROP 접근 — 선제 보충', status:'pending' as const },
+  { id:6, componentId:'00001-B030022', componentName:'가소제 DOP', category:'원자재',
+    parentProducts:'ASMM-65, INS-1271', grossRequirement:2800, currentInventory:2100, pendingPo:300,
+    netRequirement:400, safetyStock:600, reorderPoint:1100,
+    recommendedQty:800, orderMethod:'lot_for_lot' as const,
+    supplier:'03308', supplierName:'(주)케미솔', leadDays:7, unitPrice:6800, orderAmount:5440000,
+    altSupplier:'02355', altSupplierName:'(주)대한화성',
+    latestOrderDate:'03/03', expectedReceiptDate:'03/10', needDate:'03/13',
+    urgency:'medium' as const, description:'소량 순소요 — Lot-for-Lot 발주', status:'pending' as const },
+  { id:7, componentId:'01016-D010128', componentName:'AS-112 O-Ring', category:'부자재',
+    parentProducts:'노즐 2.3-3.2', grossRequirement:3000, currentInventory:10, pendingPo:0,
+    netRequirement:2990, safetyStock:800, reorderPoint:1500,
+    recommendedQty:3200, orderMethod:'eoq' as const,
+    supplier:'01016', supplierName:'(주)그로피아', leadDays:15, unitPrice:3200, orderAmount:10240000,
+    altSupplier:'02066', altSupplierName:'(주)한국화학',
+    latestOrderDate:'02/25', expectedReceiptDate:'03/12', needDate:'03/10',
+    urgency:'high' as const, description:'재고 거의 소진 — 긴급 보충 필요', status:'pending' as const },
+  { id:8, componentId:'00001-B040001', componentName:'이형제 실리콘', category:'소모품',
+    parentProducts:'SL-301S, 5080W, KI-100', grossRequirement:1500, currentInventory:2800, pendingPo:0,
+    netRequirement:0, safetyStock:400, reorderPoint:700,
+    recommendedQty:500, orderMethod:'fixed_period' as const,
+    supplier:'02355', supplierName:'(주)대한화성', leadDays:5, unitPrice:9500, orderAmount:4750000,
+    altSupplier:'03308', altSupplierName:'(주)케미솔',
+    latestOrderDate:'03/08', expectedReceiptDate:'03/13', needDate:'03/15',
+    urgency:'low' as const, description:'순소요 없으나 정기 보충 시기 도래', status:'pending' as const },
+  { id:9, componentId:'00001-B040008', componentName:'포장재 PE필름', category:'소모품',
+    parentProducts:'전 제품', grossRequirement:800, currentInventory:5200, pendingPo:200,
+    netRequirement:0, safetyStock:300, reorderPoint:500,
+    recommendedQty:0, orderMethod:'eoq' as const,
+    supplier:'01789', supplierName:'삼화화학(주)', leadDays:3, unitPrice:2100, orderAmount:0,
+    altSupplier:'02066', altSupplierName:'(주)한국화학',
+    latestOrderDate:'-', expectedReceiptDate:'-', needDate:'-',
+    urgency:'low' as const, description:'재고 충분 — 발주 불필요', status:'pending' as const },
+  { id:10, componentId:'00001-B020018', componentName:'접착제 에폭시B', category:'부자재',
+    parentProducts:'노즐 3.5-4.7', grossRequirement:1800, currentInventory:600, pendingPo:800,
+    netRequirement:400, safetyStock:350, reorderPoint:700,
+    recommendedQty:500, orderMethod:'lot_for_lot' as const,
+    supplier:'02066', supplierName:'(주)한국화학', leadDays:9, unitPrice:11200, orderAmount:5600000,
+    altSupplier:'01789', altSupplierName:'삼화화학(주)',
+    latestOrderDate:'03/02', expectedReceiptDate:'03/11', needDate:'03/13',
+    urgency:'medium' as const, description:'미입고 PO 감안 시 소량 추가 발주', status:'pending' as const },
+]
+
+export const PURCHASE_SUPPLIER_CHART = [
+  { supplier:'(주)그로피아', amount: 242899200 },
+  { supplier:'(주)대한화성', amount: 99510000 },
+  { supplier:'삼화화학(주)', amount: 21250000 },
+  { supplier:'(주)한국화학', amount: 14000000 },
+  { supplier:'(주)케미솔', amount: 5440000 },
+]
+
+export const PURCHASE_URGENCY_DIST = [
+  { name:'Critical', value:2, color:'#DC2626' },
+  { name:'High',     value:3, color:'#EA580C' },
+  { name:'Medium',   value:3, color:'#D97706' },
+  { name:'Low',      value:2, color:'#059669' },
+]
+
+export const ORDER_METHOD_LABELS: Record<string, { label:string, color:string, bg:string, border:string }> = {
+  eoq:          { label:'EOQ',  color:T.blue,   bg:T.blueSoft,   border:T.blueMid },
+  lot_for_lot:  { label:'L4L',  color:T.purple, bg:T.purpleSoft, border:T.purpleMid },
+  fixed_period: { label:'정기',  color:T.green,  bg:T.greenSoft,  border:T.greenMid },
+}
+
+export const URGENCY_STYLE: Record<string, { label:string, color:string, bg:string, border:string, bar:string }> = {
+  critical: { label:'긴급', color:T.red,   bg:T.redSoft,    border:T.redMid,   bar:T.red },
+  high:     { label:'높음', color:T.orange,bg:T.orangeSoft, border:T.orangeMid,bar:T.orange },
+  medium:   { label:'보통', color:T.amber, bg:T.amberSoft,  border:T.amberMid, bar:T.amber },
+  low:      { label:'낮음', color:T.green, bg:T.greenSoft,  border:T.greenMid, bar:T.green },
+}
+
 export const USERS = [
   {id:1,name:'나기업',email:'na@company.com',  role:'Manager' as RoleType,dept:'생산계획팀',lastLogin:'오늘 09:03',status:'활성'},
   {id:2,name:'김분석',email:'kim@company.com', role:'Analyst' as RoleType,dept:'생산계획팀',lastLogin:'오늘 08:51',status:'활성'},
@@ -164,15 +276,140 @@ export const EXT_RAW_DATA = [
   {d:'10월',copper:9580,wti:81.2,gold:2210},{d:'11월',copper:9380,wti:79.8,gold:2190},{d:'12월',copper:9620,wti:82.0,gold:2230},
 ]
 
+// ─── Production Plan (S7) ────────────────────────────────────────────────────
+export const PRODUCTION_PLAN_DATA = [
+  { id:1, sku:'SKU-0421', name:'A타입 반도체 커넥터', line:'L-3',
+    demandP50:3320, demandP90:4480, currentStock:420, safetyStock:1500,
+    dailyCapacity:500, maxCapacity:600, plannedQty:4200, minQty:3800, maxQty:4800,
+    priority:'critical' as const, planType:'increase' as const,
+    riskGrade:'F', stockoutRisk:87, excessRisk:5,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'P90 수요 기반 증산 — 재고 소진 D+12 예상',
+    status:'draft' as const, riskType:'결품', customer:'A사',
+    aiReason:{ avgConsume:380, openOrder:1200, depletionDay:12, leadTime:18, p90Demand:4480 }},
+  { id:2, sku:'SKU-1183', name:'B소켓', line:'L-2',
+    demandP50:2900, demandP90:3650, currentStock:890, safetyStock:1200,
+    dailyCapacity:420, maxCapacity:500, plannedQty:3400, minQty:3000, maxQty:3800,
+    priority:'critical' as const, planType:'increase' as const,
+    riskGrade:'E', stockoutRisk:79, excessRisk:8,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'고객 B사 긴급 발주 반영 — L-2 선행 배치',
+    status:'draft' as const, riskType:'납기', customer:'B사',
+    aiReason:{ avgConsume:290, openOrder:800, depletionDay:21, leadTime:12, p90Demand:3650 }},
+  { id:3, sku:'SKU-0887', name:'C마운트', line:'L-1',
+    demandP50:2500, demandP90:3200, currentStock:8200, safetyStock:2000,
+    dailyCapacity:350, maxCapacity:420, plannedQty:1800, minQty:1500, maxQty:2200,
+    priority:'low' as const, planType:'decrease' as const,
+    riskGrade:'E', stockoutRisk:12, excessRisk:74,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'과잉 재고 감산 — 보관비 월 ₩2.1M 절감 예상',
+    status:'approved' as const, riskType:'과잉', customer:'C사',
+    aiReason:{ avgConsume:250, openOrder:400, depletionDay:230, leadTime:7, p90Demand:3200 }},
+  { id:4, sku:'SKU-2201', name:'D리드', line:'L-4',
+    demandP50:1800, demandP90:2400, currentStock:1200, safetyStock:800,
+    dailyCapacity:280, maxCapacity:340, plannedQty:1960, minQty:1700, maxQty:2200,
+    priority:'medium' as const, planType:'maintain' as const,
+    riskGrade:'D', stockoutRisk:45, excessRisk:18,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'마진 리스크 주의 — 단가 재협의 병행 권고',
+    status:'draft' as const, riskType:'마진', customer:'A사',
+    aiReason:{ avgConsume:180, openOrder:350, depletionDay:47, leadTime:21, p90Demand:2400 }},
+  { id:5, sku:'SKU-0312', name:'E핀', line:'L-2',
+    demandP50:2100, demandP90:2850, currentStock:650, safetyStock:1000,
+    dailyCapacity:300, maxCapacity:360, plannedQty:2800, minQty:2400, maxQty:3200,
+    priority:'high' as const, planType:'increase' as const,
+    riskGrade:'D', stockoutRisk:55, excessRisk:10,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'안전재고 하회 — 650EA → 목표 1,000EA 회복',
+    status:'draft' as const, riskType:'결품', customer:'D사',
+    aiReason:{ avgConsume:210, openOrder:600, depletionDay:22, leadTime:14, p90Demand:2850 }},
+  { id:6, sku:'SKU-0991', name:'F커넥터', line:'L-1',
+    demandP50:1700, demandP90:2280, currentStock:1800, safetyStock:1500,
+    dailyCapacity:320, maxCapacity:380, plannedQty:2240, minQty:1900, maxQty:2500,
+    priority:'medium' as const, planType:'maintain' as const,
+    riskGrade:'C', stockoutRisk:32, excessRisk:20,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'납기 재조정 필요 — 고객 협의 후 D+7 권고',
+    status:'draft' as const, riskType:'납기', customer:'B사',
+    aiReason:{ avgConsume:170, openOrder:500, depletionDay:74, leadTime:10, p90Demand:2280 }},
+  { id:7, sku:'SKU-1450', name:'G소켓베이스', line:'L-3',
+    demandP50:1400, demandP90:1900, currentStock:5400, safetyStock:1800,
+    dailyCapacity:280, maxCapacity:340, plannedQty:980, minQty:800, maxQty:1200,
+    priority:'low' as const, planType:'decrease' as const,
+    riskGrade:'C', stockoutRisk:8, excessRisk:65,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'판매 촉진 검토 — 3개월 초과 재고',
+    status:'approved' as const, riskType:'과잉', customer:'C사',
+    aiReason:{ avgConsume:140, openOrder:200, depletionDay:270, leadTime:9, p90Demand:1900 }},
+  { id:8, sku:'SKU-0744', name:'H터미널', line:'L-2',
+    demandP50:1600, demandP90:2150, currentStock:2100, safetyStock:1600,
+    dailyCapacity:260, maxCapacity:310, plannedQty:1820, minQty:1500, maxQty:2100,
+    priority:'medium' as const, planType:'maintain' as const,
+    riskGrade:'B', stockoutRisk:18, excessRisk:22,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'현 수준 유지 — 재고·수요 균형 양호',
+    status:'executed' as const, riskType:'마진', customer:'A사',
+    aiReason:{ avgConsume:160, openOrder:300, depletionDay:92, leadTime:16, p90Demand:2150 }},
+  { id:9, sku:'SKU-0555', name:'I캡', line:'L-4',
+    demandP50:1200, demandP90:1650, currentStock:3800, safetyStock:1200,
+    dailyCapacity:240, maxCapacity:290, plannedQty:840, minQty:700, maxQty:1000,
+    priority:'low' as const, planType:'decrease' as const,
+    riskGrade:'A', stockoutRisk:5, excessRisk:48,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'재고 충분 — 소폭 감산 검토',
+    status:'executed' as const, riskType:'과잉', customer:'B사',
+    aiReason:{ avgConsume:120, openOrder:150, depletionDay:220, leadTime:8, p90Demand:1650 }},
+  { id:10, sku:'SKU-0632', name:'J블록', line:'L-4',
+    demandP50:950, demandP90:1300, currentStock:2600, safetyStock:900,
+    dailyCapacity:200, maxCapacity:240, plannedQty:1050, minQty:900, maxQty:1200,
+    priority:'high' as const, planType:'increase' as const,
+    riskGrade:'A', stockoutRisk:15, excessRisk:12,
+    targetStart:'03/07', targetEnd:'03/13',
+    description:'신규 고객 D사 수주 증가 대응',
+    status:'draft' as const, riskType:'납기', customer:'D사',
+    aiReason:{ avgConsume:95, openOrder:450, depletionDay:190, leadTime:11, p90Demand:1300 }},
+]
+
+export const PRODUCTION_LINE_CHART = [
+  { day:'월', 'L-1':420, 'L-2':380, 'L-3':510, 'L-4':290 },
+  { day:'화', 'L-1':450, 'L-2':410, 'L-3':480, 'L-4':310 },
+  { day:'수', 'L-1':380, 'L-2':420, 'L-3':520, 'L-4':270 },
+  { day:'목', 'L-1':440, 'L-2':390, 'L-3':500, 'L-4':300 },
+  { day:'금', 'L-1':460, 'L-2':400, 'L-3':490, 'L-4':280 },
+  { day:'토', 'L-1':200, 'L-2':180, 'L-3':250, 'L-4':120 },
+  { day:'일', 'L-1':0,   'L-2':0,   'L-3':0,   'L-4':0   },
+]
+
+export const PROD_PRIORITY_DIST = [
+  { name:'Critical', value:2, color:T.red },
+  { name:'High',     value:3, color:T.orange },
+  { name:'Medium',   value:3, color:T.amber },
+  { name:'Low',      value:2, color:T.green },
+]
+
+export const PLAN_TYPE_LABELS: Record<string,{label:string,color:string,bg:string,border:string}> = {
+  increase: { label:'증산', color:T.red,   bg:T.redSoft,   border:T.redMid   },
+  decrease: { label:'감산', color:T.blue,  bg:T.blueSoft,  border:T.blueMid  },
+  maintain: { label:'유지', color:T.amber, bg:T.amberSoft, border:T.amberMid },
+  new:      { label:'신규', color:T.purple,bg:T.purpleSoft,border:T.purpleMid },
+}
+
+export const PRIORITY_STYLE: Record<string,{label:string,color:string,bg:string,border:string,bar:string}> = {
+  critical: { label:'CRITICAL', color:T.red,    bg:T.redSoft,    border:T.redMid,    bar:T.red    },
+  high:     { label:'HIGH',     color:T.orange, bg:T.orangeSoft, border:T.orangeMid, bar:T.orange },
+  medium:   { label:'MED',      color:T.amber,  bg:T.amberSoft,  border:T.amberMid,  bar:T.amber  },
+  low:      { label:'LOW',      color:T.text3,  bg:T.surface2,   border:T.border,    bar:T.borderMid },
+}
+
 // ─── Simulation ───────────────────────────────────────────────────────────────
 export const SIM_SKUS = [
-  {id:'SKU-0421',name:'A타입 반도체 커넥터',safeStock:2659,currentStock:420, leadTime:18,weeklyDemand:380,productionCap:500},
-  {id:'SKU-1183',name:'B소켓',              safeStock:1200,currentStock:890, leadTime:12,weeklyDemand:290,productionCap:420},
-  {id:'SKU-0887',name:'C마운트',             safeStock:2000,currentStock:8200,leadTime:7, weeklyDemand:250,productionCap:350},
-  {id:'SKU-2201',name:'D리드',               safeStock:800, currentStock:1200,leadTime:21,weeklyDemand:180,productionCap:280},
-  {id:'SKU-0312',name:'E핀',                 safeStock:1000,currentStock:650, leadTime:14,weeklyDemand:210,productionCap:300},
+  {id:'00001-A010174',name:'AS-370[RX]',      spec:'208.92*5.33_5080W', safeStock:2800,currentStock:420, leadTime:14,weeklyDemand:5960,productionCap:900},
+  {id:'00001-A010029',name:'AS-111[R1]',      spec:'10.77*2.62_5080W',  safeStock:1500,currentStock:380, leadTime:14,weeklyDemand:2720,productionCap:450},
+  {id:'00692-D090003',name:'AL2011 접시렌치',  spec:'#10-24*12.8',       safeStock:1000,currentStock:550, leadTime:14,weeklyDemand:1980,productionCap:350},
+  {id:'01016-D010447',name:'AS-326',           spec:'AS-326 [F-972]',    safeStock:750, currentStock:1800,leadTime:14,weeklyDemand:1510,productionCap:280},
+  {id:'00001-A010003',name:'AS-007[R1]',       spec:'3.68*1.78_5080W',   safeStock:600, currentStock:320, leadTime:14,weeklyDemand:1280,productionCap:230},
 ]
-export const SIM_CUSTOMERS = ['전체 고객사','A사','B사','C사','D사']
+export const SIM_CUSTOMERS = ['전체 고객사']
 export const SIM_PERIODS   = [4,8,12]
 export const AI_PRESETS = [
   {id:'shortage',label:'결품 방지 시나리오',  badge:'HIGH',badgeColor:'red',
@@ -200,6 +437,105 @@ export function runSimulation(sku: typeof SIM_SKUS[number], params: {demandDelta
     result.push({ w: `W${i}`, asis: Math.round(asisStock), tobe: Math.round(tobeStock), safe });
   }
   return result;
+}
+
+// ─── Industry Scenarios ──────────────────────────────────────────────────────
+export const INDUSTRY_SCENARIOS = [
+  { id:'dram-surge', label:'DRAM/NAND 가격 급등', icon:'📈', category:'수요변동' as const, badgeColor:'red' as const,
+    desc:'DRAM 스팟가 20%+ 급등 시 수요 위축 + 투입비 상승으로 생산 현상유지', impact:'수요 -15%, 안전재고 상향 필요',
+    params:{ demandDelta:-15, productionDelta:0, safetyBuffer:25, orderQty:2000, leadTimeDelta:0 }},
+  { id:'supply-disruption', label:'공급망 차질 (해운 지연)', icon:'🚢', category:'공급위험' as const, badgeColor:'orange' as const,
+    desc:'주요 해운 경로 지연으로 리드타임 증가 및 원자재 입고 지연에 따른 부분 감산', impact:'리드타임 +7일, 생산 -10%',
+    params:{ demandDelta:0, productionDelta:-10, safetyBuffer:30, orderQty:2500, leadTimeDelta:7 }},
+  { id:'bulk-order', label:'대형 고객사 긴급 수주', icon:'📋', category:'수요변동' as const, badgeColor:'purple' as const,
+    desc:'주요 고객사 대량 수주 발생 시 긴급 증산 및 자재 선행 확보 필요', impact:'수요 +40%, 즉시 증산 필요',
+    params:{ demandDelta:40, productionDelta:35, safetyBuffer:20, orderQty:5000, leadTimeDelta:0 }},
+  { id:'raw-material-shortage', label:'원자재 부족 (구리/실리콘)', icon:'⛏️', category:'원자재' as const, badgeColor:'red' as const,
+    desc:'구리/실리콘 공급 부족으로 원자재 확보 어려움, 생산 차질 우려', impact:'생산능력 -20%, 대체 자재 검토 필요',
+    params:{ demandDelta:0, productionDelta:-20, safetyBuffer:35, orderQty:1000, leadTimeDelta:5 }},
+  { id:'fx-spike', label:'환율 급등 (USD/KRW)', icon:'💱', category:'외부환경' as const, badgeColor:'amber' as const,
+    desc:'USD/KRW 1,400원 돌파 시 원자재 수입비용 상승, 마진 압박', impact:'원가 +10%, 발주량 최적화 필요',
+    params:{ demandDelta:-5, productionDelta:-8, safetyBuffer:10, orderQty:500, leadTimeDelta:2 }},
+  { id:'seasonal-peak', label:'계절 수요 피크 (Q4)', icon:'🎄', category:'수요변동' as const, badgeColor:'blue' as const,
+    desc:'Q4 연말 성수기 수요 급증, 공급사 납기 지연 동반 — 선행 재고 확보 필수', impact:'수요 +25%, 리드타임 +2일',
+    params:{ demandDelta:25, productionDelta:20, safetyBuffer:15, orderQty:3000, leadTimeDelta:2 }},
+  { id:'equipment-maintenance', label:'설비 정기 보수', icon:'🔧', category:'공급위험' as const, badgeColor:'amber' as const,
+    desc:'분기 설비 정기 보수로 생산능력 일시 감소, 사전 재고 확보 필요', impact:'생산능력 -25%, 2주간 감산',
+    params:{ demandDelta:0, productionDelta:-25, safetyBuffer:20, orderQty:2000, leadTimeDelta:0 }},
+  { id:'competitor-exit', label:'경쟁사 시장 철수', icon:'🏢', category:'수요변동' as const, badgeColor:'green' as const,
+    desc:'경쟁사 철수로 시장 점유율 확대 기회, 수요 증가 대비 필요', impact:'수요 +30%, 생산 라인 증설 검토',
+    params:{ demandDelta:30, productionDelta:25, safetyBuffer:10, orderQty:3500, leadTimeDelta:0 }},
+]
+
+export const CATEGORY_COLORS: Record<string,{c:string,bg:string,b:string}> = {
+  수요변동: {c:T.blue,  bg:T.blueSoft,  b:T.blueMid},
+  공급위험: {c:T.orange,bg:T.orangeSoft,b:T.orangeMid},
+  원자재:   {c:T.red,   bg:T.redSoft,   b:T.redMid},
+  외부환경: {c:T.amber, bg:T.amberSoft, b:T.amberMid},
+}
+
+export const RADAR_AXES = [
+  { key:'inventoryStability', label:'재고안정성', fullMark:100 },
+  { key:'costEfficiency',     label:'비용효율',   fullMark:100 },
+  { key:'deliveryRate',       label:'납기준수',   fullMark:100 },
+  { key:'stockoutRisk',       label:'결품위험',   fullMark:100 },
+  { key:'productionEfficiency', label:'생산효율', fullMark:100 },
+]
+
+export const SENSITIVITY_VARIABLES = [
+  { key:'demandDelta',     label:'수요 변동률',   unit:'%',   testRange:[-20,20] as [number,number], color:T.blue },
+  { key:'productionDelta', label:'생산량 조정',   unit:'%',   testRange:[-20,20] as [number,number], color:T.green },
+  { key:'safetyBuffer',    label:'안전재고 버퍼', unit:'%',   testRange:[0,40]   as [number,number], color:T.purple },
+  { key:'orderQty',        label:'추가 발주량',   unit:' EA', testRange:[0,4000] as [number,number], color:T.orange },
+  { key:'leadTimeDelta',   label:'리드타임 조정', unit:'일',  testRange:[-7,7]   as [number,number], color:T.amber },
+]
+
+export const SENSITIVITY_KPIS = [
+  { key:'finalStock',    label:'최종재고' },
+  { key:'stockoutWeeks', label:'결품주수' },
+  { key:'costDelta',     label:'비용변동' },
+  { key:'deliveryRate',  label:'납기준수율' },
+]
+
+type SimParams = { demandDelta:number, productionDelta:number, safetyBuffer:number, orderQty:number, leadTimeDelta:number }
+
+export function calcRadarScores(sku: typeof SIM_SKUS[number], params: SimParams, period: number) {
+  const simData = runSimulation(sku, params, period)
+  const safeStock = Math.round(sku.safeStock * (1 + params.safetyBuffer / 100))
+  const zeroWeeks = simData.filter(d => d.tobe <= 0).length
+  const lastTobe = simData[simData.length - 1]?.tobe ?? 0
+  const avgTobe = simData.reduce((s, d) => s + d.tobe, 0) / simData.length
+  return {
+    inventoryStability: Math.min(100, Math.max(0, Math.round((avgTobe / Math.max(safeStock,1)) * 50))),
+    costEfficiency: Math.min(100, Math.max(0, Math.round(80 - Math.abs(params.productionDelta) * 1.5 - (params.orderQty / 100)))),
+    deliveryRate: zeroWeeks === 0 ? 95 : Math.max(30, 95 - zeroWeeks * 15),
+    stockoutRisk: Math.min(100, Math.max(0, 100 - zeroWeeks * 20 - (lastTobe <= 0 ? 30 : 0))),
+    productionEfficiency: Math.min(100, Math.max(0, Math.round(85 - Math.abs(params.productionDelta - params.demandDelta) * 0.8))),
+  }
+}
+
+function extractKpi(sku: typeof SIM_SKUS[number], params: SimParams, period: number, kpiKey: string): number {
+  const simData = runSimulation(sku, params, period)
+  const tobeZeroWeeks = simData.filter(d => d.tobe <= 0).length
+  const lastTobe = simData[simData.length - 1]?.tobe ?? 0
+  switch (kpiKey) {
+    case 'finalStock':    return lastTobe
+    case 'stockoutWeeks': return tobeZeroWeeks
+    case 'costDelta':     return Math.abs(params.productionDelta) * sku.productionCap * 800 + params.orderQty * 500
+    case 'deliveryRate':  return tobeZeroWeeks === 0 ? 95 : tobeZeroWeeks <= 1 ? 82 : 63
+    default: return 0
+  }
+}
+
+export function runSensitivity(sku: typeof SIM_SKUS[number], baseParams: SimParams, period: number, targetKpi: string) {
+  const baseVal = extractKpi(sku, baseParams, period, targetKpi)
+  return SENSITIVITY_VARIABLES.map(v => {
+    const lowParams = { ...baseParams, [v.key]: v.testRange[0] }
+    const highParams = { ...baseParams, [v.key]: v.testRange[1] }
+    const lowVal = extractKpi(sku, lowParams, period, targetKpi)
+    const highVal = extractKpi(sku, highParams, period, targetKpi)
+    return { variable: v.key, label: v.label, unit: v.unit, color: v.color, low: lowVal, high: highVal, base: baseVal, impact: Math.abs(highVal - lowVal) }
+  }).sort((a, b) => b.impact - a.impact)
 }
 
 // ─── Auth / Members ───────────────────────────────────────────────────────────
