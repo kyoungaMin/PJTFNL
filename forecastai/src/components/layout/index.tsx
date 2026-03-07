@@ -9,7 +9,7 @@ export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { p
   const grouped = {
     top:    NAV_STRUCTURE.filter(n=>!n.parent && n.id!=="admin"),
     groups: groups.map(g=>({ name:g, items:NAV_STRUCTURE.filter(n=>n.parent===g) })),
-    bottom: NAV_STRUCTURE.filter(n=>n.id==="admin"),
+    bottom: currentUser?.role === 'Admin' ? NAV_STRUCTURE.filter(n=>n.id==="admin") : [],
   };
 
   const NavItem = ({ item }) => {
@@ -32,7 +32,7 @@ export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { p
   };
 
   return (
-    <div style={{ width:collapsed?54:220, background:T.sidebarBg, borderRight:`1px solid ${T.sidebarBd}`, display:"flex", flexDirection:"column", transition:"width 0.22s ease", flexShrink:0, overflow:"hidden", position:"relative" }}>
+    <div style={{ width:collapsed?54:220, background:T.sidebarBg, borderRight:`1px solid ${T.sidebarBd}`, display:"flex", flexDirection:"column", transition:"width 0.22s ease", flexShrink:0, position:"relative" }}>
       {/* Logo */}
       <div style={{ padding:collapsed?"18px 0":"18px 18px", borderBottom:`1px solid ${T.sidebarBd}`, display:"flex", alignItems:"center", gap:10, justifyContent:collapsed?"center":"flex-start" }}>
         <div style={{ width:30, height:30, borderRadius:8, flexShrink:0, background:"linear-gradient(135deg,#3B82F6,#1D4ED8)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:800, color:"#fff" }}>F</div>
@@ -42,7 +42,7 @@ export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { p
         </div>}
       </div>
 
-      <nav style={{ flex:1, padding:"10px 0", overflowY:"auto" }}>
+      <nav style={{ flex:1, padding:"10px 0", overflowY:"auto", overflowX:"hidden" }}>
         {grouped.top.map(item=><NavItem key={item.id} item={item}/>)}
         {grouped.groups.map(g=>(
           <div key={g.name}>
@@ -62,10 +62,10 @@ export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { p
       {!collapsed && (
         <div style={{ padding:"14px 18px", borderTop:`1px solid ${T.sidebarBd}` }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:32, height:32, borderRadius:"50%", background:"linear-gradient(135deg,#3B82F6,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#fff", flexShrink:0 }}>나</div>
+            <div style={{ width:32, height:32, borderRadius:"50%", background:currentUser?.grad ?? "linear-gradient(135deg,#3B82F6,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#fff", flexShrink:0 }}>{currentUser?.initial ?? '?'}</div>
             <div>
               <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0" }}>{currentUser?.name} {ROLE_LABEL[currentUser?.role as keyof typeof ROLE_LABEL]}</div>
-              <div style={{ fontSize:10, color:T.sidebarSub }}>Manager · 수원 1공장</div>
+              <div style={{ fontSize:10, color:T.sidebarSub }}>{currentUser?.dept}</div>
             </div>
           </div>
         </div>
@@ -78,7 +78,12 @@ export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { p
   );
 }
 
-export function Header({ currentUser, setCurrentUser, setPage }) {
+export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }: {
+  currentUser: import('@/lib/data').Member
+  setCurrentUser: (m: import('@/lib/data').Member) => void
+  setPage: (p: string) => void
+  alertCount?: number
+}) {
   const [alertOpen, setAlertOpen] = useState(false);
   const [userOpen,  setUserOpen]  = useState(false);
 
@@ -100,12 +105,16 @@ export function Header({ currentUser, setCurrentUser, setPage }) {
           <button onClick={()=>{ setAlertOpen(p=>!p); setUserOpen(false); }}
             style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:4, fontSize:18, display:"flex", outline:"none" }}>
             🔔
-            <span style={{ position:"absolute", top:0, right:0, width:14, height:14, background:T.red, borderRadius:"50%", fontSize:8, fontWeight:700, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", border:"2px solid white" }}>3</span>
+            {alertCount > 0 && (
+              <span style={{ position:"absolute", top:0, right:0, width:14, height:14, background:T.red, borderRadius:"50%", fontSize:8, fontWeight:700, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", border:"2px solid white" }}>
+                {alertCount > 9 ? '9+' : alertCount}
+              </span>
+            )}
           </button>
           {alertOpen && (
             <div style={{ position:"absolute", top:44, right:0, width:308, background:T.surface, border:`1px solid ${T.border}`, borderRadius:10, boxShadow:"0 8px 32px rgba(15,23,42,0.14)", overflow:"hidden" }}>
               <div style={{ padding:"12px 16px", borderBottom:`1px solid ${T.border}`, fontSize:12, fontWeight:700, color:T.text1, display:"flex", justifyContent:"space-between" }}>
-                알림 <span style={{ color:T.red }}>3건</span>
+                알림 <span style={{ color:T.red }}>{alertCount}건</span>
               </div>
               {[{t:"risk",m:"SKU-0421 E등급 전환 — 즉시 조치 필요",time:"09:10"},{t:"warn",m:"SCM 동기화 지연 감지 (07:30)",time:"07:32"},{t:"info",m:"주간 AI 예측 업데이트 완료 (504 SKU)",time:"03:05"}].map((a,i)=>(
                 <div key={i} style={{ padding:"11px 16px", borderBottom:i<2?`1px solid ${T.border}`:"none", display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer" }}
