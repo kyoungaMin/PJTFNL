@@ -1,6 +1,25 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+/* ─── Supabase 배치 조회 헬퍼 (.in() URL 길이 제한 우회) ─── */
+const IN_BATCH = 400  // .in()에 한번에 보낼 ID 수 (URL 길이 제한)
+
+async function fetchBatchIn(
+  table: string, select: string, inCol: string, ids: string[],
+  extra?: (q: any) => any,
+): Promise<any[]> {
+  const all: any[] = []
+  for (let i = 0; i < ids.length; i += IN_BATCH) {
+    const chunk = ids.slice(i, i + IN_BATCH)
+    let q = supabase.from(table).select(select).in(inCol, chunk)
+    if (extra) q = extra(q)
+    const { data, error } = await q
+    if (error) throw error
+    if (data) all.push(...data)
+  }
+  return all
+}
+
 /* ─── risk_score 에서 dominant risk type 결정 ─── */
 function dominantRiskType(row: any): string {
   const scores = [
@@ -13,21 +32,27 @@ function dominantRiskType(row: any): string {
   return scores[0].val > 0 ? scores[0].type : '결품'
 }
 
-/* ─── GET: 생산 권고 목록 ─── */
+/* ─── helper: plan_date(월요일) → 주차 라벨 ─── */
+function planDateToWeekLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  const end = new Date(d.getTime() + 6 * 86400000)
+  const fmt = (dt: Date) => dt.toISOString().slice(5, 10)
+  return `${fmt(d)} ~ ${fmt(end)}`
+}
+
+/* ─── GET: 생산 권고 목록 (주차 기반) ─── */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const requestedDate = searchParams.get('date')  // ?date=2026-03-07
+    const requestedWeek = searchParams.get('week')
+    const requestedDate = searchParams.get('date')
 
-    // 사용 가능한 plan_date 목록 조회 (cursor 방식으로 distinct 구현)
+    // 1) 사용 가능한 plan_date 목록 — cursor 방식으로 distinct 조회
     const availableDates: string[] = []
     let cursor: string | null = null
-    for (let i = 0; i < 100; i++) {
-      let q = supabase
-        .from('production_plan')
-        .select('plan_date')
-        .order('plan_date', { ascending: false })
-        .limit(1)
+    for (let i = 0; i < 20; i++) {
+      let q = supabase.from('production_plan').select('plan_date')
+        .order('plan_date', { ascending: false }).limit(1)
       if (cursor) q = q.lt('plan_date', cursor)
       const { data: row } = await q
       if (!row || row.length === 0) break
@@ -36,95 +61,92 @@ export async function GET(request: Request) {
     }
 
     if (availableDates.length === 0) {
-      return NextResponse.json({ items: [], availableDates: [], source: 'empty' })
+      return NextResponse.json({ items: [], availableWeeks: [], availableDates: [], source: 'empty' })
     }
 
-    // 요청된 날짜 또는 최신 날짜 사용
-    const planDate = requestedDate && availableDates.includes(requestedDate)
-      ? requestedDate
-      : availableDates[0]
+    const availableWeeks = availableDates.map(d => ({
+      date: d,
+      label: planDateToWeekLabel(d),
+    }))
 
-    const { data: plans, error: plansErr } = await supabase
-      .from('production_plan')
-      .select('*')
-      .eq('plan_date', planDate)
-      .order('priority', { ascending: true })
+    const planDate = (requestedWeek && availableDates.includes(requestedWeek))
+      ? requestedWeek
+      : (requestedDate && availableDates.includes(requestedDate))
+        ? requestedDate
+        : availableDates[0]
 
-    if (plansErr) throw plansErr
-    if (!plans || plans.length === 0) {
-      return NextResponse.json({ items: [], availableDates, source: 'empty' })
+    // 2) 해당 주차 데이터 전체 조회 (페이지네이션)
+    const plans: any[] = []
+    const PAGE = 1000
+    for (let off = 0; ; off += PAGE) {
+      const { data: batch, error: batchErr } = await supabase
+        .from('production_plan')
+        .select('*')
+        .eq('plan_date', planDate)
+        .order('priority', { ascending: true })
+        .range(off, off + PAGE - 1)
+      if (batchErr) throw batchErr
+      if (!batch || batch.length === 0) break
+      plans.push(...batch)
+      if (batch.length < PAGE) break
     }
 
-    // 2) product_master — 이름 매핑
+    if (plans.length === 0) {
+      return NextResponse.json({ items: [], availableWeeks, availableDates, source: 'empty' })
+    }
+
+    // 3) 조인 쿼리 — 병렬 실행
     const productIds = Array.from(new Set(plans.map(p => p.product_id)))
-    const { data: products } = await supabase
-      .from('product_master')
-      .select('product_code,product_name,product_category')
-      .in('product_code', productIds)
 
-    const prodMap: Record<string, any> = {}
-    for (const p of (products ?? [])) {
-      prodMap[p.product_code] = p
+    // 조회주차 기간 기준 차트 범위 (planDate ~ planDate+6)
+    const chartStartDate = planDate
+    const chartEndDt = new Date(planDate + 'T00:00:00')
+    chartEndDt.setDate(chartEndDt.getDate() + 6)
+    const chartEndDate = chartEndDt.toISOString().slice(0, 10)
+
+    const [products, risks, orders, leadTimes] = await Promise.all([
+      fetchBatchIn('product_master', 'product_code,product_name,product_category', 'product_code', productIds),
+      fetchBatchIn('risk_score', 'product_id,stockout_risk,excess_risk,delivery_risk,margin_risk,risk_grade,inventory_days,demand_p90,safety_stock,eval_date', 'product_id', productIds),
+      fetchBatchIn('daily_order', 'product_id,customer_id,order_qty,status', 'product_id', productIds, q => q.eq('status', 'R')),
+      fetchBatchIn('product_lead_time', 'product_id,avg_lead_days,p90_lead_days', 'product_id', productIds),
+    ])
+    // 차트용 생산 데이터 — 페이지네이션 필요 (주당 4000건+)
+    const recentProd: any[] = []
+    for (let off = 0; ; off += 1000) {
+      const { data: batch, error: bErr } = await supabase.from('daily_production')
+        .select('production_date,product_id,produced_qty')
+        .gte('production_date', chartStartDate)
+        .lte('production_date', chartEndDate)
+        .range(off, off + 999)
+      if (bErr) throw bErr
+      if (!batch || batch.length === 0) break
+      recentProd.push(...batch)
+      if (batch.length < 1000) break
     }
 
-    // 3) risk_score — 최신 평가
-    const { data: risks } = await supabase
-      .from('risk_score')
-      .select('product_id,stockout_risk,excess_risk,delivery_risk,margin_risk,risk_grade,inventory_days,demand_p90,safety_stock,eval_date')
-      .in('product_id', productIds)
-      .order('eval_date', { ascending: false })
+    // 4) 매핑 구축
+    const prodMap: Record<string, any> = {}
+    for (const p of (products ?? [])) prodMap[p.product_code] = p
 
     const riskMap: Record<string, any> = {}
     for (const r of (risks ?? [])) {
-      if (!riskMap[r.product_id]) riskMap[r.product_id] = r
+      if (!riskMap[r.product_id] || r.eval_date > riskMap[r.product_id].eval_date) riskMap[r.product_id] = r
     }
-
-    // 4) daily_production — 라인 매핑 (최신 생산 기록의 line_id)
-    const { data: prodLines } = await supabase
-      .from('daily_production')
-      .select('product_id,line_id')
-      .in('product_id', productIds)
-      .order('production_date', { ascending: false })
-      .limit(productIds.length * 10)
-
-    const lineMap: Record<string, string> = {}
-    for (const pl of (prodLines ?? [])) {
-      if (!lineMap[pl.product_id] && pl.line_id) {
-        lineMap[pl.product_id] = pl.line_id
-      }
-    }
-
-    // 5) daily_order — 고객 매핑 + 미처리 수주량
-    const { data: orders } = await supabase
-      .from('daily_order')
-      .select('product_id,customer_id,order_qty,status')
-      .in('product_id', productIds)
-      .eq('status', 'R')
-      .limit(5000)
 
     const customerMap: Record<string, string> = {}
     const openOrderMap: Record<string, number> = {}
     for (const o of (orders ?? [])) {
-      if (!customerMap[o.product_id] && o.customer_id) {
-        customerMap[o.product_id] = o.customer_id
-      }
+      if (!customerMap[o.product_id] && o.customer_id) customerMap[o.product_id] = o.customer_id
       openOrderMap[o.product_id] = (openOrderMap[o.product_id] ?? 0) + Number(o.order_qty ?? 0)
     }
 
-    // 6) product_lead_time
-    const { data: leadTimes } = await supabase
-      .from('product_lead_time')
-      .select('product_id,avg_lead_days,p90_lead_days')
-      .in('product_id', productIds)
-      .order('calc_date', { ascending: false })
-
     const ltMap: Record<string, any> = {}
     for (const lt of (leadTimes ?? [])) {
-      if (!ltMap[lt.product_id]) ltMap[lt.product_id] = lt
+      if (!ltMap[lt.product_id] || (lt.calc_date && lt.calc_date > (ltMap[lt.product_id].calc_date ?? ''))) ltMap[lt.product_id] = lt
     }
 
-    // 7) 조합
-    const items = plans.map((p, idx) => {
+    // 5) items 조합
+    const items = plans.map(p => {
       const prod = prodMap[p.product_id] ?? {}
       const risk = riskMap[p.product_id] ?? {}
       const lt = ltMap[p.product_id] ?? {}
@@ -137,7 +159,7 @@ export async function GET(request: Request) {
         sku: p.product_id,
         name: prod.product_name ?? p.product_id,
         category: prod.product_category ?? '',
-        line: lineMap[p.product_id] ?? '-',
+        line: '-',
         demandP50: Math.round(Number(p.demand_p50 ?? 0)),
         demandP90: Math.round(Number(p.demand_p90 ?? 0)),
         currentStock: Math.round(Number(p.current_inventory ?? 0)),
@@ -159,7 +181,7 @@ export async function GET(request: Request) {
         riskType: dominantRiskType(risk),
         customer: customerMap[p.product_id] ?? '-',
         aiReason: {
-          avgConsume: avgConsume,
+          avgConsume,
           openOrder: Math.round(openOrderMap[p.product_id] ?? 0),
           depletionDay: Math.round(invDays),
           leadTime: Math.round(Number(lt.avg_lead_days ?? 0)),
@@ -168,53 +190,74 @@ export async function GET(request: Request) {
       }
     })
 
-    // 우선순위 정렬: critical > high > medium > low
-    const prioOrder = { critical: 0, high: 1, medium: 2, low: 3 }
+    // 우선순위 정렬
+    const prioOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
     items.sort((a, b) => (prioOrder[a.priority] ?? 9) - (prioOrder[b.priority] ?? 9))
 
-    // 라인별 생산 차트 데이터 생성
-    const lines = Array.from(new Set(items.map(i => i.line).filter(l => l !== '-'))).sort()
-
-    // 일별 라인별 생산량 (planDate 기준 최근 7일)
-    const refDate = new Date(planDate + 'T00:00:00')
-    const sevenDaysAgo = new Date(refDate)
-    sevenDaysAgo.setDate(refDate.getDate() - 6)
-    const { data: recentProd } = await supabase
-      .from('daily_production')
-      .select('production_date,line_id,produced_qty')
-      .gte('production_date', sevenDaysAgo.toISOString().slice(0, 10))
-      .lte('production_date', planDate)
-      .order('production_date', { ascending: true })
+    // 카테고리별 생산 차트 — recentProd에서 product_id → category 매핑
+    const recentProdIds = new Set((recentProd ?? []).map(r => r.product_id))
+    const missingIds = Array.from(recentProdIds).filter(id => !prodMap[id])
+    let extraMap: Record<string, any> = {}
+    if (missingIds.length > 0) {
+      const batchSize = IN_BATCH
+      for (let i = 0; i < missingIds.length; i += batchSize) {
+        const batch = missingIds.slice(i, i + batchSize)
+        const { data: extras } = await supabase.from('product_master')
+          .select('product_code,product_name,product_category')
+          .in('product_code', batch)
+        for (const e of (extras ?? [])) extraMap[e.product_code] = e
+      }
+    }
+    const allProdMap = { ...prodMap, ...extraMap }
 
     const dayNames = ['일', '월', '화', '수', '목', '금', '토']
-    const lineChartMap: Record<string, Record<string, number>> = {}
+    const catChartMap: Record<string, Record<string, number>> = {}
+    const catSet = new Set<string>()
+    const productQtyMap: Record<string, number> = {}
+
     for (const rp of (recentProd ?? [])) {
-      const d = new Date(rp.production_date)
+      const d = new Date(rp.production_date + 'T00:00:00')
       const dayName = dayNames[d.getDay()]
-      if (!lineChartMap[dayName]) lineChartMap[dayName] = {}
-      const lid = rp.line_id ?? 'etc'
-      lineChartMap[dayName][lid] = (lineChartMap[dayName][lid] ?? 0) + Number(rp.produced_qty ?? 0)
+      const qty = Number(rp.produced_qty ?? 0)
+      const cat = allProdMap[rp.product_id]?.product_category ?? '기타'
+      const shortCat = cat.replace(/\s*\(.*?\)\s*/g, '').trim() || '기타'
+
+      catSet.add(shortCat)
+      if (!catChartMap[dayName]) catChartMap[dayName] = {}
+      catChartMap[dayName][shortCat] = (catChartMap[dayName][shortCat] ?? 0) + qty
+
+      // Top 제품 집계
+      productQtyMap[rp.product_id] = (productQtyMap[rp.product_id] ?? 0) + qty
     }
 
-    const lineChart = ['월', '화', '수', '목', '금', '토', '일'].map(day => ({
+    const categories = Array.from(catSet).sort()
+    const categoryChart = ['월', '화', '수', '목', '금', '토', '일'].map(day => ({
       day,
-      ...Object.fromEntries(lines.map(l => [l, Math.round(lineChartMap[day]?.[l] ?? 0)])),
+      ...Object.fromEntries(categories.map(c => [c, Math.round(catChartMap[day]?.[c] ?? 0)])),
     }))
 
-    // 우선순위 분포
-    const priorityDist = [
-      { name: 'Critical', value: items.filter(i => i.priority === 'critical').length, color: '#DC2626' },
-      { name: 'High',     value: items.filter(i => i.priority === 'high').length,     color: '#EA580C' },
-      { name: 'Medium',   value: items.filter(i => i.priority === 'medium').length,   color: '#D97706' },
-      { name: 'Low',      value: items.filter(i => i.priority === 'low').length,      color: '#059669' },
-    ].filter(d => d.value > 0)
+    // Top 5 제품 생산실적
+    const topProducts = Object.entries(productQtyMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([pid, qty]) => ({
+        id: pid,
+        name: allProdMap[pid]?.product_name ?? pid,
+        qty: Math.round(qty),
+        category: (allProdMap[pid]?.product_category ?? '').replace(/\s*\(.*?\)\s*/g, '').trim() || '기타',
+      }))
+
+    const planWeek = plans[0]?.plan_horizon ?? planDate
 
     return NextResponse.json({
       items,
-      lineChart,
-      lines,
-      priorityDist,
+      categoryChart,
+      categories,
+      topProducts,
       planDate,
+      planWeek,
+      planWeekLabel: planDateToWeekLabel(planDate),
+      availableWeeks,
       availableDates,
       source: 'database',
     })

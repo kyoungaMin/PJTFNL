@@ -234,169 +234,211 @@ def calc_eoq(annual_demand: float, unit_price: float) -> tuple:
 
 # ─── 메인 실행 ────────────────────────────────────────────────
 
-def run():
+def week_monday(d: date) -> date:
+    """주어진 날짜가 속한 주의 월요일 반환"""
+    return d - timedelta(days=d.weekday())
+
+
+def week_key(d: date) -> str:
+    """YYYY-Www 형식 주차 키"""
+    iso = d.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+def run(weeks_back: int = 4):
+    """발주 최적화 실행. weeks_back개 과거 주차 + 현재 주차 데이터 생성"""
     print("[S8] 발주 최적화 시작")
     today = date.today()
-    today_str = today.isoformat()
+    current_monday = week_monday(today)
 
-    # --- 1) 데이터 로드 ---
-    plan_rows = load_production_plan()
+    # --- 1) 데이터 로드 (공통) ---
     bom_map = load_bom_data()
     inv_map = load_component_inventory()
     pending_po = load_pending_po()
     supplier_profiles = load_supplier_profiles()
     lead_map = load_lead_times()
 
-    print(f"  생산계획: {len(plan_rows):,}  BOM구조: {len(bom_map):,}  "
-          f"공급사프로파일: {len(supplier_profiles):,}")
-
-    if not plan_rows:
+    # 모든 주차의 생산계획 로드
+    all_plan_rows = fetch_all("production_plan",
+                              "product_id,plan_date,planned_qty,target_start,target_end,priority")
+    if not all_plan_rows:
         print("  [!] 생산 계획 없음 -- S7 먼저 실행 필요")
         cnt = supabase.table("purchase_recommendation").select("id", count="exact").execute()
         print(f"[S8] 완료 -- purchase_recommendation: {cnt.count:,}행 (변동 없음)")
         return
 
-    # --- 2) BOM 전개 → 총소요량 ---
-    gross_req = defaultdict(float)
-    parent_map = defaultdict(set)
+    # plan_date별로 그룹핑
+    plan_by_date = defaultdict(list)
+    for r in all_plan_rows:
+        plan_by_date[r["plan_date"]].append(r)
 
-    for plan in plan_rows:
-        pid = plan["product_id"]
-        planned_qty = float(plan["planned_qty"] or 0)
-        if planned_qty <= 0:
+    print(f"  BOM구조: {len(bom_map):,}  공급사프로파일: {len(supplier_profiles):,}")
+    print(f"  생산계획 주차: {sorted(plan_by_date.keys())}")
+
+    all_results = []
+    week_list = []
+
+    for w in range(weeks_back, -1, -1):
+        monday = current_monday - timedelta(weeks=w)
+        plan_date_str = monday.isoformat()
+        plan_week_key = week_key(monday)
+        week_list.append(plan_week_key)
+
+        plan_rows = plan_by_date.get(plan_date_str, [])
+        if not plan_rows:
+            print(f"  [{plan_week_key}] 생산계획 없음 -- skip")
             continue
-        for comp_id, usage_qty in bom_map.get(pid, []):
-            gross_req[comp_id] += planned_qty * usage_qty
-            parent_map[comp_id].add(pid)
 
-    print(f"  BOM 전개 대상 자재: {len(gross_req):,}개")
+        # 과거 주차 기준일 (일정 계산용)
+        ref_today = monday
 
-    if not gross_req:
-        print("  [!] BOM 전개 결과 없음 (BOM 미등록 또는 생산량 0)")
-        cnt = supabase.table("purchase_recommendation").select("id", count="exact").execute()
-        print(f"[S8] 완료 -- purchase_recommendation: {cnt.count:,}행 (변동 없음)")
-        return
+        # --- 2) BOM 전개 → 총소요량 ---
+        gross_req = defaultdict(float)
+        parent_map = defaultdict(set)
 
-    # --- 3) 자재별 발주 추천 ---
-    results = []
-    for comp_id, gross_qty in gross_req.items():
-        # 재고·미입고
-        current_inv = inv_map.get(comp_id, 0)
-        pending = pending_po.get(comp_id, 0)
+        for plan in plan_rows:
+            pid = plan["product_id"]
+            planned_qty = float(plan["planned_qty"] or 0)
+            if planned_qty <= 0:
+                continue
+            for comp_id, usage_qty in bom_map.get(pid, []):
+                gross_req[comp_id] += planned_qty * usage_qty
+                parent_map[comp_id].add(pid)
 
-        # 순소요량
-        net_req = max(0, gross_qty - current_inv - pending)
+        if not gross_req:
+            print(f"  [{plan_week_key}] BOM 전개 결과 없음")
+            continue
 
-        # 일평균 소비량
-        daily_consumption = gross_qty / PRODUCTION_PLAN_DAYS if PRODUCTION_PLAN_DAYS > 0 else 0
+        # 과거 주차 시뮬레이션: 현재보다 재고가 더 많고, 일부 PO가 아직 입고 전
+        # w=0(이번주) → 보정없음, w=1(1주전) → 재고 +15%, w=4(4주전) → 재고 +60%
+        inv_multiplier = 1.0 + w * 0.15
+        # 미입고PO도 과거 주차엔 더 많음 (아직 입고 전이었으므로)
+        po_multiplier = 1.0 + w * 0.10
 
-        # 리드타임
-        lt = lead_map.get(comp_id, {"avg": 7, "p90": 14})
-        lead_avg = lt["avg"]
-        lead_p90 = lt["p90"]
+        # --- 3) 자재별 발주 추천 ---
+        results = []
+        for comp_id, gross_qty in gross_req.items():
+            # 재고·미입고 (주차별 시뮬레이션)
+            current_inv = inv_map.get(comp_id, 0) * inv_multiplier
+            pending = pending_po.get(comp_id, 0) * po_multiplier
 
-        # 안전재고 & ROP
-        safety_stock = lead_p90 * daily_consumption
-        rop = daily_consumption * lead_avg + safety_stock
+            # 순소요량
+            net_req = max(0, gross_qty - current_inv - pending)
 
-        # 공급사 선택
-        suppliers = supplier_profiles.get(comp_id, [])
-        best_sup, alt_sup = select_best_supplier(suppliers)
+            # 일평균 소비량
+            daily_consumption = gross_qty / PRODUCTION_PLAN_DAYS if PRODUCTION_PLAN_DAYS > 0 else 0
 
-        unit_price = (best_sup["avg_unit_price"]
-                      if best_sup and best_sup["avg_unit_price"] else 0)
+            # 리드타임
+            lt = lead_map.get(comp_id, {"avg": 7, "p90": 14})
+            lead_avg = lt["avg"]
+            lead_p90 = lt["p90"]
 
-        # EOQ 계산
-        annual_demand = daily_consumption * 365
-        eoq, method = calc_eoq(annual_demand, unit_price)
+            # 안전재고 & ROP
+            safety_stock = lead_p90 * daily_consumption
+            rop = daily_consumption * lead_avg + safety_stock
 
-        # 추천 발주량 결정
-        if net_req <= 0:
-            # 순소요 없어도 ROP 아래면 보충 발주
-            available = current_inv + pending
-            if available < rop:
-                recommended_qty = max(safety_stock, eoq)
+            # 공급사 선택
+            suppliers = supplier_profiles.get(comp_id, [])
+            best_sup, alt_sup = select_best_supplier(suppliers)
+
+            unit_price = (best_sup["avg_unit_price"]
+                          if best_sup and best_sup["avg_unit_price"] else 0)
+
+            # EOQ 계산
+            annual_demand = daily_consumption * 365
+            eoq, method = calc_eoq(annual_demand, unit_price)
+
+            # 추천 발주량 결정
+            if net_req <= 0:
+                # 순소요 없어도 ROP 아래면 보충 발주
+                available = current_inv + pending
+                if available < rop:
+                    recommended_qty = max(safety_stock, eoq)
+                    order_method = method
+                else:
+                    continue  # 발주 불필요
+            elif eoq > 0 and eoq > net_req:
+                recommended_qty = eoq
                 order_method = method
             else:
-                continue  # 발주 불필요
-        elif eoq > 0 and eoq > net_req:
-            recommended_qty = eoq
-            order_method = method
-        else:
-            recommended_qty = net_req
-            order_method = "lot_for_lot"
+                recommended_qty = net_req
+                order_method = "lot_for_lot"
 
-        recommended_qty = max(0, recommended_qty)
-        if recommended_qty <= 0:
-            continue
+            recommended_qty = max(0, recommended_qty)
+            if recommended_qty <= 0:
+                continue
 
-        # 발주 일정
-        sup_lead = (best_sup["avg_lead_days"]
-                    if best_sup and best_sup["avg_lead_days"] else lead_avg)
-        need_date = today + timedelta(days=PRODUCTION_PLAN_DAYS)
-        latest_order_date = need_date - timedelta(days=int(sup_lead))
-        if latest_order_date < today:
-            latest_order_date = today
-        expected_receipt = today + timedelta(days=int(sup_lead))
+            # 발주 일정
+            sup_lead = (best_sup["avg_lead_days"]
+                        if best_sup and best_sup["avg_lead_days"] else lead_avg)
+            need_date = ref_today + timedelta(days=PRODUCTION_PLAN_DAYS)
+            latest_order_date = need_date - timedelta(days=int(sup_lead))
+            if latest_order_date < ref_today:
+                latest_order_date = ref_today
+            expected_receipt = ref_today + timedelta(days=int(sup_lead))
 
-        # 긴급도
-        if latest_order_date <= today and net_req > current_inv:
-            urgency = "critical"
-        elif latest_order_date <= today + timedelta(days=3):
-            urgency = "high"
-        elif net_req > 0:
-            urgency = "medium"
-        else:
-            urgency = "low"
+            # 긴급도
+            if latest_order_date <= ref_today and net_req > current_inv:
+                urgency = "critical"
+            elif latest_order_date <= ref_today + timedelta(days=3):
+                urgency = "high"
+            elif net_req > 0:
+                urgency = "medium"
+            else:
+                urgency = "low"
 
-        # 설명
-        parents_list = sorted(parent_map[comp_id])[:5]
-        desc_parts = [f"BOM 소스: {','.join(parents_list)}"]
-        if net_req > 0:
-            desc_parts.append(f"순소요 {net_req:.0f}")
-        if current_inv < safety_stock:
-            desc_parts.append(f"재고({current_inv:.0f})<안전재고({safety_stock:.0f})")
+            # 설명
+            parents_list = sorted(parent_map[comp_id])[:5]
+            desc_parts = [f"BOM 소스: {','.join(parents_list)}"]
+            if net_req > 0:
+                desc_parts.append(f"순소요 {net_req:.0f}")
+            if current_inv < safety_stock:
+                desc_parts.append(f"재고({current_inv:.0f})<안전재고({safety_stock:.0f})")
 
-        results.append({
-            "component_product_id": comp_id,
-            "plan_date": today_str,
-            "parent_product_ids": json.dumps(parents_list),
-            "gross_requirement": round(gross_qty, 6),
-            "current_inventory": round(current_inv, 6),
-            "pending_po_qty": round(pending, 6),
-            "net_requirement": round(net_req, 6),
-            "safety_stock": round(safety_stock, 6),
-            "reorder_point": round(rop, 6),
-            "recommended_qty": round(recommended_qty, 6),
-            "order_method": order_method,
-            "recommended_supplier": best_sup["supplier_code"] if best_sup else None,
-            "supplier_name": best_sup["supplier_name"] if best_sup else None,
-            "supplier_lead_days": round(sup_lead, 2) if sup_lead else None,
-            "supplier_unit_price": round(unit_price, 6) if unit_price else None,
-            "alt_supplier": alt_sup["supplier_code"] if alt_sup else None,
-            "alt_supplier_name": alt_sup["supplier_name"] if alt_sup else None,
-            "latest_order_date": latest_order_date.isoformat(),
-            "expected_receipt_date": expected_receipt.isoformat(),
-            "need_date": need_date.isoformat(),
-            "urgency": urgency,
-            "description": "; ".join(desc_parts),
-            "status": "pending",
-        })
+            results.append({
+                "component_product_id": comp_id,
+                "plan_date": plan_date_str,
+                "parent_product_ids": json.dumps(parents_list),
+                "gross_requirement": round(gross_qty, 6),
+                "current_inventory": round(current_inv, 6),
+                "pending_po_qty": round(pending, 6),
+                "net_requirement": round(net_req, 6),
+                "safety_stock": round(safety_stock, 6),
+                "reorder_point": round(rop, 6),
+                "recommended_qty": round(recommended_qty, 6),
+                "order_method": order_method,
+                "recommended_supplier": best_sup["supplier_code"] if best_sup else None,
+                "supplier_name": best_sup["supplier_name"] if best_sup else None,
+                "supplier_lead_days": round(sup_lead, 2) if sup_lead else None,
+                "supplier_unit_price": round(unit_price, 6) if unit_price else None,
+                "alt_supplier": alt_sup["supplier_code"] if alt_sup else None,
+                "alt_supplier_name": alt_sup["supplier_name"] if alt_sup else None,
+                "latest_order_date": latest_order_date.isoformat(),
+                "expected_receipt_date": expected_receipt.isoformat(),
+                "need_date": need_date.isoformat(),
+                "urgency": urgency,
+                "description": "; ".join(desc_parts),
+                "status": "pending",
+            })
 
-    print(f"  발주 추천: {len(results):,}건")
+        print(f"  [{plan_week_key}] 발주 추천: {len(results):,}건")
+        all_results.extend(results)
+
+    print(f"\n  전체 주차: {week_list}")
+    print(f"  전체 발주 추천: {len(all_results):,}건")
 
     # 분포 출력
     urg_dist = defaultdict(int)
     method_dist = defaultdict(int)
-    for r in results:
+    for r in all_results:
         urg_dist[r["urgency"]] += 1
         method_dist[r["order_method"]] += 1
     print(f"  긴급도: {dict(sorted(urg_dist.items()))}")
     print(f"  발주방식: {dict(sorted(method_dist.items()))}")
 
     # --- 4) DB 적재 ---
-    if results:
-        upsert_batch("purchase_recommendation", results,
+    if all_results:
+        upsert_batch("purchase_recommendation", all_results,
                      on_conflict="component_product_id,plan_date")
 
     cnt = supabase.table("purchase_recommendation").select("id", count="exact").execute()

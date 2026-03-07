@@ -12,6 +12,7 @@ import PageRiskManagement from '@/components/pages/RiskManagement'
 import PageActionQueue from '@/components/pages/ActionQueue'
 import PagePurchase from '@/components/pages/Purchase'
 import PageSimulation from '@/components/pages/Simulation'
+import PageModelScenario from '@/components/pages/ModelScenario'
 import PageModelEvaluation from '@/components/pages/ModelEvaluation'
 import { PageExtSemi, PageExtGlobal, PageExtFX, PageExtSupply, PageExtRaw } from '@/components/pages/ExternalIndicators'
 import PageAdmin from '@/components/pages/Admin'
@@ -46,6 +47,7 @@ export default function Home() {
     'action-queue':     <PageActionQueue />,
     purchase:           <PagePurchase />,
     simulation:         <PageSimulation />,
+    'model-scenario':   <PageModelScenario />,
     'model-eval':       <PageModelEvaluation />,
     'ext-semi':         <PageExtSemi />,
     'ext-global':       <PageExtGlobal />,

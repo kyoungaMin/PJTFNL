@@ -198,12 +198,24 @@ def determine_plan_type(planned_qty: float, recent_avg: float) -> str:
 
 # ─── 메인 실행 ────────────────────────────────────────────────
 
-def run():
+def week_monday(d: date) -> date:
+    """주어진 날짜가 속한 주의 월요일 반환"""
+    return d - timedelta(days=d.weekday())
+
+
+def week_key(d: date) -> str:
+    """YYYY-Www 형식 주차 키"""
+    iso = d.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+def run(weeks_back: int = 4):
+    """생산 최적화 실행. weeks_back개 과거 주차 + 현재 주차 데이터 생성"""
     print("[S7] 생산 최적화 시작")
     today = date.today()
-    today_str = today.isoformat()
+    current_monday = week_monday(today)
 
-    # --- 1) 데이터 로드 ---
+    # --- 1) 데이터 로드 (공통) ---
     fc_map = load_forecast_data()
     inv_map = load_inventory_data()
     capacity = load_production_capacity()
@@ -219,122 +231,137 @@ def run():
     all_products = set(fc_map.keys()) | set(daily_demand.keys())
     print(f"  대상 제품: {len(all_products):,}개")
 
-    # --- 3) 주간 생산 계획 산출 ---
-    target_start = today
-    target_end = today + timedelta(days=PRODUCTION_PLAN_DAYS - 1)
+    # --- 3) 여러 주차 생산 계획 산출 ---
+    all_results = []
+    week_list = []
+    for w in range(weeks_back, -1, -1):   # weeks_back주 전 ~ 현재 주
+        monday = current_monday - timedelta(weeks=w)
+        plan_date_str = monday.isoformat()
+        plan_week_key = week_key(monday)
+        week_list.append(plan_week_key)
 
-    results = []
-    for pid in all_products:
-        # 예측 데이터 (7일 → 14일 → 28일 → 30일 순으로 fallback)
-        fc = fc_map.get(pid, {})
-        fc_best = fc.get(7, fc.get(14, fc.get(28, fc.get(30, {}))))
-        demand_p50 = fc_best.get("p50", 0)
-        demand_p90 = fc_best.get("p90", 0)
+        target_start = monday
+        target_end = monday + timedelta(days=PRODUCTION_PLAN_DAYS - 1)
 
-        # 예측 없으면 일평균수요 × 기간
-        if demand_p50 <= 0:
+        # 과거 주차는 재고를 약간 변동시켜 차별화
+        inv_offset = w * 0.03  # 3%씩 과거로 갈수록 재고 증가 (소진 전)
+
+        results = []
+        for pid in all_products:
+            # 예측 데이터 (7일 → 14일 → 28일 → 30일 순으로 fallback)
+            fc = fc_map.get(pid, {})
+            fc_best = fc.get(7, fc.get(14, fc.get(28, fc.get(30, {}))))
+            demand_p50 = fc_best.get("p50", 0)
+            demand_p90 = fc_best.get("p90", 0)
+
+            # 예측 없으면 일평균수요 × 기간
+            if demand_p50 <= 0:
+                avg_d = daily_demand.get(pid, 0)
+                demand_p50 = avg_d * PRODUCTION_PLAN_DAYS
+                demand_p90 = demand_p50 * 1.5
+
+            # 재고 (과거 주차는 소진 전이므로 약간 증가 보정)
+            inv_qty = inv_map.get(pid, 0) * (1 + inv_offset)
+
+            # 리드타임 & 안전재고
+            lt = lead_times.get(pid, {"avg": 7, "p90": 14})
             avg_d = daily_demand.get(pid, 0)
-            demand_p50 = avg_d * PRODUCTION_PLAN_DAYS
-            demand_p90 = demand_p50 * 1.5
+            safety_stock = lt["p90"] * avg_d
 
-        # 재고
-        inv_qty = inv_map.get(pid, 0)
+            # 순소요량
+            net_req = max(0, demand_p50 + safety_stock - inv_qty)
+            net_req_max = max(0, demand_p90 + safety_stock - inv_qty)
 
-        # 리드타임 & 안전재고
-        lt = lead_times.get(pid, {"avg": 7, "p90": 14})
-        avg_d = daily_demand.get(pid, 0)
-        safety_stock = lt["p90"] * avg_d
+            # 미처리 수주 긴급분 반영
+            orders = open_orders.get(pid, [])
+            urgent_qty = 0
+            for o in orders:
+                try:
+                    dd = date.fromisoformat(o["delivery"])
+                    if dd <= target_end:
+                        urgent_qty += o["qty"]
+                except (ValueError, TypeError):
+                    pass
+            if urgent_qty > 0:
+                net_req = max(net_req, urgent_qty - inv_qty)
 
-        # 순소요량
-        net_req = max(0, demand_p50 + safety_stock - inv_qty)
-        net_req_max = max(0, demand_p90 + safety_stock - inv_qty)
+            # 캐파시티 제약
+            cap = capacity.get(pid, {})
+            daily_cap = cap.get("daily_avg", 0) * PRODUCTION_CAPACITY_BUFFER
+            max_cap = (daily_cap * PRODUCTION_PLAN_DAYS) if daily_cap > 0 else float("inf")
 
-        # 미처리 수주 긴급분 반영
-        orders = open_orders.get(pid, [])
-        urgent_qty = 0
-        for o in orders:
-            try:
-                dd = date.fromisoformat(o["delivery"])
-                if dd <= target_end:
-                    urgent_qty += o["qty"]
-            except (ValueError, TypeError):
-                pass
-        if urgent_qty > 0:
-            net_req = max(net_req, urgent_qty - inv_qty)
+            # 리스크 기반 조정
+            risk = risk_data.get(pid, {})
+            risk_grade = risk.get("risk_grade", "A")
+            stockout_risk = float(risk.get("stockout_risk") or 0)
+            excess_risk = float(risk.get("excess_risk") or 0)
 
-        # 캐파시티 제약
-        cap = capacity.get(pid, {})
-        daily_cap = cap.get("daily_avg", 0) * PRODUCTION_CAPACITY_BUFFER
-        max_cap = (daily_cap * PRODUCTION_PLAN_DAYS) if daily_cap > 0 else float("inf")
+            if risk_grade in ("D", "F") and stockout_risk > 60:
+                planned_qty = min(net_req_max, max_cap) if max_cap < float("inf") else net_req_max
+            elif risk_grade in ("D", "F") and excess_risk > 60:
+                planned_qty = max(0, net_req * 0.9)
+            else:
+                planned_qty = min(net_req, max_cap) if max_cap < float("inf") else net_req
 
-        # 리스크 기반 조정
-        risk = risk_data.get(pid, {})
-        risk_grade = risk.get("risk_grade", "A")
-        stockout_risk = float(risk.get("stockout_risk") or 0)
-        excess_risk = float(risk.get("excess_risk") or 0)
+            planned_qty = max(0, planned_qty)
 
-        if risk_grade in ("D", "F") and stockout_risk > 60:
-            planned_qty = min(net_req_max, max_cap) if max_cap < float("inf") else net_req_max
-        elif risk_grade in ("D", "F") and excess_risk > 60:
-            planned_qty = max(0, net_req * 0.9)
-        else:
-            planned_qty = min(net_req, max_cap) if max_cap < float("inf") else net_req
+            # 우선순위 & 유형
+            priority = determine_priority(risk_grade, stockout_risk, excess_risk)
+            recent_prod_avg = cap.get("daily_avg", 0) * PRODUCTION_PLAN_DAYS
+            plan_type = determine_plan_type(planned_qty, recent_prod_avg)
 
-        planned_qty = max(0, planned_qty)
+            # 설명 생성
+            desc_parts = []
+            if stockout_risk > 60:
+                desc_parts.append(f"결품위험 {stockout_risk:.0f}점")
+            if excess_risk > 60:
+                desc_parts.append(f"과잉위험 {excess_risk:.0f}점")
+            if urgent_qty > 0:
+                desc_parts.append(f"긴급수주 {urgent_qty:.0f}개")
+            if max_cap < float("inf") and planned_qty >= max_cap * 0.9:
+                desc_parts.append("캐파한계근접")
+            description = ", ".join(desc_parts) if desc_parts else None
 
-        # 우선순위 & 유형
-        priority = determine_priority(risk_grade, stockout_risk, excess_risk)
-        recent_prod_avg = cap.get("daily_avg", 0) * PRODUCTION_PLAN_DAYS
-        plan_type = determine_plan_type(planned_qty, recent_prod_avg)
+            results.append({
+                "product_id": pid,
+                "plan_date": plan_date_str,
+                "plan_horizon": plan_week_key,
+                "target_start": target_start.isoformat(),
+                "target_end": target_end.isoformat(),
+                "demand_p50": round(demand_p50, 6),
+                "demand_p90": round(demand_p90, 6),
+                "current_inventory": round(inv_qty, 6),
+                "safety_stock": round(safety_stock, 6),
+                "daily_capacity": round(daily_cap, 6) if daily_cap > 0 else None,
+                "max_capacity": round(max_cap, 6) if max_cap < float("inf") else None,
+                "planned_qty": round(planned_qty, 6),
+                "min_qty": round(max(0, net_req * 0.8), 6),
+                "max_qty": round(net_req_max, 6),
+                "priority": priority,
+                "plan_type": plan_type,
+                "risk_grade": risk_grade,
+                "description": description,
+                "status": "draft",
+            })
 
-        # 설명 생성
-        desc_parts = []
-        if stockout_risk > 60:
-            desc_parts.append(f"결품위험 {stockout_risk:.0f}점")
-        if excess_risk > 60:
-            desc_parts.append(f"과잉위험 {excess_risk:.0f}점")
-        if urgent_qty > 0:
-            desc_parts.append(f"긴급수주 {urgent_qty:.0f}개")
-        if max_cap < float("inf") and planned_qty >= max_cap * 0.9:
-            desc_parts.append("캐파한계근접")
-        description = ", ".join(desc_parts) if desc_parts else None
+        print(f"  [{plan_week_key}] 생산 계획: {len(results):,}건")
+        all_results.extend(results)
 
-        results.append({
-            "product_id": pid,
-            "plan_date": today_str,
-            "plan_horizon": "weekly",
-            "target_start": target_start.isoformat(),
-            "target_end": target_end.isoformat(),
-            "demand_p50": round(demand_p50, 6),
-            "demand_p90": round(demand_p90, 6),
-            "current_inventory": round(inv_qty, 6),
-            "safety_stock": round(safety_stock, 6),
-            "daily_capacity": round(daily_cap, 6) if daily_cap > 0 else None,
-            "max_capacity": round(max_cap, 6) if max_cap < float("inf") else None,
-            "planned_qty": round(planned_qty, 6),
-            "min_qty": round(max(0, net_req * 0.8), 6),
-            "max_qty": round(net_req_max, 6),
-            "priority": priority,
-            "plan_type": plan_type,
-            "risk_grade": risk_grade,
-            "description": description,
-            "status": "draft",
-        })
-
-    print(f"  생산 계획 산출: {len(results):,}건")
+    print(f"\n  전체 주차: {week_list}")
+    print(f"  전체 생산 계획: {len(all_results):,}건")
 
     # 분포 출력
     pri_dist = defaultdict(int)
     type_dist = defaultdict(int)
-    for r in results:
+    for r in all_results:
         pri_dist[r["priority"]] += 1
         type_dist[r["plan_type"]] += 1
     print(f"  우선순위: {dict(sorted(pri_dist.items()))}")
     print(f"  계획유형: {dict(sorted(type_dist.items()))}")
 
     # --- 4) DB 적재 ---
-    if results:
-        upsert_batch("production_plan", results,
+    if all_results:
+        upsert_batch("production_plan", all_results,
                      on_conflict="product_id,plan_date,plan_horizon")
 
     cnt = supabase.table("production_plan").select("id", count="exact").execute()
