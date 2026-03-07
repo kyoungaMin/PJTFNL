@@ -540,19 +540,19 @@ export function runSensitivity(sku: typeof SIM_SKUS[number], baseParams: SimPara
 
 // ─── Auth / Members ───────────────────────────────────────────────────────────
 export const ALL_MEMBERS: Member[] = [
-  {id:1,name:'나기업',role:'Manager',dept:'생산계획팀',email:'na@company.com',  grad:'linear-gradient(135deg,#3B82F6,#7C3AED)',initial:'나'},
-  {id:2,name:'김분석',role:'Analyst',dept:'생산계획팀',email:'kim@company.com', grad:'linear-gradient(135deg,#10B981,#059669)',initial:'김'},
-  {id:3,name:'박관리',role:'Admin',  dept:'IT팀',      email:'park@company.com',grad:'linear-gradient(135deg,#7C3AED,#EC4899)',initial:'박'},
-  {id:4,name:'최계획',role:'Manager',dept:'생산계획팀',email:'choi@company.com',grad:'linear-gradient(135deg,#F59E0B,#EF4444)',initial:'최'},
-  {id:5,name:'정구매',role:'Analyst',dept:'구매팀',    email:'jung@company.com',grad:'linear-gradient(135deg,#06B6D4,#3B82F6)',initial:'정'},
+  {id:1,name:'김다솜',role:'Analyst',dept:'개발팀',email:'dasom@company.com',  grad:'linear-gradient(135deg,#3B82F6,#7C3AED)',initial:'다'},
+  {id:2,name:'민경아',role:'Manager',dept:'개발팀',email:'kyounga@company.com',grad:'linear-gradient(135deg,#10B981,#059669)',initial:'경'},
+  {id:3,name:'구지은',role:'Analyst',dept:'개발팀',email:'jieun@company.com',  grad:'linear-gradient(135deg,#06B6D4,#3B82F6)',initial:'지'},
+  {id:4,name:'김성민',role:'Analyst',dept:'개발팀',email:'sungmin@company.com',grad:'linear-gradient(135deg,#F59E0B,#EF4444)',initial:'성'},
+  {id:5,name:'관리자',role:'Admin',  dept:'IT팀',  email:'admin@company.com',  grad:'linear-gradient(135deg,#7C3AED,#EC4899)',initial:'관'},
 ]
 
 export const LOGIN_ACCOUNTS = [
-  {email:'na@company.com',  password:'1234',member:ALL_MEMBERS[0]},
-  {email:'kim@company.com', password:'1234',member:ALL_MEMBERS[1]},
-  {email:'park@company.com',password:'1234',member:ALL_MEMBERS[2]},
-  {email:'choi@company.com',password:'1234',member:ALL_MEMBERS[3]},
-  {email:'jung@company.com',password:'1234',member:ALL_MEMBERS[4]},
+  {email:'dasom@company.com',  password:'1234',member:ALL_MEMBERS[0]},
+  {email:'kyounga@company.com',password:'1234',member:ALL_MEMBERS[1]},
+  {email:'jieun@company.com',  password:'1234',member:ALL_MEMBERS[2]},
+  {email:'sungmin@company.com',password:'1234',member:ALL_MEMBERS[3]},
+  {email:'admin@company.com',  password:'1234',member:ALL_MEMBERS[4]},
 ]
 
 export const ROLE_PERMISSIONS: Record<string, Record<string, boolean>> = {
