@@ -63,13 +63,14 @@ export default function LoginPage({ onLogin }: { onLogin: (member: Member) => vo
     const name = profile.display_name ?? email.split('@')[0]
 
     const member: Member = {
-      id:      0,  // UUID는 number로 변환 불가 — 로그인 후 사용하지 않으므로 0으로 처리
+      id:      authData.user?.id ?? '',
       name,
       role,
       dept:    profile.department ?? '',
       email:   profile.email ?? email,
       grad:    ROLE_GRAD[role],
       initial: name.charAt(0) || '?',
+      orgId:   profile.org_id ?? 'default',
     }
 
     onLogin(member)

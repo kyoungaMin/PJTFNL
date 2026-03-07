@@ -1,9 +1,9 @@
 'use client'
 import React, { useState } from 'react'
-import { T, card, sectionTitle, USERS, ROLE_LABEL, ROLE_PERMISSIONS } from '@/lib/data'
+import { T, card, sectionTitle, USERS, ROLE_LABEL, ROLE_PERMISSIONS, type Member } from '@/lib/data'
 import { Badge, StatusBadge, PageHeader, Btn, FilterBar, Select, SearchInput, Table } from '@/components/ui'
 
-export default function PageAdmin() {
+export default function PageAdmin({ currentUser }: { currentUser: Member }) {
   const [users, setUsers]   = useState(USERS);
   const [roleF, setRoleF]   = useState("전체");
   const [search, setSearch] = useState("");

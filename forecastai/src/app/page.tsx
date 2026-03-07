@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { T } from '@/lib/data'
 import type { Member } from '@/lib/data'
 import { Sidebar, Header } from '@/components/layout'
@@ -20,6 +20,10 @@ export default function Home() {
   const [page, setPage] = useState('dashboard')
   const [collapsed, setCollapsed] = useState(false)
   const [currentUser, setCurrentUser] = useState<Member | null>(null)
+  const [alertCount, setAlertCount] = useState(0)
+
+  // stable reference — Dashboard → Header 알림 배지 업데이트
+  const handleAlertCount = useCallback((count: number) => setAlertCount(count), [])
 
   if (!loggedIn || !currentUser) {
     return (
@@ -33,7 +37,7 @@ export default function Home() {
   }
 
   const PAGE_MAP: Record<string, React.ReactNode> = {
-    dashboard:          <PageDashboard />,
+    dashboard:          <PageDashboard setPage={setPage} onAlertCount={handleAlertCount} />,
     'weekly-forecast':  <PageWeeklyForecast />,
     'monthly-forecast': <PageMonthlyForecast />,
     inventory:          <PageInventory />,
@@ -46,7 +50,15 @@ export default function Home() {
     'ext-fx':           <PageExtFX />,
     'ext-supply':       <PageExtSupply />,
     'ext-raw':          <PageExtRaw />,
-    admin:              <PageAdmin />,
+    admin: currentUser.role === 'Admin'
+      ? <PageAdmin currentUser={currentUser} />
+      : (
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:12 }}>
+            <div style={{ fontSize:48, color:T.border }}>🔒</div>
+            <div style={{ fontSize:16, fontWeight:700, color:T.text1 }}>접근 권한이 없습니다</div>
+            <div style={{ fontSize:13, color:T.text3 }}>관리자 페이지는 Admin 역할만 접근 가능합니다.</div>
+          </div>
+        ),
   }
 
   return (
@@ -55,7 +67,7 @@ export default function Home() {
       color:T.text1, overflow:'hidden' }}>
       <Sidebar page={page} setPage={setPage} collapsed={collapsed} onToggle={() => setCollapsed(p => !p)} currentUser={currentUser} />
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-        <Header currentUser={currentUser} setCurrentUser={setCurrentUser} setPage={setPage} />
+        <Header currentUser={currentUser} setCurrentUser={setCurrentUser} setPage={setPage} alertCount={alertCount} />
         <div style={{ flex:1, overflowY:'auto', padding:'28px 32px' }}>
           {PAGE_MAP[page] ?? <PageDashboard />}
         </div>

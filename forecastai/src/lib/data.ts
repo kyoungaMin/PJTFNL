@@ -25,8 +25,9 @@ export const sectionTitle: React.CSSProperties = {
 export type RoleType = 'Admin' | 'Manager' | 'Analyst' | 'Viewer'
 
 export interface Member {
-  id: number; name: string; role: RoleType; dept: string;
+  id: string; name: string; role: RoleType; dept: string;
   email: string; grad: string; initial: string;
+  orgId?: string;
 }
 
 // ─── Dashboard KPI ────────────────────────────────────────────────────────────
@@ -540,11 +541,11 @@ export function runSensitivity(sku: typeof SIM_SKUS[number], baseParams: SimPara
 
 // ─── Auth / Members ───────────────────────────────────────────────────────────
 export const ALL_MEMBERS: Member[] = [
-  {id:1,name:'김다솜',role:'Analyst',dept:'개발팀',email:'dasom@company.com',  grad:'linear-gradient(135deg,#3B82F6,#7C3AED)',initial:'다'},
-  {id:2,name:'민경아',role:'Manager',dept:'개발팀',email:'kyounga@company.com',grad:'linear-gradient(135deg,#10B981,#059669)',initial:'경'},
-  {id:3,name:'구지은',role:'Analyst',dept:'개발팀',email:'jieun@company.com',  grad:'linear-gradient(135deg,#06B6D4,#3B82F6)',initial:'지'},
-  {id:4,name:'김성민',role:'Analyst',dept:'개발팀',email:'sungmin@company.com',grad:'linear-gradient(135deg,#F59E0B,#EF4444)',initial:'성'},
-  {id:5,name:'관리자',role:'Admin',  dept:'IT팀',  email:'admin@company.com',  grad:'linear-gradient(135deg,#7C3AED,#EC4899)',initial:'관'},
+  {id:'1',name:'김다솜',role:'Analyst',dept:'개발팀',email:'dasom@company.com',  grad:'linear-gradient(135deg,#3B82F6,#7C3AED)',initial:'다'},
+  {id:'2',name:'민경아',role:'Manager',dept:'개발팀',email:'kyounga@company.com',grad:'linear-gradient(135deg,#10B981,#059669)',initial:'경'},
+  {id:'3',name:'구지은',role:'Analyst',dept:'개발팀',email:'jieun@company.com',  grad:'linear-gradient(135deg,#06B6D4,#3B82F6)',initial:'지'},
+  {id:'4',name:'김성민',role:'Analyst',dept:'개발팀',email:'sungmin@company.com',grad:'linear-gradient(135deg,#F59E0B,#EF4444)',initial:'성'},
+  {id:'5',name:'관리자',role:'Admin',  dept:'IT팀',  email:'admin@company.com',  grad:'linear-gradient(135deg,#7C3AED,#EC4899)',initial:'관'},
 ]
 
 export const LOGIN_ACCOUNTS = [
