@@ -135,7 +135,7 @@ export default function PageSimulation() {
   const lastAsis = simData[simData.length-1]?.asis ?? 0
   const safeStock = Math.round(selectedSku.safeStock * (1 + safetyBuffer/100))
   const stockoutElim = zeroWeeks > 0 && tobeZeroWeeks === 0
-  const costSaving = Math.round(Math.abs(productionDelta) * selectedSku.productionCap * 800)
+  const costSaving = Math.round(Math.abs(productionDelta) * selectedSku.productionCap * 7 * 800)
 
   const sensitivityData = useMemo(() =>
     runSensitivity(selectedSku, params, period, targetKpi),
@@ -165,7 +165,7 @@ export default function PageSimulation() {
       id: Date.now().toString(), name: scenarioName.trim(), color,
       params: {...params}, skuId: selectedSku.id, simData: sd, radar,
       kpis: { finalStock: last, stockoutWeeks: twz,
-        costDelta: Math.abs(params.productionDelta) * selectedSku.productionCap * 800 + params.orderQty * 500,
+        costDelta: Math.abs(params.productionDelta) * selectedSku.productionCap * 7 * 800 + params.orderQty * 500,
         deliveryRate: twz === 0 ? 95 : twz <= 1 ? 82 : 63 }
     }])
     setScenarioName('')
@@ -358,7 +358,7 @@ export default function PageSimulation() {
               <div style={{marginTop:16,padding:'10px 12px',background:T.surface2,borderRadius:8,fontSize:11,color:T.text2}}>
                 <div style={{fontWeight:700,color:T.text1,marginBottom:6}}>현재 기준값</div>
                 {([['현재 재고',`${fmt(selectedSku.currentStock)} EA`],['안전재고',`${fmt(safeStock)} EA`],
-                  ['주 생산능력',`${fmt(selectedSku.productionCap)} EA`],['주간 수요',`${fmt(selectedSku.weeklyDemand)} EA`],
+                  ['일 생산능력',`${fmt(selectedSku.productionCap)} EA/일`],['주간 생산능력',`${fmt(selectedSku.productionCap * 7)} EA/주`],['주간 수요',`${fmt(selectedSku.weeklyDemand)} EA`],
                   ['리드타임',`${Math.max(1,selectedSku.leadTime+leadTimeDelta)}일`]] as [string,string][]).map(([k,v])=>(
                   <div key={k} style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
                     <span style={{color:T.text3}}>{k}</span>
@@ -476,7 +476,7 @@ export default function PageSimulation() {
                 <div style={{display:'flex',flexDirection:'column',gap:7}}>
                   {[
                     demandDelta!==0 && `• 수요 ${demandDelta>0?'증가':'감소'} ${Math.abs(demandDelta)}% 적용 → 주간 예상 수요 ${fmt(Math.round(selectedSku.weeklyDemand*(1+demandDelta/100)))} EA`,
-                    productionDelta!==0 && `• 생산량 ${productionDelta>0?'증량':'감량'} ${Math.abs(productionDelta)}% → 주간 생산능력 ${fmt(Math.round(selectedSku.productionCap*(1+productionDelta/100)))} EA`,
+                    productionDelta!==0 && `• 생산량 ${productionDelta>0?'증량':'감량'} ${Math.abs(productionDelta)}% → 주간 생산능력 ${fmt(Math.round(selectedSku.productionCap*7*(1+productionDelta/100)))} EA`,
                     safetyBuffer!==0 && `• 안전재고 버퍼 +${safetyBuffer}% → 목표 안전재고 ${fmt(safeStock)} EA`,
                     orderQty>0 && `• 추가 발주 ${fmt(orderQty)} EA — 리드타임 ${Math.max(1,selectedSku.leadTime+leadTimeDelta)}일 후 입고 예정`,
                     leadTimeDelta!==0 && `• 리드타임 ${leadTimeDelta>0?'연장':'단축'} ${Math.abs(leadTimeDelta)}일 조정 → ${Math.max(1,selectedSku.leadTime+leadTimeDelta)}일`,

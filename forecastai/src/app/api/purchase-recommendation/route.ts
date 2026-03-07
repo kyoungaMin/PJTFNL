@@ -1,21 +1,27 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-/* ─── GET: 구매 권고 목록 ─── */
+/* ─── helper: plan_date(월요일) → 주차 라벨 ─── */
+function planDateToWeekLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  const end = new Date(d.getTime() + 6 * 86400000)
+  const fmt = (dt: Date) => dt.toISOString().slice(5, 10)
+  return `${fmt(d)} ~ ${fmt(end)}`
+}
+
+/* ─── GET: 구매 권고 목록 (주차 기반) ─── */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
+    const requestedWeek = searchParams.get('week')
     const requestedDate = searchParams.get('date')
 
-    // 사용 가능한 plan_date 목록 (cursor 방식 distinct)
+    // 1) 사용 가능한 plan_date 목록 — cursor 방식으로 distinct 조회
     const availableDates: string[] = []
     let cursor: string | null = null
-    for (let i = 0; i < 100; i++) {
-      let q = supabase
-        .from('purchase_recommendation')
-        .select('plan_date')
-        .order('plan_date', { ascending: false })
-        .limit(1)
+    for (let i = 0; i < 20; i++) {
+      let q = supabase.from('purchase_recommendation').select('plan_date')
+        .order('plan_date', { ascending: false }).limit(1)
       if (cursor) q = q.lt('plan_date', cursor)
       const { data: row } = await q
       if (!row || row.length === 0) break
@@ -24,38 +30,57 @@ export async function GET(request: Request) {
     }
 
     if (availableDates.length === 0) {
-      return NextResponse.json({ items: [], availableDates: [], source: 'empty' })
+      return NextResponse.json({ items: [], availableWeeks: [], availableDates: [], source: 'empty' })
     }
 
-    const planDate = requestedDate && availableDates.includes(requestedDate)
-      ? requestedDate
-      : availableDates[0]
+    const availableWeeks = availableDates.map(d => ({
+      date: d,
+      label: planDateToWeekLabel(d),
+    }))
 
-    // 해당 날짜 데이터 조회
-    const { data: recs, error: recsErr } = await supabase
-      .from('purchase_recommendation')
-      .select('*')
-      .eq('plan_date', planDate)
-      .order('urgency', { ascending: true })
+    const planDate = (requestedWeek && availableDates.includes(requestedWeek))
+      ? requestedWeek
+      : (requestedDate && availableDates.includes(requestedDate))
+        ? requestedDate
+        : availableDates[0]
+
+    // 2) 해당 주차 데이터 조회 (페이지네이션 — Supabase 기본 1000건 제한 회피)
+    const allRecs: any[] = []
+    const PAGE = 1000
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error: pageErr } = await supabase
+        .from('purchase_recommendation')
+        .select('*')
+        .eq('plan_date', planDate)
+        .order('urgency', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (pageErr) throw pageErr
+      if (!page || page.length === 0) break
+      allRecs.push(...page)
+      if (page.length < PAGE) break
+    }
+    const recs = allRecs
+    const recsErr = null
 
     if (recsErr) throw recsErr
     if (!recs || recs.length === 0) {
-      return NextResponse.json({ items: [], availableDates, source: 'empty' })
+      return NextResponse.json({ items: [], availableWeeks, availableDates, source: 'empty' })
     }
 
-    // product_master 조인 — 부품명/카테고리
+    // 3) product_master 조인 (배치 분할 — Supabase .in() URL 제한 회피)
     const componentIds = Array.from(new Set(recs.map(r => r.component_product_id)))
-    const { data: masters } = await supabase
-      .from('product_master')
-      .select('product_code,product_name,product_category')
-      .in('product_code', componentIds)
-
     const masterMap: Record<string, any> = {}
-    for (const m of (masters ?? [])) {
-      masterMap[m.product_code] = m
+    const BATCH = 200
+    for (let i = 0; i < componentIds.length; i += BATCH) {
+      const batch = componentIds.slice(i, i + BATCH)
+      const { data: masters } = await supabase
+        .from('product_master')
+        .select('product_code,product_name,product_category')
+        .in('product_code', batch)
+      for (const m of (masters ?? [])) masterMap[m.product_code] = m
     }
 
-    // items 변환
+    // 4) items 변환
     const urgencyOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
     const items = recs.map(r => {
       const m = masterMap[r.component_product_id] ?? {}
@@ -91,7 +116,6 @@ export async function GET(request: Request) {
       }
     })
 
-    // 긴급도 정렬
     items.sort((a, b) => (urgencyOrder[a.urgency] ?? 9) - (urgencyOrder[b.urgency] ?? 9))
 
     // 공급사별 발주금액 차트
@@ -112,7 +136,6 @@ export async function GET(request: Request) {
       { name: 'Low',      value: items.filter(i => i.urgency === 'low').length,      color: '#059669' },
     ].filter(d => d.value > 0)
 
-    // 공급사 목록 (필터용)
     const suppliers = Array.from(new Set(items.map(i => i.supplierName).filter(s => s !== '-'))).sort()
 
     return NextResponse.json({
@@ -121,6 +144,8 @@ export async function GET(request: Request) {
       urgencyDist,
       suppliers,
       planDate,
+      planWeekLabel: planDateToWeekLabel(planDate),
+      availableWeeks,
       availableDates,
       source: 'database',
     })

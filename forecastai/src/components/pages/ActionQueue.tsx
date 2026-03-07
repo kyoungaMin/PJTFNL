@@ -2,8 +2,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
-import { T, card, sectionTitle, PRODUCTION_PLAN_DATA, PRODUCTION_LINE_CHART,
-  PROD_PRIORITY_DIST, PLAN_TYPE_LABELS, PRIORITY_STYLE } from '@/lib/data'
+import { T, card, sectionTitle, PRODUCTION_PLAN_DATA,
+  PLAN_TYPE_LABELS, PRIORITY_STYLE } from '@/lib/data'
 import { Badge, GradeBadge, RiskTypeBadge, PageHeader, Btn, FilterBar, Select, SearchInput } from '@/components/ui'
 
 /* ────── types ────── */
@@ -17,8 +17,8 @@ type PlanItem = {
   status: string; riskType: string; customer: string;
   aiReason: { avgConsume: number; openOrder: number; depletionDay: number; leadTime: number; p90Demand: number };
 }
-type PrioDist = { name: string; value: number; color: string }
-type LineChart = Record<string, any>[]
+type ChartData = Record<string, any>[]
+type WeekOption = { date: string; label: string }
 
 /* ────── helpers ────── */
 const fmt = (n: number) => n.toLocaleString()
@@ -31,7 +31,7 @@ const statusColors: Record<string,{color:string,bg:string,border:string}> = {
   completed:   { color:T.green, bg:T.greenSoft,  border:T.greenMid },
   cancelled:   { color:T.text3, bg:T.surface2,   border:T.border   },
 }
-const LINE_COLORS = [T.blue, T.green, T.amber, T.purple, T.orange, T.red]
+const CAT_COLORS = [T.blue, T.green, T.amber, T.purple, T.orange, T.red, '#6366F1', '#EC4899']
 
 /* ────── KPI Card ────── */
 function KpiCard({ label, value, sub, color, icon }: { label:string, value:string, sub:string, color:string, icon:string }) {
@@ -79,17 +79,20 @@ function SourceBadge({ source }: { source: string }) {
 /* ══════════ Main Component ══════════ */
 export default function PageActionQueue() {
   const [items, setItems]           = useState<PlanItem[]>([])
-  const [lineChartData, setLineChartData] = useState<LineChart>(PRODUCTION_LINE_CHART)
-  const [priorityDist, setPriorityDist]   = useState<PrioDist[]>(PROD_PRIORITY_DIST)
-  const [lineList, setLineList]     = useState<string[]>(['L-1','L-2','L-3','L-4'])
+  const [catChartData, setCatChartData]   = useState<ChartData>([])
+  const [catList, setCatList]             = useState<string[]>([])
+  const [topProducts, setTopProducts]     = useState<{id:string;name:string;qty:number;category:string}[]>([])
   const [dataSource, setDataSource] = useState<string>('loading')
   const [planDate, setPlanDate]     = useState<string>('')
-  const [availableDates, setAvailableDates] = useState<string[]>([])
+  const [planWeek, setPlanWeek]     = useState<string>('')
+  const [planWeekLabel, setPlanWeekLabel] = useState<string>('')
+  const [availableWeeks, setAvailableWeeks] = useState<WeekOption[]>([])
   const [loading, setLoading]       = useState(true)
 
+  const [showGuide, setShowGuide] = useState(false)
   const [statusF, setStatusF] = useState('전체')
   const [priorF, setPriorF]   = useState('전체')
-  const [lineF, setLineF]     = useState('전체')
+  const [catF, setCatF]       = useState('전체')
   const [search, setSearch]   = useState('')
   const [selected, setSelected] = useState<number[]>([])
   const [drawerItem, setDrawerItem] = useState<PlanItem | null>(null)
@@ -98,38 +101,41 @@ export default function PageActionQueue() {
   const [adjQty, setAdjQty]   = useState<number | null>(null)
 
   /* ── fetch data ── */
-  const loadData = useCallback(async (date?: string) => {
+  const loadData = useCallback(async (week?: string) => {
     setLoading(true)
     try {
-      const qs = date ? `?date=${date}` : ''
+      const qs = week ? `?week=${week}` : ''
       const res = await fetch(`/api/production-plan${qs}`)
       const json = await res.json()
 
-      if (json.availableDates?.length > 0) {
-        setAvailableDates(json.availableDates)
+      if (json.availableWeeks?.length > 0) {
+        setAvailableWeeks(json.availableWeeks)
       }
 
       if (json.source === 'database' && json.items?.length > 0) {
         setItems(json.items)
-        setLineChartData(json.lineChart ?? PRODUCTION_LINE_CHART)
-        setPriorityDist(json.priorityDist ?? PROD_PRIORITY_DIST)
-        setLineList(json.lines ?? ['L-1','L-2','L-3','L-4'])
+        setCatChartData(json.categoryChart ?? [])
+        setCatList(json.categories ?? [])
+        setTopProducts(json.topProducts ?? [])
+
         setPlanDate(json.planDate ?? '')
+        setPlanWeek(json.planWeek ?? '')
+        setPlanWeekLabel(json.planWeekLabel ?? '')
         setDataSource('database')
       } else {
-        // fallback to mock
         setItems(PRODUCTION_PLAN_DATA.map(i => ({ ...i })))
-        setLineChartData(PRODUCTION_LINE_CHART)
-        setPriorityDist(PROD_PRIORITY_DIST)
-        setLineList(['L-1','L-2','L-3','L-4'])
+        setCatChartData([])
+        setCatList([])
+        setTopProducts([])
+
         setDataSource(json.source === 'error' ? 'error' : 'mock')
       }
     } catch {
-      // API unreachable → mock fallback
       setItems(PRODUCTION_PLAN_DATA.map(i => ({ ...i })))
-      setLineChartData(PRODUCTION_LINE_CHART)
+      setCatChartData([])
+      setCatList([])
+      setTopProducts([])
       setPriorityDist(PROD_PRIORITY_DIST)
-      setLineList(['L-1','L-2','L-3','L-4'])
       setDataSource('mock')
     } finally {
       setLoading(false)
@@ -138,29 +144,31 @@ export default function PageActionQueue() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  const handleDateChange = (date: string) => {
-    setPlanDate(date)
-    loadData(date)
-  }
+  const handleWeekChange = (week: string) => { setPlanDate(week); loadData(week) }
 
   /* ── computed ── */
   const totalPlan = items.reduce((s, i) => s + i.plannedQty, 0)
+  const stockoutItems = items.filter(i => i.currentStock < i.safetyStock).length
+  const zeroStockItems = items.filter(i => i.currentStock <= 0).length
   const draftCount = items.filter(i => i.status === 'draft').length
-  const urgentCount = items.filter(i => i.priority === 'critical' || i.priority === 'high').length
-  const avgUtil = items.length > 0
-    ? Math.round(items.reduce((s, i) => s + (i.maxCapacity > 0 ? (i.plannedQty / 7) / i.maxCapacity * 100 : 0), 0) / items.length)
-    : 0
-  const approvedRate = items.length > 0
-    ? Math.round(items.filter(i => i.status !== 'draft').length / items.length * 100)
-    : 0
+  const approvedCount = items.filter(i => i.status !== 'draft').length
+  const approvedRate = items.length > 0 ? Math.round(approvedCount / items.length * 100) : 0
+
+  const gradeDist = useMemo(() => [
+    { name: 'A (안전)', value: items.filter(i => i.riskGrade === 'A').length, color: '#059669' },
+    { name: 'B (양호)', value: items.filter(i => i.riskGrade === 'B').length, color: '#2563EB' },
+    { name: 'C (주의)', value: items.filter(i => i.riskGrade === 'C').length, color: '#D97706' },
+    { name: 'D (위험)', value: items.filter(i => i.riskGrade === 'D').length, color: '#DC2626' },
+    { name: 'F (긴급)', value: items.filter(i => i.riskGrade === 'F').length, color: '#7C2D12' },
+  ].filter(d => d.value > 0), [items])
 
   const filtered = useMemo(() => items.filter(i => {
     const ms = statusF === '전체' || (statusMap[i.status] ?? i.status) === statusF
     const mp = priorF === '전체' || i.priority === priorF.toLowerCase()
-    const ml = lineF === '전체' || i.line === lineF
+    const mc = catF === '전체' || i.category === catF
     const mq = !search || i.sku.toLowerCase().includes(search.toLowerCase()) || i.name.includes(search)
-    return ms && mp && ml && mq
-  }), [items, statusF, priorF, lineF, search])
+    return ms && mp && mc && mq
+  }), [items, statusF, priorF, catF, search])
 
   /* ── actions ── */
   const doApprove = async (id: number) => {
@@ -194,16 +202,73 @@ export default function PageActionQueue() {
     return ['전체', ...statuses]
   }, [items])
 
-  /* ── line filter options (dynamic) ── */
-  const lineOptions = useMemo(() => ['전체', ...lineList], [lineList])
+  /* ── category filter options (dynamic) ── */
+  const catOptions = useMemo(() => {
+    const cats = Array.from(new Set(items.map(i => i.category).filter(Boolean)))
+    return ['전체', ...cats.sort()]
+  }, [items])
 
-  /* ── loading state ── */
+  /* ── loading state — 스켈레톤 UI ── */
   if (loading) {
+    const pulse: React.CSSProperties = {
+      background:`linear-gradient(90deg, ${T.surface} 25%, ${T.border}44 50%, ${T.surface} 75%)`,
+      backgroundSize:'200% 100%', animation:'pulse 1.5s infinite', borderRadius:6,
+    }
     return (
       <div>
+        <style>{`
+          @keyframes pulse{0%{background-position:200% 0}100%{background-position:-200% 0}}
+          @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+          @keyframes fadeInUp{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
+        `}</style>
         <PageHeader title="생산 권고" sub="AI 기반 주간 생산계획 권고 · S7 파이프라인" action={undefined}/>
-        <div style={{ ...card, padding:'60px 0', textAlign:'center' }}>
-          <div style={{ fontSize:14, color:T.text3 }}>데이터를 불러오는 중...</div>
+
+        {/* 로딩 안내 배너 */}
+        <div style={{ ...card, padding:'20px 24px', marginBottom:20, display:'flex', alignItems:'center', gap:16,
+          background:`linear-gradient(135deg, ${T.blueSoft}, ${T.surface})`, border:`1px solid ${T.blueMid}`,
+          animation:'fadeInUp 0.3s ease-out' }}>
+          {/* 스피너 */}
+          <div style={{ width:36, height:36, borderRadius:'50%', flexShrink:0,
+            border:`3px solid ${T.blueMid}`, borderTopColor:T.blue,
+            animation:'spin 0.8s linear infinite' }}/>
+          <div>
+            <div style={{ fontSize:14, fontWeight:700, color:T.text1, marginBottom:2 }}>
+              생산 권고 데이터를 불러오고 있습니다
+            </div>
+            <div style={{ fontSize:12, color:T.text3 }}>
+              수요예측 · 재고 · 리스크 분석 결과를 종합하여 최적 생산계획을 생성 중입니다...
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 스켈레톤 */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{ ...card, padding:20 }}>
+              <div style={{ ...pulse, width:80, height:12, marginBottom:10 }}/>
+              <div style={{ ...pulse, width:100, height:24, marginBottom:6 }}/>
+              <div style={{ ...pulse, width:60, height:10 }}/>
+            </div>
+          ))}
+        </div>
+        {/* 차트 스켈레톤 */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16, marginBottom:20 }}>
+          <div style={{ ...card, padding:20 }}><div style={{ ...pulse, width:'100%', height:220 }}/></div>
+          <div style={{ ...card, padding:20 }}><div style={{ ...pulse, width:'100%', height:220 }}/></div>
+          <div style={{ ...card, padding:20 }}><div style={{ ...pulse, width:'100%', height:220 }}/></div>
+        </div>
+        {/* 테이블 스켈레톤 */}
+        <div style={{ ...card, padding:16 }}>
+          <div style={{ ...pulse, width:200, height:14, marginBottom:16 }}/>
+          {[0,1,2,3,4,5].map(i => (
+            <div key={i} style={{ display:'flex', gap:12, marginBottom:10 }}>
+              <div style={{ ...pulse, width:60, height:14 }}/>
+              <div style={{ ...pulse, width:120, height:14 }}/>
+              <div style={{ ...pulse, flex:1, height:14 }}/>
+              <div style={{ ...pulse, width:80, height:14 }}/>
+              <div style={{ ...pulse, width:60, height:14 }}/>
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -211,79 +276,236 @@ export default function PageActionQueue() {
 
   return (
     <div>
+      {/* ── 사용자 가이드 모달 ── */}
+      {showGuide && (
+        <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={() => setShowGuide(false)}>
+          <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.4)' }}/>
+          <div onClick={e => e.stopPropagation()}
+            style={{ position:'relative', background:T.surface, borderRadius:16, padding:'32px 36px',
+              maxWidth:720, width:'90vw', maxHeight:'85vh', overflowY:'auto',
+              boxShadow:'0 20px 60px rgba(0,0,0,0.15)', border:`1px solid ${T.border}` }}>
+            <button onClick={() => setShowGuide(false)}
+              style={{ position:'absolute', top:16, right:16, background:'none', border:'none',
+                fontSize:18, cursor:'pointer', color:T.text3, fontWeight:700 }}>X</button>
+
+            <h2 style={{ fontSize:18, fontWeight:800, color:T.text1, marginBottom:4 }}>생산 권고 사용자 가이드</h2>
+            <p style={{ fontSize:12, color:T.text3, marginBottom:20, lineHeight:1.6 }}>
+              이 페이지는 AI가 수요예측, 재고, 리스크 데이터를 종합 분석하여<br/>
+              &quot;이번 주에 어떤 제품을 얼마나 생산해야 하는가&quot;를 권고하는 화면입니다.
+            </p>
+
+            {/* 생산 최적화 알고리즘 */}
+            <div style={{ marginBottom:20 }}>
+              <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>AI 생산 최적화 알고리즘</h3>
+              <div style={{ fontSize:12, color:T.text2, lineHeight:1.8, background:T.surface2, borderRadius:10, padding:'14px 16px', border:`1px solid ${T.border}` }}>
+                <b>① 순소요량 산출</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  수요예측(P50) + 안전재고(리드타임P90 × 일평균수요) − 현재재고 = <b style={{ color:T.text1 }}>순소요량</b>
+                </span><br/>
+                <b>② 긴급 수주 반영</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  미처리 수주 중 납기 7일 이내 긴급분을 소요량에 추가 반영
+                </span><br/>
+                <b>③ 캐파 제약 적용</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  최근 90일 일평균생산 × 1.2(버퍼) × 7일 = <b style={{ color:T.text1 }}>주간 최대 캐파</b>
+                </span><br/>
+                <b>④ 리스크 동적 조정</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  · 결품 위험 (D/F등급 + stockout{'>'} 60%) → P90 기준 상향<br/>
+                  <span style={{ paddingLeft:16 }}>· 과잉 위험 (D/F등급 + excess{'>'} 60%) → 10% 감량</span>
+                </span>
+              </div>
+            </div>
+
+            {/* KPI 카드 설명 */}
+            <div style={{ marginBottom:20 }}>
+              <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>KPI 카드 (상단 4개)</h3>
+              <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+                <tbody>
+                  {([
+                    ['결품 위험 품목', '현재 재고가 안전재고보다 적은 제품 수. 이 제품들은 수요 발생 시 결품(품절)될 가능성이 높아 우선 생산이 필요합니다.'],
+                    ['이번 주 계획 생산량', 'AI가 권고한 이번 주 전체 생산 수량의 합계입니다.'],
+                    ['승인 진행률', '전체 권고 중 담당자가 승인한 비율입니다. 100%가 되면 모든 권고가 검토 완료된 것입니다.'],
+                    ['재고 소진 품목', '현재 재고가 0인 제품 수. 즉시 생산하지 않으면 납기 지연이 발생합니다.'],
+                  ] as const).map(([label, desc]) => (
+                    <tr key={label} style={{ borderBottom:`1px solid ${T.border}` }}>
+                      <td style={{ padding:'8px 10px', fontWeight:700, color:T.text1, whiteSpace:'nowrap', verticalAlign:'top' }}>{label}</td>
+                      <td style={{ padding:'8px 10px', color:T.text2, lineHeight:1.6 }}>{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 리스크등급 */}
+            <div style={{ marginBottom:20 }}>
+              <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>리스크등급 (A ~ D)</h3>
+              <p style={{ fontSize:12, color:T.text3, marginBottom:8 }}>
+                결품위험, 과잉위험, 납기위험, 마진위험을 종합하여 제품별로 부여하는 위험 등급입니다.
+              </p>
+              <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+                <tbody>
+                  {([
+                    ['A (안전)', '#059669', '재고와 수요 균형이 양호. 정상 생산 유지.'],
+                    ['B (양호)', '#2563EB', '약간의 주의가 필요하나 큰 문제 없음.'],
+                    ['C (주의)', '#D97706', '결품 또는 과잉 위험이 감지됨. 생산량 조정 검토 필요.'],
+                    ['D (위험)', '#DC2626', '결품/과잉 위험이 높음. 즉시 생산계획 조정이 필요.'],
+                  ] as const).map(([label, color, desc]) => (
+                    <tr key={label} style={{ borderBottom:`1px solid ${T.border}` }}>
+                      <td style={{ padding:'8px 10px', fontWeight:700, color, whiteSpace:'nowrap', verticalAlign:'top' }}>{label}</td>
+                      <td style={{ padding:'8px 10px', color:T.text2, lineHeight:1.6 }}>{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 계획유형 */}
+            <div style={{ marginBottom:20 }}>
+              <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>계획유형</h3>
+              <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+                <tbody>
+                  {([
+                    ['증산', T.red, '최근 평균 대비 15% 이상 생산량 증가 필요. 수요 증가 또는 재고 부족 시 발생.'],
+                    ['감산', T.blue, '최근 평균 대비 15% 이상 생산량 감소 권고. 과잉재고 방지를 위해 줄여야 합니다.'],
+                    ['유지', T.amber, '현재 생산 수준 유지. 수요와 재고가 안정적입니다.'],
+                    ['신규', T.purple, '최근 생산 이력이 없는 제품의 신규 생산 권고.'],
+                  ] as const).map(([label, color, desc]) => (
+                    <tr key={label} style={{ borderBottom:`1px solid ${T.border}` }}>
+                      <td style={{ padding:'8px 10px', fontWeight:700, color, whiteSpace:'nowrap', verticalAlign:'top' }}>{label}</td>
+                      <td style={{ padding:'8px 10px', color:T.text2, lineHeight:1.6 }}>{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 제품 상세 용어 */}
+            <div style={{ marginBottom:20 }}>
+              <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>제품 상세 정보 용어</h3>
+              <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+                <tbody>
+                  {([
+                    ['P10 (낙관)', '수요가 적을 확률 90%인 하한값. "최소 이 정도는 팔린다"는 의미입니다.'],
+                    ['P50 (기준)', '가장 가능성 높은 예측 수요. AI가 권고하는 생산량의 기준이 됩니다.'],
+                    ['P90 (보수)', '수요가 이보다 클 확률 10%인 상한값. "최대 이 정도 팔릴 수 있다"는 의미입니다.'],
+                    ['안전재고', '수요 변동과 리드타임을 고려하여 결품 방지를 위해 항상 유지해야 하는 최소 재고량입니다.'],
+                    ['계획수량', 'AI가 권고하는 이번 주 최적 생산 수량입니다. 수요예측 + 안전재고 - 현재재고를 기반으로 산출됩니다.'],
+                    ['현재재고', '현재 창고에 보유 중인 수량입니다.'],
+                    ['일 생산능력', '하루에 생산 가능한 평균 수량입니다. 최근 생산 이력 기반으로 산출됩니다.'],
+                    ['리드타임', '생산 시작부터 완료까지 걸리는 평균 일수입니다.'],
+                  ] as const).map(([label, desc]) => (
+                    <tr key={label} style={{ borderBottom:`1px solid ${T.border}` }}>
+                      <td style={{ padding:'8px 10px', fontWeight:700, color:T.text1, whiteSpace:'nowrap', verticalAlign:'top' }}>{label}</td>
+                      <td style={{ padding:'8px 10px', color:T.text2, lineHeight:1.6 }}>{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 워크플로우 */}
+            <div style={{ marginBottom:8 }}>
+              <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>사용 흐름</h3>
+              <div style={{ fontSize:12, color:T.text2, lineHeight:1.8, background:T.surface, borderRadius:10, padding:'14px 16px', border:`1px solid ${T.border}` }}>
+                <b>Step 1.</b> 조회 주차를 선택하여 해당 주의 생산 권고를 확인합니다.<br/>
+                <b>Step 2.</b> 결품위험/재고소진 KPI를 확인하여 긴급 품목을 파악합니다.<br/>
+                <b>Step 3.</b> 리스크등급 C·D 제품을 우선 검토합니다.<br/>
+                <b>Step 4.</b> 제품 행을 클릭하면 AI 분석 근거(일평균 소비량, 미처리 수주, 재고소진 예상일 등)를 확인할 수 있습니다.<br/>
+                <b>Step 5.</b> 검토 후 &quot;승인&quot; 버튼을 눌러 생산계획을 확정합니다.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PageHeader title="생산 권고" sub={
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <span>AI 기반 주간 생산계획 권고 · S7 파이프라인</span>
           <SourceBadge source={dataSource}/>
+          <button onClick={() => setShowGuide(true)}
+            style={{ fontSize:11, fontWeight:700, color:T.blue, background:T.blueSoft,
+              border:`1px solid ${T.blueMid}`, borderRadius:6, padding:'3px 8px', cursor:'pointer' }}>? 가이드</button>
         </div>
       } action={
-        availableDates.length > 1 ? (
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <button onClick={() => {
-              const idx = availableDates.indexOf(planDate)
-              if (idx < availableDates.length - 1) handleDateChange(availableDates[idx + 1])
-            }} disabled={availableDates.indexOf(planDate) >= availableDates.length - 1}
-              style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:6, padding:'4px 8px', cursor:'pointer', fontSize:14, color:T.text2, opacity: availableDates.indexOf(planDate) >= availableDates.length - 1 ? 0.3 : 1 }}>◀</button>
-            <select value={planDate} onChange={e => handleDateChange(e.target.value)}
-              style={{ fontSize:12, fontWeight:700, color:T.text1, background:T.surface, border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 28px 6px 10px', cursor:'pointer', outline:'none',
-                appearance:'none' as const, backgroundImage:`url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394A3B8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                backgroundRepeat:'no-repeat', backgroundPosition:'right 8px center', fontFamily:"'IBM Plex Mono',monospace" }}>
-              {availableDates.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <button onClick={() => {
-              const idx = availableDates.indexOf(planDate)
-              if (idx > 0) handleDateChange(availableDates[idx - 1])
-            }} disabled={availableDates.indexOf(planDate) <= 0}
-              style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:6, padding:'4px 8px', cursor:'pointer', fontSize:14, color:T.text2, opacity: availableDates.indexOf(planDate) <= 0 ? 0.3 : 1 }}>▶</button>
-          </div>
-        ) : planDate ? (
-          <span style={{ fontSize:12, fontWeight:600, color:T.text2, fontFamily:"'IBM Plex Mono',monospace" }}>{planDate}</span>
-        ) : undefined
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:11, color:T.text3, fontWeight:600 }}>조회 주차</span>
+          <select value={planDate}
+            onChange={e => handleWeekChange(e.target.value)}
+            style={{ fontSize:12, fontWeight:700, color:T.text1, background:T.surface,
+              border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
+              cursor:'pointer', outline:'none', fontFamily:"'IBM Plex Mono',monospace" }}>
+            {availableWeeks.map(w => (
+              <option key={w.date} value={w.date}>{w.label} ({w.date})</option>
+            ))}
+            {availableWeeks.length === 0 && <option value="">주차 없음</option>}
+          </select>
+          <button onClick={() => loadData()}
+            style={{ fontSize:11, fontWeight:600, color:T.blue, background:T.blueSoft, border:`1px solid ${T.blueMid}`,
+              borderRadius:6, padding:'5px 10px', cursor:'pointer' }}>최신</button>
+        </div>
       }/>
 
       {/* ── KPI Cards ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
-        <KpiCard icon="📋" label="총 권고 건수" value={`${items.length}건`} sub={`미승인 ${draftCount}건`} color={T.blue}/>
-        <KpiCard icon="🔥" label="긴급 권고" value={`${urgentCount}건`} sub="Critical + High" color={T.red}/>
-        <KpiCard icon="🏭" label="이번 주 계획 생산량" value={`${fmt(totalPlan)} EA`} sub={`${items.length}개 SKU 합계`} color={T.green}/>
-        <KpiCard icon="⚡" label="평균 설비 가동률" value={`${avgUtil}%`} sub={avgUtil >= 80 ? '주의: 고부하' : '정상 범위'} color={avgUtil >= 80 ? T.amber : T.green}/>
+        <KpiCard icon="🚨" label="결품 위험 품목" value={`${fmt(stockoutItems)}건`} sub={`재고 소진 ${fmt(zeroStockItems)}건 포함`} color={stockoutItems > 0 ? T.red : T.green}/>
+        <KpiCard icon="🏭" label="이번 주 계획 생산량" value={`${fmt(totalPlan)} EA`} sub={`${fmt(items.length)}개 SKU 합계`} color={T.blue}/>
+        <KpiCard icon="📋" label="승인 진행률" value={`${approvedRate}%`} sub={`승인 ${fmt(approvedCount)} / 미승인 ${fmt(draftCount)}`} color={approvedRate >= 50 ? T.green : T.amber}/>
+        <KpiCard icon="📦" label="재고 소진 품목" value={`${fmt(zeroStockItems)}건`} sub={zeroStockItems > 0 ? '즉시 생산 필요' : '안정'} color={zeroStockItems > 0 ? T.red : T.green}/>
       </div>
 
       {/* ── Charts Row ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr', gap:16, marginBottom:20 }}>
-        {/* 주간 라인별 생산계획 */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16, marginBottom:20 }}>
+        {/* 카테고리별 주간 생산실적 */}
         <div style={{ ...card }}>
-          <div style={sectionTitle}>주간 라인별 생산실적 (EA)</div>
+          <div style={sectionTitle}>카테고리별 주간 생산실적 (EA)</div>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={lineChartData} barGap={2}>
+            <BarChart data={catChartData} barGap={2}>
               <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false}/>
               <XAxis dataKey="day" tick={{ fontSize:11, fill:T.text3 }} axisLine={false} tickLine={false}/>
               <YAxis tick={{ fontSize:10, fill:T.text3 }} axisLine={false} tickLine={false}/>
               <Tooltip contentStyle={{ fontSize:12, borderRadius:8, border:`1px solid ${T.border}` }}/>
               <Legend wrapperStyle={{ fontSize:11 }}/>
-              {lineList.map((line, i) => (
-                <Bar key={line} dataKey={line} stackId="a" fill={LINE_COLORS[i % LINE_COLORS.length]}
-                  radius={i === lineList.length - 1 ? [2,2,0,0] : [0,0,0,0]} name={line}/>
+              {catList.map((cat, i) => (
+                <Bar key={cat} dataKey={cat} stackId="a" fill={CAT_COLORS[i % CAT_COLORS.length]}
+                  radius={i === catList.length - 1 ? [2,2,0,0] : [0,0,0,0]} name={cat}/>
               ))}
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* 우선순위 분포 + 계획유형 */}
+        {/* Top 5 제품 생산실적 */}
+        <div style={{ ...card }}>
+          <div style={sectionTitle}>Top 5 제품 생산실적 (EA)</div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={topProducts} layout="vertical" barSize={16}>
+              <CartesianGrid strokeDasharray="3 3" stroke={T.border} horizontal={false}/>
+              <XAxis type="number" tick={{ fontSize:10, fill:T.text3 }} axisLine={false} tickLine={false}/>
+              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize:10, fill:T.text2 }} axisLine={false} tickLine={false}/>
+              <Tooltip contentStyle={{ fontSize:12, borderRadius:8, border:`1px solid ${T.border}` }}
+                formatter={(v: number) => [`${v.toLocaleString()} EA`, '생산량']}/>
+              <Bar dataKey="qty" fill={T.blue} radius={[0,4,4,0]} name="생산량"/>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* 리스크등급 분포 + 계획유형 */}
         <div style={{ ...card, display:'flex', flexDirection:'column', gap:16 }}>
           <div>
-            <div style={sectionTitle}>우선순위 분포</div>
+            <div style={sectionTitle}>리스크등급 분포</div>
             <ResponsiveContainer width="100%" height={150}>
               <PieChart>
-                <Pie data={priorityDist} cx="50%" cy="50%" innerRadius={30} outerRadius={60}
+                <Pie data={gradeDist} cx="50%" cy="50%" innerRadius={30} outerRadius={60}
                   dataKey="value" labelLine={false} label={PieLabel}>
-                  {priorityDist.map((e, i) => <Cell key={i} fill={e.color}/>)}
+                  {gradeDist.map((e, i) => <Cell key={i} fill={e.color}/>)}
                 </Pie>
                 <Tooltip contentStyle={{ fontSize:12, borderRadius:8 }}/>
               </PieChart>
             </ResponsiveContainer>
             <div style={{ display:'flex', justifyContent:'center', gap:12, marginTop:4 }}>
-              {priorityDist.map(d => (
+              {gradeDist.map(d => (
                 <div key={d.name} style={{ display:'flex', alignItems:'center', gap:4 }}>
                   <div style={{ width:8, height:8, borderRadius:2, background:d.color }}/>
                   <span style={{ fontSize:10, color:T.text3 }}>{d.name}</span>
@@ -316,12 +538,13 @@ export default function PageActionQueue() {
       <FilterBar>
         <Select value={statusF} onChange={setStatusF} options={statusOptions}/>
         <Select value={priorF}  onChange={setPriorF}  options={['전체','Critical','High','Medium','Low']}/>
-        <Select value={lineF}   onChange={setLineF}   options={lineOptions}/>
+        <Select value={catF}    onChange={setCatF}     options={catOptions}/>
         <SearchInput value={search} onChange={setSearch} placeholder="SKU / 제품명 검색"/>
         <div style={{ marginLeft:'auto', display:'flex', gap:8, alignItems:'center' }}>
-          {dataSource === 'database' && (
+          {dataSource === 'database' && <>
             <button onClick={() => loadData(planDate || undefined)} style={{ fontSize:11, color:T.blue, background:'none', border:'none', cursor:'pointer', fontWeight:600 }}>↻ 새로고침</button>
-          )}
+            {planWeekLabel && <span style={{ fontSize:10, color:T.text3, marginLeft:4 }}>{planWeek} {`(${planWeekLabel})`}</span>}
+          </>}
           {selected.length > 0 && <Btn variant="success" onClick={doBulk}>✓ 일괄 승인 ({selected.length}건)</Btn>}
         </div>
       </FilterBar>

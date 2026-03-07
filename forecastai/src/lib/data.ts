@@ -426,15 +426,16 @@ export const AI_PRESETS = [
 
 export function runSimulation(sku: typeof SIM_SKUS[number], params: {demandDelta:number,productionDelta:number,safetyBuffer:number,orderQty:number,leadTimeDelta:number}, weeks: number) {
   const demand = Math.round(sku.weeklyDemand * (1 + params.demandDelta / 100));
-  const production = Math.round(sku.productionCap * (1 + params.productionDelta / 100));
+  const weeklyProd = Math.round(sku.productionCap * 7 * (1 + params.productionDelta / 100));
+  const asisWeeklyProd = sku.productionCap * 7;
   const safe = Math.round(sku.safeStock * (1 + params.safetyBuffer / 100));
   const leadWeek = Math.max(1, Math.ceil((sku.leadTime + params.leadTimeDelta) / 7));
   const result: {w:string, asis:number, tobe:number, safe:number}[] = [];
   let asisStock = sku.currentStock;
   let tobeStock = sku.currentStock;
   for (let i = 1; i <= weeks; i++) {
-    asisStock = asisStock - sku.weeklyDemand + sku.productionCap;
-    tobeStock = tobeStock - demand + production + (i === leadWeek ? params.orderQty : 0);
+    asisStock = asisStock - sku.weeklyDemand + asisWeeklyProd;
+    tobeStock = tobeStock - demand + weeklyProd + (i === leadWeek ? params.orderQty : 0);
     result.push({ w: `W${i}`, asis: Math.round(asisStock), tobe: Math.round(tobeStock), safe });
   }
   return result;
@@ -522,7 +523,7 @@ function extractKpi(sku: typeof SIM_SKUS[number], params: SimParams, period: num
   switch (kpiKey) {
     case 'finalStock':    return lastTobe
     case 'stockoutWeeks': return tobeZeroWeeks
-    case 'costDelta':     return Math.abs(params.productionDelta) * sku.productionCap * 800 + params.orderQty * 500
+    case 'costDelta':     return Math.abs(params.productionDelta) * sku.productionCap * 7 * 800 + params.orderQty * 500
     case 'deliveryRate':  return tobeZeroWeeks === 0 ? 95 : tobeZeroWeeks <= 1 ? 82 : 63
     default: return 0
   }
@@ -577,6 +578,7 @@ export const NAV_STRUCTURE = [
   {id:'action-queue',    label:'생산 권고',    parent:'최적화',    dot:'#93C5FD',badge:3},
   {id:'purchase',        label:'구매 권고',    parent:'최적화',    dot:'#93C5FD'},
   {id:'simulation',      label:'시나리오 분석',parent:'최적화',    dot:'#93C5FD'},
+  {id:'model-scenario',  label:'AI 시나리오', parent:'최적화',    dot:'#93C5FD'},
   {id:'ext-semi',        label:'산업 지표',    parent:'외부 지표', dot:'#93C5FD'},
   {id:'ext-global',      label:'글로벌 수요',  parent:'외부 지표', dot:'#93C5FD'},
   {id:'ext-fx',          label:'환율 / 금리',  parent:'외부 지표', dot:'#93C5FD'},
