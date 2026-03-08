@@ -6,11 +6,14 @@ import { T, card, INV_ITEMS, INV_TREND, CAT_COLORS } from '@/lib/data'
 import { PageHeader, SearchInput } from '@/components/ui'
 
 export default function PageInventory() {
-  const [search,   setSearch]   = useState("");
-  const [catF,     setCatF]     = useState("전체");
-  const [sortKey,  setSortKey]  = useState("stock");
-  const [sortDesc, setSortDesc] = useState(true);
-  const [hoverSku, setHoverSku] = useState(null);
+  const [search,      setSearch]      = useState("");
+  const [catF,        setCatF]        = useState("전체");
+  const [sortKey,     setSortKey]     = useState("stock");
+  const [sortDesc,    setSortDesc]    = useState(true);
+  const [hoverSku,    setHoverSku]    = useState(null);
+  const [trendWeeks,  setTrendWeeks]  = useState(12);
+
+  const trendData = INV_TREND.slice(-trendWeeks);
 
   // KPI 계산
   const totalSku    = INV_ITEMS.length;
@@ -28,7 +31,7 @@ export default function PageInventory() {
   ).map(([name,value])=>({name, value, color:catColors[name]||"#94A3B8"}));
 
   // 필터 + 정렬
-  const cats = ["전체", ...new Set(INV_ITEMS.map(i=>i.category))];
+  const cats = ["전체", ...Array.from(new Set(INV_ITEMS.map(i=>i.category)))];
   const filtered = INV_ITEMS
     .filter(i=>(catF==="전체"||i.category===catF) && (i.sku.includes(search)||i.name.includes(search)))
     .sort((a,b)=>sortDesc?(b[sortKey]??0)-(a[sortKey]??0):(a[sortKey]??0)-(b[sortKey]??0));
@@ -48,7 +51,7 @@ export default function PageInventory() {
   const coverage = (item) => Math.round(item.stock / item.weeklyDemand * 7);
 
   // Tooltip
-  const TrendTT = ({active,payload,label}) => {
+  const TrendTT = ({active,payload,label}: any) => {
     if(!active||!payload?.length) return null;
     return (
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px 14px",boxShadow:"0 4px 12px rgba(15,23,42,0.1)"}}>
@@ -89,15 +92,27 @@ export default function PageInventory() {
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div>
               <div style={{fontSize:13,fontWeight:700,color:T.text1}}>재고 추이</div>
-              <div style={{fontSize:11,color:T.text3,marginTop:2}}>최근 12주 총 재고 수량 (EA)</div>
+              <div style={{fontSize:11,color:T.text3,marginTop:2}}>총 재고 수량 추이 (EA) · 주간</div>
             </div>
-            <div style={{display:"flex",gap:14,fontSize:11,color:T.text2}}>
-              <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:12,height:2,background:T.blue,borderRadius:1}}/>총 재고</div>
-              <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:12,borderTop:`2px dashed ${T.amber}`}}/>안전재고선</div>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <div style={{display:"flex",gap:14,fontSize:11,color:T.text2}}>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:12,height:2,background:T.blue,borderRadius:1}}/>총 재고</div>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:12,borderTop:`2px dashed ${T.amber}`}}/>안전재고선</div>
+              </div>
+              <div style={{display:"flex",background:"#F8FAFC",border:`1px solid ${T.border}`,borderRadius:6,overflow:"hidden"}}>
+                {([4,8,12] as const).map(w=>(
+                  <button key={w} onClick={()=>setTrendWeeks(w)}
+                    style={{fontSize:11,fontWeight:600,padding:"4px 10px",border:"none",cursor:"pointer",
+                      background:trendWeeks===w?T.blue:"transparent",
+                      color:trendWeeks===w?"white":T.text2}}>
+                    {w}W
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={175}>
-            <ComposedChart data={INV_TREND} margin={{top:4,right:8,left:0,bottom:0}}>
+            <ComposedChart data={trendData} margin={{top:4,right:8,left:0,bottom:0}}>
               <defs>
                 <linearGradient id="invGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={T.blue} stopOpacity={0.12}/>
@@ -107,7 +122,7 @@ export default function PageInventory() {
               <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false}/>
               <XAxis dataKey="w" tick={{fontSize:9,fill:T.text3}} axisLine={false} tickLine={false}/>
               <YAxis tick={{fontSize:9,fill:T.text3}} axisLine={false} tickLine={false} width={36} tickFormatter={v=>`${(v/1000).toFixed(0)}k`}/>
-              <Tooltip content={<TrendTT/>}/>
+              <Tooltip content={TrendTT}/>
               <Area type="monotone" dataKey="total" stroke={T.blue} strokeWidth={2.5} fill="url(#invGrad)"
                 dot={false} activeDot={{r:5,fill:T.blue,stroke:"white",strokeWidth:2}}/>
               <Line type="monotone" dataKey="safe" stroke={T.amber} strokeWidth={1.5} strokeDasharray="5 3" dot={false}/>
@@ -129,7 +144,7 @@ export default function PageInventory() {
                   startAngle={90} endAngle={-270}>
                   {donutData.map((e,i)=><Cell key={i} fill={e.color} stroke="white" strokeWidth={2}/>)}
                 </Pie>
-                <Tooltip formatter={(v)=>`₩${(v/1000000).toFixed(1)}M`}
+                <Tooltip formatter={(v: any)=>`₩${(Number(v)/1000000).toFixed(1)}M`}
                   contentStyle={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:8}}/>
               </PieChart>
               <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",pointerEvents:"none"}}>
@@ -144,7 +159,7 @@ export default function PageInventory() {
                     <div style={{width:7,height:7,borderRadius:2,background:d.color,flexShrink:0}}/>
                     <span style={{fontSize:11,color:T.text2,fontWeight:500}}>{d.name}</span>
                   </div>
-                  <span style={{fontSize:11,fontWeight:700,color:T.text1,fontFamily:"'IBM Plex Mono',monospace"}}>₩{(d.value/1000000).toFixed(1)}M</span>
+                  <span style={{fontSize:11,fontWeight:700,color:T.text1,fontFamily:"'IBM Plex Mono',monospace"}}>₩{(Number(d.value)/1000000).toFixed(1)}M</span>
                 </div>
               ))}
             </div>
