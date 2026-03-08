@@ -421,16 +421,19 @@ export const AI_PRESETS = [
    params:{demandDelta:5,productionDelta:12,safetyBuffer:15,orderQty:1500,leadTimeDelta:-1}},
   {id:'lean',    label:'린 재고 시나리오',    badge:'검토',badgeColor:'amber',
    desc:'과잉 재고 SKU 감량 + 보관비 절감 — 리스크 허용 범위 내',
-   params:{demandDelta:-8,productionDelta:-10,safetyBuffer:0,orderQty:500,leadTimeDelta:2}},
+   params:{demandDelta:-8,productionDelta:-10,safetyBuffer:0,orderQty:0,leadTimeDelta:2}},
 ]
 
-export function runSimulation(sku: typeof SIM_SKUS[number], params: {demandDelta:number,productionDelta:number,safetyBuffer:number,orderQty:number,leadTimeDelta:number}, weeks: number) {
+type SimSku = { id:string, name:string, spec?:string, safeStock:number, currentStock:number, leadTime:number, weeklyDemand:number, productionCap:number }
+
+export function runSimulation(sku: SimSku, params: {demandDelta:number,productionDelta:number,safetyBuffer:number,orderQty:number,leadTimeDelta:number}, weeks: number) {
   const demand = Math.round(sku.weeklyDemand * (1 + params.demandDelta / 100));
   const weeklyProd = Math.round(sku.productionCap * 7 * (1 + params.productionDelta / 100));
   const asisWeeklyProd = sku.productionCap * 7;
   const safe = Math.round(sku.safeStock * (1 + params.safetyBuffer / 100));
   const leadWeek = Math.max(1, Math.ceil((sku.leadTime + params.leadTimeDelta) / 7));
   const result: {w:string, asis:number, tobe:number, safe:number}[] = [];
+  // 음수 재고는 실제 부족분이므로 그대로 시작점으로 사용
   let asisStock = sku.currentStock;
   let tobeStock = sku.currentStock;
   for (let i = 1; i <= weeks; i++) {
@@ -501,7 +504,7 @@ export const SENSITIVITY_KPIS = [
 
 type SimParams = { demandDelta:number, productionDelta:number, safetyBuffer:number, orderQty:number, leadTimeDelta:number }
 
-export function calcRadarScores(sku: typeof SIM_SKUS[number], params: SimParams, period: number) {
+export function calcRadarScores(sku: SimSku, params: SimParams, period: number) {
   const simData = runSimulation(sku, params, period)
   const safeStock = Math.round(sku.safeStock * (1 + params.safetyBuffer / 100))
   const zeroWeeks = simData.filter(d => d.tobe <= 0).length
@@ -516,20 +519,20 @@ export function calcRadarScores(sku: typeof SIM_SKUS[number], params: SimParams,
   }
 }
 
-function extractKpi(sku: typeof SIM_SKUS[number], params: SimParams, period: number, kpiKey: string): number {
+function extractKpi(sku: SimSku, params: SimParams, period: number, kpiKey: string): number {
   const simData = runSimulation(sku, params, period)
   const tobeZeroWeeks = simData.filter(d => d.tobe <= 0).length
   const lastTobe = simData[simData.length - 1]?.tobe ?? 0
   switch (kpiKey) {
     case 'finalStock':    return lastTobe
     case 'stockoutWeeks': return tobeZeroWeeks
-    case 'costDelta':     return Math.abs(params.productionDelta) * sku.productionCap * 7 * 800 + params.orderQty * 500
+    case 'costDelta':     return Math.round(Math.abs(params.productionDelta) / 100 * sku.productionCap * 7 * 800 + params.orderQty * 500)
     case 'deliveryRate':  return tobeZeroWeeks === 0 ? 95 : tobeZeroWeeks <= 1 ? 82 : 63
     default: return 0
   }
 }
 
-export function runSensitivity(sku: typeof SIM_SKUS[number], baseParams: SimParams, period: number, targetKpi: string) {
+export function runSensitivity(sku: SimSku, baseParams: SimParams, period: number, targetKpi: string) {
   const baseVal = extractKpi(sku, baseParams, period, targetKpi)
   return SENSITIVITY_VARIABLES.map(v => {
     const lowParams = { ...baseParams, [v.key]: v.testRange[0] }

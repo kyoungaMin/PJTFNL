@@ -455,6 +455,54 @@ export default function PageModelScenario() {
                   </div>
                 )}
 
+                {/* 현재 기준값 정보 */}
+                {(() => {
+                  const stockRatio = product.safeStock > 0 ? product.currentStock / product.safeStock : 0
+                  const weeklyProd = product.productionCap * 7
+                  const avgP50 = predictions.length > 0 ? Math.round(predictions.reduce((s, p) => s + p.p50, 0) / predictions.length) : 0
+                  const coverageWeeks = avgP50 > 0 ? Math.round((product.currentStock / avgP50) * 10) / 10 : Infinity
+                  const stockStatus = stockRatio >= 1.5 ? { label: '안정', color: T.green, bg: T.greenSoft }
+                    : stockRatio >= 1.0 ? { label: '주의', color: T.amber, bg: T.amberSoft }
+                    : stockRatio >= 0.5 ? { label: '경고', color: T.orange, bg: T.orangeSoft }
+                    : { label: '위험', color: T.red, bg: T.redSoft }
+                  return (
+                    <div style={{ ...card, marginBottom: 16, padding: '16px 20px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>현재 기준값 정보</div>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: stockStatus.bg, color: stockStatus.color }}>
+                          재고 상태: {stockStatus.label}
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10 }}>
+                        {[
+                          { label: '현재 재고', value: fmt(product.currentStock), unit: 'EA', color: T.text1 },
+                          { label: '안전재고', value: fmt(product.safeStock), unit: 'EA', color: T.amber },
+                          { label: '재고 비율', value: `${Math.round(stockRatio * 100)}%`, unit: '대비 안전재고', color: stockStatus.color },
+                          { label: '주간 평균 수요', value: fmt(avgP50), unit: 'EA/주', color: T.blue },
+                          { label: '주간 생산능력', value: fmt(weeklyProd), unit: `EA (일 ${fmt(product.productionCap)})`, color: T.green },
+                          { label: '재고 소진 예상', value: coverageWeeks === Infinity ? '∞' : `${coverageWeeks}주`, unit: coverageWeeks <= 2 ? '긴급 보충 필요' : coverageWeeks <= 4 ? '주의 필요' : '여유', color: coverageWeeks <= 2 ? T.red : coverageWeeks <= 4 ? T.amber : T.green },
+                        ].map((item, i) => (
+                          <div key={i} style={{ textAlign: 'center', padding: '8px 4px', background: T.surface2, borderRadius: 8 }}>
+                            <div style={{ fontSize: 10, color: T.text3, marginBottom: 4 }}>{item.label}</div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: item.color, fontFamily: mono }}>{item.value}</div>
+                            <div style={{ fontSize: 9, color: T.text3, marginTop: 2 }}>{item.unit}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 10, padding: '8px 12px', background: T.surface2, borderRadius: 6, fontSize: 11, color: T.text2, lineHeight: 1.6 }}>
+                        💡 <b>현재 상태 요약:</b> 현재 재고는 안전재고 대비 <b style={{ color: stockStatus.color }}>{Math.round(stockRatio * 100)}%</b> 수준이며,
+                        {coverageWeeks === Infinity ? ' 수요가 없어 재고가 유지됩니다.'
+                          : ` 현재 수요 수준에서 약 ${coverageWeeks}주간 재고가 유지됩니다.`}
+                        {weeklyProd > avgP50
+                          ? ` 주간 생산능력(${fmt(weeklyProd)})이 수요(${fmt(avgP50)})보다 ${fmt(weeklyProd - avgP50)} 많아 공급 여력이 있습니다.`
+                          : weeklyProd < avgP50
+                          ? ` 주간 생산능력(${fmt(weeklyProd)})이 수요(${fmt(avgP50)})보다 ${fmt(avgP50 - weeklyProd)} 부족하여 추가 대응이 필요합니다.`
+                          : ' 생산능력과 수요가 균형 상태입니다.'}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* KPI cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
                   <KpiCard icon="📅" label="예측 결품 주차" color={simResult.shortageWeeks > 0 ? T.red : T.green}
@@ -475,6 +523,55 @@ export default function PageModelScenario() {
                       ? `평균 재고 ${fmt(simResult.avgStock)}`
                       : `W${String((simResult.shortageStart >= 0 ? simResult.shortageStart : 0) + 1).padStart(2, '0')}에 소진 예상`} />
                 </div>
+
+                {/* AI 분석 요약 — 결과를 쉽게 설명 */}
+                {(() => {
+                  const hasAdj = demandFactor !== 0 || supplyFactor !== 0 || safetyFactor !== 0 || orderQty !== 0 || leadTimeDelta !== 0
+                  const weeklyProd = product.productionCap * 7
+                  const adjWeeklyProd = Math.round(weeklyProd * (1 + supplyFactor / 100))
+                  const avgDemand = simResult.avgWeeklyDemand
+                  const lines: string[] = []
+
+                  if (!hasAdj) {
+                    lines.push(`현재 조건(조정 없음) 기준으로 ${predictions.length}주간 시뮬레이션한 결과입니다.`)
+                    if (simResult.shortageWeeks > 0) {
+                      lines.push(`⚠ W${String(simResult.shortageStart + 1).padStart(2, '0')}부터 ${simResult.shortageWeeks}주간 결품이 예상됩니다. 현재 생산능력(주 ${fmt(weeklyProd)})으로는 수요(주 ${fmt(avgDemand)})를 감당하기 어렵습니다.`)
+                      lines.push(`→ 생산량 증가(+${Math.ceil((avgDemand - weeklyProd) / weeklyProd * 100)}% 이상) 또는 추가 발주를 검토하세요.`)
+                    } else {
+                      lines.push(`✅ 분석 기간 내 결품 없이 안정적으로 운영됩니다. 수급 여유분은 ${fmt(Math.abs(simResult.supplyGap))}개입니다.`)
+                    }
+                  } else {
+                    const adjParts: string[] = []
+                    if (demandFactor !== 0) adjParts.push(`수요 ${demandFactor > 0 ? '+' : ''}${demandFactor}%`)
+                    if (supplyFactor !== 0) adjParts.push(`생산 ${supplyFactor > 0 ? '+' : ''}${supplyFactor}%`)
+                    if (safetyFactor !== 0) adjParts.push(`안전재고 +${safetyFactor}%`)
+                    if (orderQty > 0) adjParts.push(`추가발주 ${fmt(orderQty)}EA`)
+                    if (leadTimeDelta !== 0) adjParts.push(`리드타임 ${leadTimeDelta > 0 ? '+' : ''}${leadTimeDelta}일`)
+                    lines.push(`시나리오 조정(${adjParts.join(', ')})을 적용한 ${predictions.length}주간 결과입니다.`)
+
+                    if (simResult.shortageWeeks > 0) {
+                      lines.push(`⚠ 조정 적용에도 ${simResult.shortageWeeks}주간 결품이 발생합니다. 조정된 수요(주 ${fmt(avgDemand)})가 조정된 공급(주 ${fmt(adjWeeklyProd)})을 초과합니다.`)
+                      if (supplyFactor < 30) lines.push(`→ 생산량을 더 늘리거나 추가 발주를 고려하세요.`)
+                    } else {
+                      lines.push(`✅ 해당 조건에서 결품 없이 안정 운영이 가능합니다!`)
+                      if (simResult.avgStock > product.safeStock * 2) {
+                        lines.push(`참고: 평균 재고(${fmt(simResult.avgStock)})가 안전재고의 2배를 초과합니다. 재고 보관 비용을 고려하면 공급 조건을 낮출 수 있습니다.`)
+                      }
+                    }
+                  }
+                  return (
+                    <div style={{ ...card, marginBottom: 16, background: simResult.shortageWeeks > 0 ? T.redSoft : T.greenSoft, borderLeft: `3px solid ${simResult.shortageWeeks > 0 ? T.red : T.green}` }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: T.text1, marginBottom: 8 }}>
+                        🤖 AI 분석 요약
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {lines.map((line, i) => (
+                          <div key={i} style={{ fontSize: 12, color: T.text2, lineHeight: 1.6 }}>{line}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* P10/P50/P90 Band chart */}
                 <div style={{ ...card, marginBottom: 16 }}>
@@ -501,8 +598,22 @@ export default function PageModelScenario() {
                 {/* Inventory projection chart */}
                 <div style={{ ...card }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: T.text1, marginBottom: 4 }}>재고 추이 시뮬레이션</div>
-                  <div style={{ fontSize: 11, color: T.text3, marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, color: T.text3, marginBottom: 8 }}>
                     회색 선은 현행(AS-IS), 파란 선은 조정 적용 후(TO-BE) 재고 추이입니다. 0 아래(빨간 영역)는 결품(부족) 수량입니다.
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                    <div style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: T.surface2, color: T.text2 }}>
+                      시작 재고: <b style={{ color: T.text1, fontFamily: mono }}>{fmt(product.currentStock)}</b>
+                    </div>
+                    <div style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: T.redSoft, color: T.red }}>
+                      안전재고: <b style={{ fontFamily: mono }}>{fmt(product.safeStock)}</b>
+                    </div>
+                    <div style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: T.greenSoft, color: T.green }}>
+                      주간 생산: <b style={{ fontFamily: mono }}>{fmt(product.productionCap * 7)}</b>
+                    </div>
+                    <div style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, background: T.blueSoft, color: T.blue }}>
+                      최종 재고(TO-BE): <b style={{ fontFamily: mono }}>{fmt(Math.round(simResult.data[simResult.data.length - 1]?.rawStock ?? 0))}</b>
+                    </div>
                   </div>
                   <ResponsiveContainer width="100%" height={300}>
                     <ComposedChart data={simResult.data}>
@@ -787,6 +898,48 @@ export default function PageModelScenario() {
                         <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: catObj?.bg ?? T.surface2, color: catObj?.c ?? T.text3, fontWeight: 700 }}>{sc.category}</span>
                           <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: T.surface2, color: T.text2 }}>영향: {sc.impact}</span>
+                        </div>
+                      </div>
+
+                      {/* 현재 기준값 vs 시나리오 비교 */}
+                      <div style={{ ...card, marginBottom: 16, padding: '14px 18px' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 10 }}>기준값 → 시나리오 비교</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+                          {[
+                            { label: '주간 수요', base: fmt(baseResult.avgWeeklyDemand), after: fmt(riskResult.avgWeeklyDemand), delta: riskResult.avgWeeklyDemand - baseResult.avgWeeklyDemand, unit: 'EA', worse: riskResult.avgWeeklyDemand > baseResult.avgWeeklyDemand },
+                            { label: '주간 생산', base: fmt(baseResult.data[0]?.weeklyProd ?? 0), after: fmt(riskResult.data[0]?.weeklyProd ?? 0), delta: (riskResult.data[0]?.weeklyProd ?? 0) - (baseResult.data[0]?.weeklyProd ?? 0), unit: 'EA', worse: (riskResult.data[0]?.weeklyProd ?? 0) < (baseResult.data[0]?.weeklyProd ?? 0) },
+                            { label: '결품 주차', base: `${baseResult.shortageWeeks}주`, after: `${riskResult.shortageWeeks}주`, delta: riskResult.shortageWeeks - baseResult.shortageWeeks, unit: '주', worse: riskResult.shortageWeeks > baseResult.shortageWeeks },
+                            { label: '수급 갭', base: baseResult.supplyGap > 0 ? `-${fmt(baseResult.supplyGap)}` : `+${fmt(Math.abs(baseResult.supplyGap))}`, after: riskResult.supplyGap > 0 ? `-${fmt(riskResult.supplyGap)}` : `+${fmt(Math.abs(riskResult.supplyGap))}`, delta: riskResult.supplyGap - baseResult.supplyGap, unit: 'EA', worse: riskResult.supplyGap > baseResult.supplyGap },
+                          ].map((item, i) => (
+                            <div key={i} style={{ padding: '8px 10px', background: T.surface2, borderRadius: 8, textAlign: 'center' }}>
+                              <div style={{ fontSize: 10, color: T.text3, marginBottom: 4 }}>{item.label}</div>
+                              <div style={{ fontSize: 11, color: T.text3, fontFamily: mono }}>{item.base}</div>
+                              <div style={{ fontSize: 10, color: T.text3, margin: '2px 0' }}>↓</div>
+                              <div style={{ fontSize: 14, fontWeight: 800, color: item.worse ? T.red : T.green, fontFamily: mono }}>{item.after}</div>
+                              <div style={{ fontSize: 9, color: item.delta === 0 ? T.text3 : item.worse ? T.red : T.green, marginTop: 2 }}>
+                                {item.delta === 0 ? '변동없음' : `${item.delta > 0 ? '+' : ''}${fmt(item.delta)} ${item.unit}`}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* AI 해석 */}
+                      <div style={{ ...card, marginBottom: 16, padding: '14px 18px', background: scoreDelta < -5 ? T.redSoft : T.greenSoft, borderLeft: `3px solid ${scoreDelta < -5 ? T.red : T.green}` }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: T.text1, marginBottom: 6 }}>🤖 시나리오 영향 해석</div>
+                        <div style={{ fontSize: 12, color: T.text2, lineHeight: 1.7 }}>
+                          {`"${sc.label}" 시나리오 적용 시, `}
+                          {riskResult.shortageWeeks > baseResult.shortageWeeks
+                            ? `결품이 ${baseResult.shortageWeeks}주에서 ${riskResult.shortageWeeks}주로 ${riskResult.shortageWeeks - baseResult.shortageWeeks}주 악화됩니다.`
+                            : riskResult.shortageWeeks < baseResult.shortageWeeks
+                            ? `결품이 ${baseResult.shortageWeeks}주에서 ${riskResult.shortageWeeks}주로 개선됩니다.`
+                            : `결품 주차에는 변화가 없습니다.`}
+                          {' '}
+                          {riskResult.supplyGap > 0
+                            ? `총 ${fmt(riskResult.supplyGap)}개의 공급 부족이 발생하며, 추가 발주 또는 생산 확대가 필요합니다.`
+                            : `수급 여유분은 ${fmt(Math.abs(riskResult.supplyGap))}개로 현재 조건에서 대응 가능합니다.`}
+                          {' '}
+                          {`종합 리스크 점수는 ${avgBaseScore}점에서 ${avgRiskScore}점으로 ${scoreDelta > 0 ? '개선' : scoreDelta < 0 ? '악화' : '유지'}되었습니다.`}
                         </div>
                       </div>
 
