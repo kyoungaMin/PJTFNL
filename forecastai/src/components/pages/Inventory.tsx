@@ -177,6 +177,7 @@ export default function PageInventory() {
   const [statusF,     setStatusF]     = useState('전체')  // 상태 필터
   const [catFilter,   setCatFilter]   = useState('전체')  // 카테고리 필터
   const [hoverSku,    setHoverSku]    = useState<string | null>(null)
+  const [visibleCount, setVisibleCount] = useState(50)
 
   // ── 대시보드 로드 ────────────────────────────────────────────────────────
   const loadDashboard = useCallback((month?: string, type?: string) => {
@@ -308,7 +309,13 @@ export default function PageInventory() {
       })
   }, [skuList, typeFilter, catFilter, statusF, search])
 
+  // 필터나 검색, 월이 변경되면 화면 표시 개수를 초기화
+  useEffect(() => {
+    setVisibleCount(50)
+  }, [typeFilter, catFilter, statusF, search, selectedMonth])
+
   const maxStock = useMemo(() => Math.max(...filtered.map(x => x.stock), 1), [filtered])
+  const displayedItems = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
 
   // ─────────────────────────────────────────────────────────────────────────
   //  RENDER
@@ -511,7 +518,7 @@ export default function PageInventory() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(item => {
+                  {displayedItems.map(item => {
                     const st  = stockStatus(item.stock, item.safeStock)
                     const cov = item.weeklyDemand > 0 ? Math.round(item.stock / item.weeklyDemand * 7) : 0
                     const val = item.stock * item.unitCost
@@ -566,6 +573,21 @@ export default function PageInventory() {
                 </tbody>
               </table>
             </div>
+            {visibleCount < filtered.length && (
+              <div style={{ marginTop: 16, textAlign: 'center' }}>
+                <button
+                  onClick={() => setVisibleCount(v => v + 50)}
+                  style={{
+                    padding: '8px 24px', fontSize: 12, fontWeight: 600, color: T.text2,
+                    background: T.surface, border: `1px solid ${T.border}`, borderRadius: 20,
+                    cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', transition: 'all 0.1s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = T.surface2}
+                  onMouseOut={(e) => e.currentTarget.style.background = T.surface}>
+                  더보기 ({visibleCount} / {filtered.length})
+                </button>
+              </div>
+            )}
             <div style={{ marginTop: 10, fontSize: 11, color: T.text3, textAlign: 'right' }}>
               {filtered.length}개 SKU 표시 중 (전체 {skuList.filter(i => typeFilter === '전체' || i.productType === typeFilter).length}개)
               {selectedMonth && <span style={{ marginLeft: 12 }}>기준: {fmtMonth(selectedMonth)}</span>}

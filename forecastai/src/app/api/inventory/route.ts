@@ -124,21 +124,36 @@ export async function GET(req: Request) {
       productIds = products.map((p: any) => p.product_code)
       if (!productIds.length) return NextResponse.json({ skuList: [], selectedMonth, source: 'database' })
 
-      // 3. risk_score 최신
-      const { data: riskSnap } = await supabase.from('risk_score')
-        .select('eval_date').order('eval_date', { ascending: false }).limit(1)
-      const latestRiskDate = riskSnap?.[0]?.eval_date
-      const riskMap: Record<string, { safetyStock: number; grade: string }> = {}
-      if (latestRiskDate) {
-        const riskRows = await batchIn('risk_score', 'product_id,safety_stock,risk_grade', 'product_id', productIds,
-          q => q.eq('eval_date', latestRiskDate))
-        for (const r of riskRows) riskMap[r.product_id] = { safetyStock: Number(r.safety_stock ?? 0), grade: r.risk_grade ?? '-' }
-      }
-
-      // 4. 주간 수요 (최근 8주)
+      // 3~6: 병렬 처리로 속도 개선
       const eightWeeksAgo = new Date(now); eightWeeksAgo.setDate(now.getDate() - 56)
-      const wkRows = await batchIn('weekly_product_summary', 'product_id,order_qty', 'product_id', productIds,
+      const sixMonthsAgo = new Date(now); sixMonthsAgo.setMonth(now.getMonth() - 6)
+      const fourWeeksAgo = new Date(now); fourWeeksAgo.setDate(now.getDate() - 28)
+
+      const riskMapPromise = supabase.from('risk_score')
+        .select('eval_date').order('eval_date', { ascending: false }).limit(1)
+        .then(async ({ data: riskSnap }) => {
+          const latestRiskDate = riskSnap?.[0]?.eval_date
+          const map: Record<string, { safetyStock: number; grade: string }> = {}
+          if (latestRiskDate) {
+            const riskRows = await batchIn('risk_score', 'product_id,safety_stock,risk_grade', 'product_id', productIds,
+              q => q.eq('eval_date', latestRiskDate))
+            for (const r of riskRows) map[r.product_id] = { safetyStock: Number(r.safety_stock ?? 0), grade: r.risk_grade ?? '-' }
+          }
+          return map
+        })
+
+      const wkPromise = batchIn('weekly_product_summary', 'product_id,order_qty', 'product_id', productIds,
         q => q.gte('week_start', eightWeeksAgo.toISOString().slice(0, 10)))
+
+      const poPromise = batchIn('purchase_order', 'component_product_id,unit_price', 'component_product_id', productIds,
+        q => q.gte('po_date', sixMonthsAgo.toISOString().slice(0, 10)).not('unit_price', 'is', null))
+
+      const custPromise = batchIn('weekly_customer_summary', 'product_id,customer_id,order_qty', 'product_id', productIds,
+        q => q.gte('week_start', fourWeeksAgo.toISOString().slice(0, 10)))
+
+      const [riskMap, wkRows, poRows, custRows] = await Promise.all([riskMapPromise, wkPromise, poPromise, custPromise])
+
+      // 4. 주간 수요 집계
       const demandAcc: Record<string, { total: number; cnt: number }> = {}
       for (const r of wkRows) {
         if (!demandAcc[r.product_id]) demandAcc[r.product_id] = { total: 0, cnt: 0 }
@@ -146,10 +161,7 @@ export async function GET(req: Request) {
         demandAcc[r.product_id].cnt++
       }
 
-      // 5. 단가 (최근 6개월)
-      const sixMonthsAgo = new Date(now); sixMonthsAgo.setMonth(now.getMonth() - 6)
-      const poRows = await batchIn('purchase_order', 'component_product_id,unit_price', 'component_product_id', productIds,
-        q => q.gte('po_date', sixMonthsAgo.toISOString().slice(0, 10)).not('unit_price', 'is', null))
+      // 5. 단가 집계
       const costAcc: Record<string, { total: number; cnt: number }> = {}
       for (const r of poRows) {
         if (!costAcc[r.component_product_id]) costAcc[r.component_product_id] = { total: 0, cnt: 0 }
@@ -157,10 +169,7 @@ export async function GET(req: Request) {
         costAcc[r.component_product_id].cnt++
       }
 
-      // 6. 주요 고객사 (최근 4주)
-      const fourWeeksAgo = new Date(now); fourWeeksAgo.setDate(now.getDate() - 28)
-      const custRows = await batchIn('weekly_customer_summary', 'product_id,customer_id,order_qty', 'product_id', productIds,
-        q => q.gte('week_start', fourWeeksAgo.toISOString().slice(0, 10)))
+      // 6. 주요 고객사 집계
       const custAcc: Record<string, Record<string, number>> = {}
       for (const r of custRows) {
         if (!custAcc[r.product_id]) custAcc[r.product_id] = {}
@@ -192,20 +201,19 @@ export async function GET(req: Request) {
     //  MODE: DASHBOARD — KPI + 트렌드 + 타입 통계
     // ══════════════════════════════════════════════════════════════════════
 
-    // 1. 선택 월 재고 전체 (페이지네이션)
-    const invRows = await fetchAll('inventory', 'product_id,inventory_qty',
-      q => q.eq('snapshot_date', selectedMonth))
+    // 1 & 2. 월 재고 + 트렌드 병렬 호출
+    const trendMonths = availableMonths.slice(0, 12).reverse()
+    const [invRows, trendInvRows] = await Promise.all([
+      fetchAll('inventory', 'product_id,inventory_qty', q => q.eq('snapshot_date', selectedMonth)),
+      fetchAll('inventory', 'product_id,snapshot_date,inventory_qty', q => q.in('snapshot_date', trendMonths))
+    ])
 
+    // 1.5 맵 구성
     const invByProduct: Record<string, number> = {}
     for (const r of invRows) {
       invByProduct[r.product_id] = (invByProduct[r.product_id] ?? 0) + Number(r.inventory_qty ?? 0)
     }
     const selectedMonthIds = Object.keys(invByProduct)
-
-    // 2. 트렌드: 최근 12개월 전체 재고 (페이지네이션)
-    const trendMonths = availableMonths.slice(0, 12).reverse()
-    const trendInvRows = await fetchAll('inventory', 'product_id,snapshot_date,inventory_qty',
-      q => q.in('snapshot_date', trendMonths))
 
     // 3. product_master — 선택 월 + 트렌드 전체 product_id 합산
     const allProductIdSet = new Set([
@@ -213,23 +221,30 @@ export async function GET(req: Request) {
       ...trendInvRows.map((r: any) => r.product_id),
     ])
     const allProductIds = Array.from(allProductIdSet)
-    const allProducts = await batchIn(
+
+    // 병렬로 상품 마스터와 위험 점수 조회
+    const productsPromise = batchIn(
       'product_master', 'product_code,product_type,product_category,product_name',
       'product_code', allProductIds,
     )
+
+    const riskPromise = supabase.from('risk_score')
+      .select('eval_date').order('eval_date', { ascending: false }).limit(1)
+      .then(async ({ data: riskSnap }) => {
+        const latestRiskDate = riskSnap?.[0]?.eval_date
+        const safetyMap: Record<string, number> = {}
+        if (latestRiskDate) {
+          const riskRows = await batchIn('risk_score', 'product_id,safety_stock', 'product_id', selectedMonthIds,
+            q => q.eq('eval_date', latestRiskDate))
+          for (const r of riskRows) safetyMap[r.product_id] = Number(r.safety_stock ?? 0)
+        }
+        return safetyMap
+      })
+
+    const [allProducts, safetyMap] = await Promise.all([productsPromise, riskPromise])
+    
     const productMap: Record<string, any> = {}
     for (const p of allProducts) productMap[p.product_code] = p
-
-    // 4. risk_score 최신 (safety_stock)
-    const { data: riskSnap } = await supabase.from('risk_score')
-      .select('eval_date').order('eval_date', { ascending: false }).limit(1)
-    const latestRiskDate = riskSnap?.[0]?.eval_date
-    const safetyMap: Record<string, number> = {}
-    if (latestRiskDate) {
-      const riskRows = await batchIn('risk_score', 'product_id,safety_stock', 'product_id', selectedMonthIds,
-        q => q.eq('eval_date', latestRiskDate))
-      for (const r of riskRows) safetyMap[r.product_id] = Number(r.safety_stock ?? 0)
-    }
 
     // 5. 트렌드 집계 (month → productType → totalQty)
     const trendMap: Record<string, Record<string, number>> = {}
