@@ -1,264 +1,314 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+/* ─── 페이지네이션 전체 조회 ─── */
+async function fetchAll(
+  table: string, select: string,
+  filter: (q: any) => any,
+): Promise<any[]> {
+  const PAGE = 1000
+  const all: any[] = []
+  for (let off = 0; ; off += PAGE) {
+    const { data, error } = await filter(
+      supabase.from(table).select(select).range(off, off + PAGE - 1)
+    )
+    if (error) throw error
+    if (!data?.length) break
+    all.push(...data)
+    if (data.length < PAGE) break
+  }
+  return all
+}
+
+/* ─── 배치 .in() 헬퍼 (각 배치에 페이지네이션 적용) ─── */
+const IN_BATCH = 300
+async function batchIn(
+  table: string, select: string, col: string, ids: string[],
+  extra?: (q: any) => any,
+): Promise<any[]> {
+  const all: any[] = []
+  for (let i = 0; i < ids.length; i += IN_BATCH) {
+    const chunk = ids.slice(i, i + IN_BATCH)
+    const rows = await fetchAll(table, select, q => {
+      let qq = q.in(col, chunk)
+      return extra ? extra(qq) : qq
+    })
+    all.push(...rows)
+  }
+  return all
+}
+
+/* ─── YYYYMM → '25.11' 라벨 ─── */
+function monthLabel(ym: string): string {
+  return `${ym.slice(2, 4)}.${ym.slice(4, 6)}`
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
-    const mode   = searchParams.get('mode')    // 'list' | null
-    const search = searchParams.get('search') ?? ''
-    const type   = searchParams.get('type')   ?? '전체'  // product_type 필터
-    const now    = new Date()
+    const mode       = searchParams.get('mode')
+    const monthParam = searchParams.get('month')
+    const typeParam  = searchParams.get('type') ?? '전체'
+    const search     = searchParams.get('search') ?? ''
+    const now        = new Date()
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  MODE: LIST — 검색/조회 버튼 클릭 시에만 호출
-    // ══════════════════════════════════════════════════════════════════════
-    if (mode === 'list') {
-      // 1. product_master: 검색어 + 제품 유형 필터
-      let pmQuery = supabase
-        .from('product_master')
-        .select('product_code, product_name, product_category, product_type')
-        .limit(300)
-
-      if (search) {
-        pmQuery = pmQuery.or(`product_code.ilike.%${search}%,product_name.ilike.%${search}%`)
-      }
-      if (type && type !== '전체') {
-        pmQuery = pmQuery.eq('product_type', type)
-      }
-
-      const { data: products, error: pmErr } = await pmQuery
-      if (pmErr) throw pmErr
-      if (!products || products.length === 0) {
-        return NextResponse.json({ skuList: [], source: 'database' })
-      }
-
-      const productIds = products.map(p => p.product_code)
-      const productMap: Record<string, { name: string; category: string; productType: string }> = {}
-      for (const p of products) {
-        productMap[p.product_code] = {
-          name:        p.product_name      ?? p.product_code,
-          category:    p.product_category  ?? p.product_type ?? '기타',
-          productType: p.product_type      ?? '기타',
-        }
-      }
-
-      // 2. 최신 inventory snapshot
-      const { data: snapRows } = await supabase
-        .from('inventory')
+    // ── 사용 가능한 월 목록 (cursor, 최대 24개월) ──────────────────────────
+    const availableMonths: string[] = []
+    let cursor: string | null = null
+    for (let i = 0; i < 24; i++) {
+      let q = supabase.from('inventory')
         .select('snapshot_date')
         .order('snapshot_date', { ascending: false })
         .limit(1)
-      const latestSnap = snapRows?.[0]?.snapshot_date as string | undefined
+      if (cursor) q = q.lt('snapshot_date', cursor)
+      const { data } = await q
+      if (!data?.length) break
+      availableMonths.push(String(data[0].snapshot_date))
+      cursor = String(data[0].snapshot_date)
+    }
+
+    if (!availableMonths.length) {
+      return NextResponse.json({ availableMonths: [], selectedMonth: null, trend: [], kpi: {}, typeStats: {}, productTypes: ['전체'], skuList: [], source: 'empty' })
+    }
+
+    const selectedMonth = (monthParam && availableMonths.includes(monthParam))
+      ? monthParam : availableMonths[0]
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  MODE: LIST — SKU 상세 목록
+    // ══════════════════════════════════════════════════════════════════════
+    if (mode === 'list') {
+      // 1. 해당 월 재고 전체 (페이지네이션)
+      const invRows = await fetchAll('inventory', 'product_id,inventory_qty',
+        q => q.eq('snapshot_date', selectedMonth))
 
       const invByProduct: Record<string, number> = {}
-      if (latestSnap) {
-        const { data: invRows } = await supabase
-          .from('inventory')
-          .select('product_id, inventory_qty')
-          .eq('snapshot_date', latestSnap)
-          .in('product_id', productIds)
-        for (const r of invRows ?? []) {
-          invByProduct[r.product_id] = (invByProduct[r.product_id] ?? 0) + Number(r.inventory_qty ?? 0)
+      for (const r of invRows) {
+        invByProduct[r.product_id] = (invByProduct[r.product_id] ?? 0) + Number(r.inventory_qty ?? 0)
+      }
+      let productIds = Object.keys(invByProduct)
+      if (!productIds.length) return NextResponse.json({ skuList: [], selectedMonth, source: 'database' })
+
+      // 2. product_master (검색 + 유형 필터)
+      let pmQuery = supabase
+        .from('product_master')
+        .select('product_code,product_name,product_category,product_type')
+        .in('product_code', productIds.slice(0, IN_BATCH))
+        .limit(2000)
+      if (search) pmQuery = pmQuery.or(`product_code.ilike.%${search}%,product_name.ilike.%${search}%`)
+      if (typeParam && typeParam !== '전체') pmQuery = pmQuery.eq('product_type', typeParam)
+
+      // 검색/필터가 있으면 전체 product_ids를 넣을 수 없으므로 별도 처리
+      let products: any[] = []
+      if (search || (typeParam && typeParam !== '전체')) {
+        const PAGE = 1000
+        for (let off = 0; ; off += PAGE) {
+          let q = supabase
+            .from('product_master')
+            .select('product_code,product_name,product_category,product_type')
+            .range(off, off + PAGE - 1)
+          if (search) q = q.or(`product_code.ilike.%${search}%,product_name.ilike.%${search}%`)
+          if (typeParam && typeParam !== '전체') q = q.eq('product_type', typeParam)
+          const { data } = await q
+          if (!data?.length) break
+          // inventory에 있는 것만 필터
+          products.push(...data.filter((p: any) => invByProduct[p.product_code] !== undefined))
+          if (data.length < PAGE) break
         }
+      } else {
+        products = await batchIn('product_master', 'product_code,product_name,product_category,product_type', 'product_code', productIds)
       }
 
-      // 3. 최신 risk_score
-      const { data: riskSnap } = await supabase
-        .from('risk_score')
-        .select('eval_date')
-        .order('eval_date', { ascending: false })
-        .limit(1)
-      const latestRiskDate = riskSnap?.[0]?.eval_date as string | undefined
+      const productMap: Record<string, any> = {}
+      for (const p of products) productMap[p.product_code] = p
+      productIds = products.map((p: any) => p.product_code)
+      if (!productIds.length) return NextResponse.json({ skuList: [], selectedMonth, source: 'database' })
+
+      // 3. risk_score 최신
+      const { data: riskSnap } = await supabase.from('risk_score')
+        .select('eval_date').order('eval_date', { ascending: false }).limit(1)
+      const latestRiskDate = riskSnap?.[0]?.eval_date
       const riskMap: Record<string, { safetyStock: number; grade: string }> = {}
       if (latestRiskDate) {
-        const { data: riskRows } = await supabase
-          .from('risk_score')
-          .select('product_id, safety_stock, risk_grade')
-          .eq('eval_date', latestRiskDate)
-          .in('product_id', productIds)
-        for (const r of riskRows ?? []) {
-          riskMap[r.product_id] = { safetyStock: Number(r.safety_stock ?? 0), grade: r.risk_grade ?? '-' }
-        }
+        const riskRows = await batchIn('risk_score', 'product_id,safety_stock,risk_grade', 'product_id', productIds,
+          q => q.eq('eval_date', latestRiskDate))
+        for (const r of riskRows) riskMap[r.product_id] = { safetyStock: Number(r.safety_stock ?? 0), grade: r.risk_grade ?? '-' }
       }
 
-      // 4. 주간 수요 (최근 8주 평균)
-      const eightWeeksAgo = new Date(now)
-      eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56)
-      const { data: wkRows } = await supabase
-        .from('weekly_product_summary')
-        .select('product_id, order_qty')
-        .gte('week_start', eightWeeksAgo.toISOString().slice(0, 10))
-        .in('product_id', productIds)
-      const demandAccum: Record<string, { total: number; cnt: number }> = {}
-      for (const r of wkRows ?? []) {
-        if (!demandAccum[r.product_id]) demandAccum[r.product_id] = { total: 0, cnt: 0 }
-        demandAccum[r.product_id].total += Number(r.order_qty ?? 0)
-        demandAccum[r.product_id].cnt  += 1
-      }
-      const weeklyDemandMap: Record<string, number> = {}
-      for (const [pid, { total, cnt }] of Object.entries(demandAccum)) {
-        weeklyDemandMap[pid] = cnt > 0 ? total / cnt : 0
+      // 4. 주간 수요 (최근 8주)
+      const eightWeeksAgo = new Date(now); eightWeeksAgo.setDate(now.getDate() - 56)
+      const wkRows = await batchIn('weekly_product_summary', 'product_id,order_qty', 'product_id', productIds,
+        q => q.gte('week_start', eightWeeksAgo.toISOString().slice(0, 10)))
+      const demandAcc: Record<string, { total: number; cnt: number }> = {}
+      for (const r of wkRows) {
+        if (!demandAcc[r.product_id]) demandAcc[r.product_id] = { total: 0, cnt: 0 }
+        demandAcc[r.product_id].total += Number(r.order_qty ?? 0)
+        demandAcc[r.product_id].cnt++
       }
 
-      // 5. 단가 (최근 6개월 구매발주 평균)
-      const sixMonthsAgo = new Date(now)
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-      const { data: poRows } = await supabase
-        .from('purchase_order')
-        .select('component_product_id, unit_price')
-        .gte('po_date', sixMonthsAgo.toISOString().slice(0, 10))
-        .in('component_product_id', productIds)
-        .not('unit_price', 'is', null)
-      const costAccum: Record<string, { total: number; cnt: number }> = {}
-      for (const r of poRows ?? []) {
-        if (!costAccum[r.component_product_id]) costAccum[r.component_product_id] = { total: 0, cnt: 0 }
-        costAccum[r.component_product_id].total += Number(r.unit_price ?? 0)
-        costAccum[r.component_product_id].cnt  += 1
-      }
-      const unitCostMap: Record<string, number> = {}
-      for (const [pid, { total, cnt }] of Object.entries(costAccum)) {
-        unitCostMap[pid] = cnt > 0 ? total / cnt : 0
+      // 5. 단가 (최근 6개월)
+      const sixMonthsAgo = new Date(now); sixMonthsAgo.setMonth(now.getMonth() - 6)
+      const poRows = await batchIn('purchase_order', 'component_product_id,unit_price', 'component_product_id', productIds,
+        q => q.gte('po_date', sixMonthsAgo.toISOString().slice(0, 10)).not('unit_price', 'is', null))
+      const costAcc: Record<string, { total: number; cnt: number }> = {}
+      for (const r of poRows) {
+        if (!costAcc[r.component_product_id]) costAcc[r.component_product_id] = { total: 0, cnt: 0 }
+        costAcc[r.component_product_id].total += Number(r.unit_price ?? 0)
+        costAcc[r.component_product_id].cnt++
       }
 
-      // 6. 주요 고객사 (최근 4주 1위)
-      const fourWeeksAgo = new Date(now)
-      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28)
-      const { data: custRows } = await supabase
-        .from('weekly_customer_summary')
-        .select('product_id, customer_id, order_qty')
-        .gte('week_start', fourWeeksAgo.toISOString().slice(0, 10))
-        .in('product_id', productIds)
-      const custAccum: Record<string, Record<string, number>> = {}
-      for (const r of custRows ?? []) {
-        if (!custAccum[r.product_id]) custAccum[r.product_id] = {}
-        custAccum[r.product_id][r.customer_id] =
-          (custAccum[r.product_id][r.customer_id] ?? 0) + Number(r.order_qty ?? 0)
+      // 6. 주요 고객사 (최근 4주)
+      const fourWeeksAgo = new Date(now); fourWeeksAgo.setDate(now.getDate() - 28)
+      const custRows = await batchIn('weekly_customer_summary', 'product_id,customer_id,order_qty', 'product_id', productIds,
+        q => q.gte('week_start', fourWeeksAgo.toISOString().slice(0, 10)))
+      const custAcc: Record<string, Record<string, number>> = {}
+      for (const r of custRows) {
+        if (!custAcc[r.product_id]) custAcc[r.product_id] = {}
+        custAcc[r.product_id][r.customer_id] = (custAcc[r.product_id][r.customer_id] ?? 0) + Number(r.order_qty ?? 0)
       }
-      const topCustomerMap: Record<string, string> = {}
-      for (const [pid, cmap] of Object.entries(custAccum)) {
+      const custMap: Record<string, string> = {}
+      for (const [pid, cmap] of Object.entries(custAcc)) {
         const top = Object.entries(cmap).sort(([, a], [, b]) => b - a)[0]
-        if (top) topCustomerMap[pid] = top[0]
+        if (top) custMap[pid] = top[0]
       }
 
-      // 7. SKU 리스트 조합
       const skuList = productIds.map(pid => ({
-        sku:          pid,
-        name:         productMap[pid]?.name        ?? pid,
-        category:     productMap[pid]?.category    ?? '기타',
-        productType:  productMap[pid]?.productType ?? '기타',
-        stock:        Math.round(invByProduct[pid]          ?? 0),
-        safeStock:    Math.round(riskMap[pid]?.safetyStock  ?? (invByProduct[pid] ?? 0) * 0.4),
-        unitCost:     Math.round(unitCostMap[pid]           ?? 0),
-        weeklyDemand: Math.round(weeklyDemandMap[pid]       ?? 0),
-        customer:     topCustomerMap[pid] ?? '-',
-        grade:        riskMap[pid]?.grade ?? '-',
+        sku:         pid,
+        name:        productMap[pid]?.product_name     ?? pid,
+        category:    productMap[pid]?.product_category ?? '기타',
+        productType: productMap[pid]?.product_type     ?? '기타',
+        stock:       Math.round(invByProduct[pid] ?? 0),
+        safeStock:   Math.round(riskMap[pid]?.safetyStock ?? (invByProduct[pid] ?? 0) * 0.4),
+        unitCost:    costAcc[pid] ? Math.round(costAcc[pid].total / costAcc[pid].cnt) : 0,
+        weeklyDemand: demandAcc[pid] ? Math.round(demandAcc[pid].total / demandAcc[pid].cnt) : 0,
+        customer:    custMap[pid] ?? '-',
+        grade:       riskMap[pid]?.grade ?? '-',
       }))
 
-      return NextResponse.json({ skuList, source: 'database' })
+      return NextResponse.json({ skuList, selectedMonth, source: 'database' })
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  MODE: DASHBOARD — 초기 빠른 로드 (KPI + Trend + 제품 유형 목록)
+    //  MODE: DASHBOARD — KPI + 트렌드 + 타입 통계
     // ══════════════════════════════════════════════════════════════════════
 
-    // 1. 최신 snapshot
-    const { data: snapRows } = await supabase
-      .from('inventory')
-      .select('snapshot_date')
-      .order('snapshot_date', { ascending: false })
-      .limit(1)
-    const latestSnap = snapRows?.[0]?.snapshot_date as string | undefined
-
-    if (!latestSnap) {
-      return NextResponse.json({ source: 'no_data', trend: [], kpi: {}, productTypes: ['전체'] })
-    }
-
-    // 2. 전체 재고 합산
-    const { data: invRows } = await supabase
-      .from('inventory')
-      .select('product_id, inventory_qty')
-      .eq('snapshot_date', latestSnap)
+    // 1. 선택 월 재고 전체 (페이지네이션)
+    const invRows = await fetchAll('inventory', 'product_id,inventory_qty',
+      q => q.eq('snapshot_date', selectedMonth))
 
     const invByProduct: Record<string, number> = {}
-    for (const r of invRows ?? []) {
+    for (const r of invRows) {
       invByProduct[r.product_id] = (invByProduct[r.product_id] ?? 0) + Number(r.inventory_qty ?? 0)
     }
-    const totalStock  = Object.values(invByProduct).reduce((s, v) => s + v, 0)
-    const productIds  = Object.keys(invByProduct)
-    const totalSku    = productIds.length
+    const selectedMonthIds = Object.keys(invByProduct)
 
-    // 3. 제품 유형 목록 (product_master에서 distinct)
-    const { data: typeRows } = await supabase
-      .from('product_master')
-      .select('product_type')
-    const productTypes = [
-      '전체',
-      ...new Set((typeRows ?? []).map(r => r.product_type).filter(Boolean) as string[]),
-    ]
+    // 2. 트렌드: 최근 12개월 전체 재고 (페이지네이션)
+    const trendMonths = availableMonths.slice(0, 12).reverse()
+    const trendInvRows = await fetchAll('inventory', 'product_id,snapshot_date,inventory_qty',
+      q => q.in('snapshot_date', trendMonths))
 
-    // 4. 평균 커버리지 (최근 8주 weekly demand)
-    const eightWeeksAgo = new Date(now)
-    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56)
-    const { data: wkRows } = await supabase
-      .from('weekly_product_summary')
-      .select('product_id, order_qty')
-      .gte('week_start', eightWeeksAgo.toISOString().slice(0, 10))
+    // 3. product_master — 선택 월 + 트렌드 전체 product_id 합산
+    const allProductIdSet = new Set([
+      ...selectedMonthIds,
+      ...trendInvRows.map((r: any) => r.product_id),
+    ])
+    const allProductIds = Array.from(allProductIdSet)
+    const allProducts = await batchIn(
+      'product_master', 'product_code,product_type,product_category,product_name',
+      'product_code', allProductIds,
+    )
+    const productMap: Record<string, any> = {}
+    for (const p of allProducts) productMap[p.product_code] = p
 
-    const demandByPid: Record<string, { total: number; cnt: number }> = {}
-    for (const r of wkRows ?? []) {
-      if (!demandByPid[r.product_id]) demandByPid[r.product_id] = { total: 0, cnt: 0 }
-      demandByPid[r.product_id].total += Number(r.order_qty ?? 0)
-      demandByPid[r.product_id].cnt  += 1
-    }
-    const totalWeeklyDemand = Object.values(demandByPid)
-      .reduce((s, { total, cnt }) => s + (cnt > 0 ? total / cnt : 0), 0)
-    const avgCoverageDays = totalWeeklyDemand > 0
-      ? Math.round((totalStock / totalWeeklyDemand) * 7)
-      : 0
-
-    // 5. 전체 안전재고 합산 (risk_score 최신)
-    const { data: riskSnap } = await supabase
-      .from('risk_score')
-      .select('eval_date')
-      .order('eval_date', { ascending: false })
-      .limit(1)
-    const latestRiskDate = riskSnap?.[0]?.eval_date as string | undefined
-    let totalSafeStock = 0
+    // 4. risk_score 최신 (safety_stock)
+    const { data: riskSnap } = await supabase.from('risk_score')
+      .select('eval_date').order('eval_date', { ascending: false }).limit(1)
+    const latestRiskDate = riskSnap?.[0]?.eval_date
+    const safetyMap: Record<string, number> = {}
     if (latestRiskDate) {
-      const { data: riskRows } = await supabase
-        .from('risk_score')
-        .select('safety_stock')
-        .eq('eval_date', latestRiskDate)
-      totalSafeStock = (riskRows ?? []).reduce((s, r) => s + Number(r.safety_stock ?? 0), 0)
+      const riskRows = await batchIn('risk_score', 'product_id,safety_stock', 'product_id', selectedMonthIds,
+        q => q.eq('eval_date', latestRiskDate))
+      for (const r of riskRows) safetyMap[r.product_id] = Number(r.safety_stock ?? 0)
     }
 
-    // 6. 재고 추이 (최근 12주 일요일)
-    const weekEndDates: string[] = []
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now)
-      d.setDate(d.getDate() - d.getDay() - i * 7)
-      weekEndDates.push(d.toISOString().slice(0, 10))
+    // 5. 트렌드 집계 (month → productType → totalQty)
+    const trendMap: Record<string, Record<string, number>> = {}
+    for (const r of trendInvRows) {
+      const m = String(r.snapshot_date)
+      const pType = productMap[r.product_id]?.product_type ?? '기타'
+      if (!trendMap[m]) trendMap[m] = {}
+      trendMap[m][pType] = (trendMap[m][pType] ?? 0) + Number(r.inventory_qty ?? 0)
     }
-    const { data: trendRows } = await supabase
-      .from('daily_inventory_estimated')
-      .select('target_date, estimated_qty')
-      .in('target_date', weekEndDates)
-
-    const trendByDate: Record<string, number> = {}
-    for (const r of trendRows ?? []) {
-      const d = String(r.target_date).slice(0, 10)
-      trendByDate[d] = (trendByDate[d] ?? 0) + Number(r.estimated_qty ?? 0)
-    }
-    const trend = weekEndDates.map((d, idx) => ({
-      w:     idx === 11 ? 'W0' : `W${idx - 11}`,
-      total: Math.round(trendByDate[d] ?? 0),
-      safe:  Math.round(totalSafeStock),
+    const trend = trendMonths.map(m => ({
+      month: m,
+      label: monthLabel(m),
+      ...trendMap[m] ?? {},
     }))
 
+    // 6. 제품 유형 목록 (선택 월 기준)
+    const typeSet = new Set<string>()
+    for (const pid of selectedMonthIds) {
+      const pt = productMap[pid]?.product_type
+      if (pt) typeSet.add(pt)
+    }
+    const productTypes = ['전체', ...Array.from(typeSet).sort()]
+
+    // 7. 유형별 KPI 통계 (선택 월)
+    const typeStats: Record<string, { qty: number; skuCount: number; riskCount: number; shortCount: number }> = {}
+    let totalQty = 0; let totalRisk = 0; let totalShort = 0
+
+    for (const [pid, qty] of Object.entries(invByProduct)) {
+      const pType = productMap[pid]?.product_type ?? '기타'
+      if (!typeStats[pType]) typeStats[pType] = { qty: 0, skuCount: 0, riskCount: 0, shortCount: 0 }
+      typeStats[pType].qty += qty
+      typeStats[pType].skuCount++
+      totalQty += qty
+      const ss = safetyMap[pid] ?? 0
+      if (ss > 0) {
+        if (qty < ss * 0.5) { typeStats[pType].riskCount++; totalRisk++ }
+        else if (qty < ss)  { typeStats[pType].shortCount++; totalShort++ }
+      }
+    }
+    typeStats['전체'] = { qty: totalQty, skuCount: selectedMonthIds.length, riskCount: totalRisk, shortCount: totalShort }
+
+    // 8. 평균 커버리지 (선택 유형 기준, 최근 8주 수요)
+    const eightWeeksAgo = new Date(now); eightWeeksAgo.setDate(now.getDate() - 56)
+    const filteredIds = typeParam !== '전체'
+      ? selectedMonthIds.filter(pid => productMap[pid]?.product_type === typeParam)
+      : selectedMonthIds
+    let avgCoverageDays = 0
+    if (filteredIds.length > 0) {
+      const wkRows = await batchIn('weekly_product_summary', 'product_id,order_qty', 'product_id', filteredIds,
+        q => q.gte('week_start', eightWeeksAgo.toISOString().slice(0, 10)))
+      const demandByPid: Record<string, { total: number; cnt: number }> = {}
+      for (const r of wkRows) {
+        if (!demandByPid[r.product_id]) demandByPid[r.product_id] = { total: 0, cnt: 0 }
+        demandByPid[r.product_id].total += Number(r.order_qty ?? 0)
+        demandByPid[r.product_id].cnt++
+      }
+      const typeInv = filteredIds.reduce((s, pid) => s + (invByProduct[pid] ?? 0), 0)
+      const weeklyDemand = Object.values(demandByPid)
+        .reduce((s, { total, cnt }) => s + (cnt > 0 ? total / cnt : 0), 0)
+      avgCoverageDays = weeklyDemand > 0 ? Math.round((typeInv / weeklyDemand) * 7) : 0
+    }
+
+    const sel = typeStats[typeParam] ?? typeStats['전체']
+    const kpi = {
+      totalSku:        sel.skuCount,
+      totalQty:        Math.round(sel.qty),
+      riskCount:       sel.riskCount,
+      shortCount:      sel.shortCount,
+      avgCoverageDays,
+      snapshotDate:    selectedMonth,
+    }
+
     return NextResponse.json({
-      trend,
+      availableMonths,
+      selectedMonth,
       productTypes,
-      kpi: { totalSku, avgCoverageDays, snapshotDate: latestSnap },
+      kpi,
+      trend,
+      typeStats,
       source: 'database',
     })
   } catch (err: any) {
