@@ -618,3 +618,16 @@ export const CAT_COLORS: Record<string,string> = {
   커넥터:'#2563EB', 소켓:'#7C3AED', 마운트:'#0D9488',
   리드:'#D97706', 핀:'#EA580C', 기타:'#94A3B8',
 }
+
+// ─── CSV 내보내기 유틸 ──────────────────────────────────────────────────────
+export function exportToCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+  const bom = '\uFEFF'
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
