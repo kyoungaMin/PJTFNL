@@ -30,6 +30,116 @@ const TABS = [
   { id: 'features'    as const, label: '피처 중요도',  icon: '📋' },
   { id: 'executive'   as const, label: '경영진 보고서', icon: '📑' },
 ]
+
+/* ─── User Guide Panel ────────────────────────────────────────────────────── */
+function UserGuidePanel({ onClose }: { onClose: () => void }) {
+  const guideCard: React.CSSProperties = {
+    background: '#FFFFFF', borderRadius: 10, padding: '16px 20px',
+    border: `1px solid #E2E8F0`,
+  }
+  const guideMetric: React.CSSProperties = {
+    display: 'inline-block', fontFamily: mono, fontWeight: 700,
+    fontSize: 11, padding: '2px 6px', borderRadius: 4, marginRight: 4,
+  }
+
+  return (
+    <div style={{
+      ...card, marginBottom: 20, padding: '24px 28px',
+      background: 'linear-gradient(135deg, #EFF6FF 0%, #F0FDF4 50%, #FFFBEB 100%)',
+      border: `1px solid ${T.blueMid}`, position: 'relative',
+    }}>
+      <button onClick={onClose} style={{
+        position: 'absolute', top: 12, right: 16, background: 'none', border: 'none',
+        fontSize: 18, color: T.text3, cursor: 'pointer', lineHeight: 1,
+      }}>×</button>
+
+      <div style={{ fontSize: 15, fontWeight: 800, color: T.text1, marginBottom: 4 }}>
+        모델 평가 대시보드 활용 가이드
+      </div>
+      <div style={{ fontSize: 12, color: T.text2, marginBottom: 16 }}>
+        AI 수요예측 모델의 성능을 이해하고, 실무 의사결정에 활용하는 방법을 안내합니다.
+      </div>
+
+      {/* ── 핵심 지표 해석 가이드 ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+        <div style={guideCard}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.blue, marginBottom: 8 }}>핵심 지표 해석</div>
+          <div style={{ fontSize: 11, lineHeight: 2, color: T.text2 }}>
+            <div><span style={{ ...guideMetric, background: '#DBEAFE', color: T.blue }}>R²</span> 모델이 데이터 변동의 몇 %를 설명하는가 (1에 가까울수록 우수)</div>
+            <div><span style={{ ...guideMetric, background: '#D1FAE5', color: T.green }}>MAE</span> 예측과 실제의 평균 오차 (낮을수록 정확)</div>
+            <div><span style={{ ...guideMetric, background: '#FEF3C7', color: T.amber }}>RMSE</span> 큰 오차에 가중치를 둔 평균 오차 (MAE보다 크면 이상치 존재)</div>
+            <div><span style={{ ...guideMetric, background: '#FEE2E2', color: T.red }}>MAPE</span> 백분율 기준 평균 오차 — 10% 미만이면 우수</div>
+            <div><span style={{ ...guideMetric, background: '#E0E7FF', color: '#4338CA' }}>±5 적중률</span> 오차 5개 이내 비율 — 자동화 가능성 판단 기준</div>
+          </div>
+        </div>
+
+        <div style={guideCard}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.green, marginBottom: 8 }}>R² 기준 의사결정 가이드</div>
+          <div style={{ fontSize: 11, lineHeight: 2, color: T.text2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ ...guideMetric, background: '#D1FAE5', color: T.green, minWidth: 70, textAlign: 'center' }}>0.5 이상</span>
+              <span><b style={{ color: T.green }}>실무 활용 가능</b> — AI 예측 기반 생산·발주 계획 수립</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ ...guideMetric, background: '#FEF3C7', color: T.amber, minWidth: 70, textAlign: 'center' }}>0.2 ~ 0.5</span>
+              <span><b style={{ color: T.amber }}>보조 참고용</b> — 담당자 판단과 병행하여 활용</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ ...guideMetric, background: '#FEE2E2', color: T.red, minWidth: 70, textAlign: 'center' }}>0.2 미만</span>
+              <span><b style={{ color: T.red }}>신뢰도 낮음</b> — 모델 개선 필요, 수동 관리 유지</span>
+            </div>
+            <div style={{ marginTop: 8, padding: '8px 12px', background: '#F0FDF4', borderRadius: 6, fontSize: 11, color: T.text2 }}>
+              💡 <b>쉬운 비유</b>: R² = 0.5이면 "10번 예측 중 약 5번 맞춘다"는 의미입니다.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 탭별 활용법 ── */}
+      <div style={guideCard}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.purple, marginBottom: 10 }}>탭별 활용법</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+          {[
+            { icon: '📊', tab: '종합 요약', who: '전체 사용자', desc: '7개 모델 성능 비교, 최적 모델 한눈에 파악' },
+            { icon: '🎯', tab: '정확도 분석', who: '데이터 담당자', desc: 'MAE·RMSE·MAPE 상세 비교, 모델별 강약점 분석' },
+            { icon: '⚠️', tab: '과적합 분석', who: '데이터 담당자', desc: 'Train vs Validation 차이로 모델 안정성 검증' },
+            { icon: '📋', tab: '피처 중요도', who: '분석가·기획자', desc: '예측에 영향 큰 변수 파악 → 데이터 수집 우선순위' },
+            { icon: '📑', tab: '경영진 보고서', who: '의사결정권자', desc: '자동 해설 + 실무 권고사항, 비기술인도 이해 가능' },
+          ].map(t => (
+            <div key={t.tab} style={{ padding: '10px 12px', background: '#F8FAFC', borderRadius: 8, fontSize: 11 }}>
+              <div style={{ fontSize: 16, marginBottom: 4 }}>{t.icon}</div>
+              <div style={{ fontWeight: 700, color: T.text1, marginBottom: 2 }}>{t.tab}</div>
+              <div style={{ color: T.blue, fontWeight: 600, fontSize: 10, marginBottom: 4 }}>{t.who}</div>
+              <div style={{ color: T.text3, lineHeight: 1.5 }}>{t.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 실무 활용 팁 ── */}
+      <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div style={{ ...guideCard, borderLeft: `3px solid ${T.green}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.green, marginBottom: 6 }}>생산·발주 담당자</div>
+          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.6 }}>
+            R²가 높은 모델의 예측값을 기반으로 생산 계획을 수립하세요. "오차 상위 제품"은 수동 보정이 필요합니다.
+          </div>
+        </div>
+        <div style={{ ...guideCard, borderLeft: `3px solid ${T.amber}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.amber, marginBottom: 6 }}>재고 관리자</div>
+          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.6 }}>
+            ±5 적중률이 높은 제품부터 자동 발주 파일럿을 검토하세요. MAPE가 높은 제품은 안전재고를 상향 조정하세요.
+          </div>
+        </div>
+        <div style={{ ...guideCard, borderLeft: `3px solid ${T.purple}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.purple, marginBottom: 6 }}>경영진</div>
+          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.6 }}>
+            "경영진 보고서" 탭에서 기간별 자동 해설과 권고사항을 확인하세요. 주간/월간 추이로 모델 개선 효과를 모니터링할 수 있습니다.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 type TabId = typeof TABS[number]['id']
 
 /* ─── Types ────────────────────────────────────────────────────────────────── */
@@ -99,6 +209,7 @@ export default function PageModelEvaluation() {
   const [data, setData] = useState<ComparisonData | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedModelIdx, setSelectedModelIdx] = useState(0)
+  const [showGuide, setShowGuide] = useState(true)
 
   // Period filter state
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all')
@@ -221,6 +332,15 @@ export default function PageModelEvaluation() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <PageHeader title="모델 평가" sub={`7개 ML 모델 비교 분석 · ${data.timestamp.split('T')[0]}`} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => setShowGuide(g => !g)}
+            style={{
+              padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 7, cursor: 'pointer',
+              border: `1px solid ${showGuide ? T.blue : T.border}`,
+              background: showGuide ? T.blueSoft : T.surface2,
+              color: showGuide ? T.blue : T.text2, transition: 'all .15s',
+            }}>
+            {showGuide ? '📖 가이드 닫기' : '📖 활용 가이드'}
+          </button>
           <PeriodToggle />
           {periods.length > 0 && (
             <select
@@ -241,6 +361,9 @@ export default function PageModelEvaluation() {
           )}
         </div>
       </div>
+
+      {/* ── User Guide ── */}
+      {showGuide && <UserGuidePanel onClose={() => setShowGuide(false)} />}
 
       {/* ── Meta info bar ── */}
       {meta && (

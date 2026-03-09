@@ -91,12 +91,50 @@ export async function GET(req: NextRequest) {
       ? nonZero.reduce((s, e) => s + e.error / Math.abs(e.actual), 0) / nonZero.length * 100
       : 0
 
+    // Weighted MAPE — 수주량 가중 (대량 제품 중심 정확도)
+    const totalActual = nonZero.reduce((s, e) => s + Math.abs(e.actual), 0)
+    const wmape = totalActual > 0
+      ? nonZero.reduce((s, e) => s + e.error, 0) / totalActual * 100
+      : 0
+
     // ±5 tolerance
     const within5 = errors.filter(e => e.error <= 5).length
     const tolerance_5_rate = (within5 / n) * 100
 
     // Unique products
     const uniqueProducts = new Set(errors.map(e => e.pid))
+
+    // ── 세그먼트별 평가 (대량 ≥100, 중량 10~99, 소량 <10) ──
+    const segments = [
+      { label: '대량 (≥100)', filter: (e: typeof errors[0]) => e.actual >= 100 },
+      { label: '중량 (10~99)', filter: (e: typeof errors[0]) => e.actual >= 10 && e.actual < 100 },
+      { label: '소량 (<10)', filter: (e: typeof errors[0]) => e.actual < 10 },
+    ].map(seg => {
+      const items = errors.filter(seg.filter)
+      if (items.length === 0) return { label: seg.label, count: 0, mae: 0, rmse: 0, r2: 0, mape: 0, wmape: 0, tolerance_5_rate: 0 }
+      const sN = items.length
+      const sMae = items.reduce((s, e) => s + e.error, 0) / sN
+      const sRmse = Math.sqrt(items.reduce((s, e) => s + e.sqError, 0) / sN)
+      const sMean = items.reduce((s, e) => s + e.actual, 0) / sN
+      const sSsTot = items.reduce((s, e) => s + (e.actual - sMean) ** 2, 0)
+      const sSsRes = items.reduce((s, e) => s + e.sqError, 0)
+      const sR2 = sSsTot > 0 ? 1 - sSsRes / sSsTot : 0
+      const sNonZero = items.filter(e => e.actual !== 0)
+      const sMape = sNonZero.length > 0
+        ? sNonZero.reduce((s, e) => s + e.error / Math.abs(e.actual), 0) / sNonZero.length * 100 : 0
+      const sTotalActual = sNonZero.reduce((s, e) => s + Math.abs(e.actual), 0)
+      const sWmape = sTotalActual > 0 ? sNonZero.reduce((s, e) => s + e.error, 0) / sTotalActual * 100 : 0
+      const sWithin5 = items.filter(e => e.error <= 5).length
+      return {
+        label: seg.label, count: sN,
+        mae: Math.round(sMae * 100) / 100,
+        rmse: Math.round(sRmse * 100) / 100,
+        r2: Math.round(sR2 * 10000) / 10000,
+        mape: Math.round(sMape * 100) / 100,
+        wmape: Math.round(sWmape * 100) / 100,
+        tolerance_5_rate: Math.round((sWithin5 / sN) * 10000) / 100,
+      }
+    })
 
     // Top error / accurate products
     const sorted = [...errors].sort((a, b) => b.error - a.error)
@@ -119,8 +157,10 @@ export async function GET(req: NextRequest) {
         rmse: Math.round(rmse * 100) / 100,
         r2: Math.round(r2 * 10000) / 10000,
         mape: Math.round(mape * 100) / 100,
+        wmape: Math.round(wmape * 100) / 100,
         tolerance_5_rate: Math.round(tolerance_5_rate * 100) / 100,
       },
+      segments,
       top_error_products: topError,
       top_accurate_products: topAccurate,
     })

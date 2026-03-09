@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 interface TopProduct { product_id: string; predicted: number; actual: number; error: number }
 
-interface Metrics { mae: number; rmse: number; r2: number; mape: number; tolerance_5_rate: number }
+interface Metrics { mae: number; rmse: number; r2: number; mape: number; wmape: number; tolerance_5_rate: number }
 
 function generateInsights(
   metrics: Metrics,
@@ -77,13 +77,15 @@ function generateInsights(
       ? '적중률을 높이려면 소량·정기 발주 제품을 먼저 자동화하는 것이 효과적입니다.'
       : '대부분의 예측이 ±5 범위를 벗어나고 있어, 제품군별 특화 모델이 필요할 수 있습니다.')
 
-  const mape_explanation = `MAPE는 ${metrics.mape.toFixed(1)}%입니다. `
-    + (metrics.mape <= 20
-      ? '비율 기준으로 매우 정확한 예측을 보여주고 있습니다.'
-      : metrics.mape <= 50
-      ? '비율 기준으로 보통 수준이며, 소량 수주 제품에서 MAPE가 높게 나타나는 경향이 있습니다.'
-      : `비율 기준 오차가 큰 편입니다. 이는 실제 수주가 매우 작은 제품(예: 1~5개)에서 `
-        + `예측이 조금만 벗어나도 백분율 오차가 크게 증가하기 때문입니다.`)
+  const mape_explanation = `MAPE는 ${metrics.mape.toFixed(1)}%이며, 수주량 가중 WMAPE는 ${metrics.wmape.toFixed(1)}%입니다. `
+    + (metrics.mape > 50 && metrics.wmape <= 30
+      ? `MAPE가 높은 이유는 소량 수주 제품(1~5개)에서 약간의 오차도 백분율로는 크게 나타나기 때문입니다. `
+        + `실제 매출 영향이 큰 대량 제품 기준(WMAPE ${metrics.wmape.toFixed(1)}%)으로 보면 예측 품질은 양호합니다.`
+      : metrics.wmape <= 20
+      ? '대량 수주 제품 중심으로 매우 정확한 예측을 보여주고 있습니다.'
+      : metrics.wmape <= 50
+      ? '대량 수주 제품 기준으로 보통 수준의 정확도입니다.'
+      : '대량 수주 제품에서도 오차가 큰 편이며, 모델 개선이 필요합니다.')
 
   // ── 오차 패턴 설명 ──
   const error_pattern = isOverPredict
@@ -301,6 +303,10 @@ export async function POST(req: NextRequest) {
     const mape = nonZero.length > 0
       ? nonZero.reduce((s, e) => s + e.error / Math.abs(e.actual), 0) / nonZero.length * 100
       : 0
+    const totalActual = nonZero.reduce((s, e) => s + Math.abs(e.actual), 0)
+    const wmape = totalActual > 0
+      ? nonZero.reduce((s, e) => s + e.error, 0) / totalActual * 100
+      : 0
     const within5 = errors.filter(e => e.error <= 5).length
     const tolerance_5_rate = (within5 / n) * 100
     const uniqueProducts = new Set(errors.map(e => e.pid))
@@ -324,6 +330,7 @@ export async function POST(req: NextRequest) {
       rmse: Math.round(rmse * 100) / 100,
       r2: Math.round(r2 * 10000) / 10000,
       mape: Math.round(mape * 100) / 100,
+      wmape: Math.round(wmape * 100) / 100,
       tolerance_5_rate: Math.round(tolerance_5_rate * 100) / 100,
     }
 
