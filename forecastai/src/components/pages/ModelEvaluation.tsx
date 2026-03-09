@@ -174,7 +174,7 @@ type SegmentResult = {
 }
 
 type PeriodResult = {
-  period: string; type: string; n_products: number; n_records: number
+  period: string; type: string; modelId?: string; n_products: number; n_records: number
   date_range: { start: string; end: string }
   metrics: { mae: number; rmse: number; r2: number; mape: number; wmape?: number; tolerance_5_rate: number }
   segments?: SegmentResult[]
@@ -222,6 +222,21 @@ export default function PageModelEvaluation() {
   const [periodData, setPeriodData] = useState<PeriodResult | null>(null)
   const [periodLoading, setPeriodLoading] = useState(false)
 
+  // 모델 선택
+  const MODEL_OPTIONS = {
+    weekly: [
+      { id: 'lgbm_q_v2', label: 'LightGBM Quantile (기본)' },
+      { id: 'ridge_v1', label: 'Ridge Regression' },
+      { id: 'svr_linear_v1', label: 'SVR Linear' },
+    ],
+    monthly: [
+      { id: 'lgbm_q_monthly_v1', label: 'LightGBM Quantile (기본)' },
+      { id: 'ridge_monthly_v1', label: 'Ridge Regression' },
+      { id: 'svr_linear_monthly_v1', label: 'SVR Linear' },
+    ],
+  }
+  const [selectedModel, setSelectedModel] = useState('')
+
   useEffect(() => {
     let cancelled = false
     fetch('/api/model-evaluation')
@@ -241,6 +256,7 @@ export default function PageModelEvaluation() {
   useEffect(() => {
     setSelectedPeriod('all')
     setPeriodData(null)
+    setSelectedModel('')
     fetch(`/api/model-evaluation/periods?type=${period}`)
       .then(r => r.json())
       .then(json => { if (json.periods) setPeriods(json.periods) })
@@ -251,12 +267,13 @@ export default function PageModelEvaluation() {
   useEffect(() => {
     if (selectedPeriod === 'all') { setPeriodData(null); return }
     setPeriodLoading(true)
-    fetch(`/api/model-evaluation/by-period?type=${period}&period=${selectedPeriod}`)
+    const modelQ = selectedModel ? `&model=${selectedModel}` : ''
+    fetch(`/api/model-evaluation/by-period?type=${period}&period=${selectedPeriod}${modelQ}`)
       .then(r => r.json())
       .then(json => { if (!json.error) setPeriodData(json) })
       .catch(() => {})
       .finally(() => setPeriodLoading(false))
-  }, [selectedPeriod, period])
+  }, [selectedPeriod, period, selectedModel])
 
   const models = data ? data[period] : []
   const meta = data ? (period === 'weekly' ? data.weekly_meta : data.monthly_meta) : null
@@ -362,6 +379,23 @@ export default function PageModelEvaluation() {
             >
               <option value="all">전체 (집계)</option>
               {periods.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          )}
+          {selectedPeriod !== 'all' && (
+            <select
+              value={selectedModel}
+              onChange={e => setSelectedModel(e.target.value)}
+              style={{
+                padding: '6px 12px', fontSize: 12, borderRadius: 7,
+                border: `1px solid ${selectedModel ? T.green : T.border}`,
+                background: selectedModel ? '#f0fdf4' : T.surface2,
+                color: selectedModel ? T.green : T.text2,
+                fontWeight: selectedModel ? 700 : 400,
+                cursor: 'pointer', outline: 'none',
+              }}
+            >
+              <option value="">기본 모델</option>
+              {MODEL_OPTIONS[period].map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           )}
         </div>
@@ -1081,6 +1115,12 @@ function TabPeriodOverview({ data, loading }: { data: PeriodResult; loading: boo
             </div>
           </div>
           <div style={{ display: 'flex', gap: 24 }}>
+            {data.modelId && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: T.text3, marginBottom: 2 }}>모델</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.green, fontFamily: mono }}>{data.modelId}</div>
+              </div>
+            )}
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: T.text3, marginBottom: 2 }}>조회 유형</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>{isWeekly ? '주간 예측' : '월간 예측'}</div>

@@ -5,7 +5,15 @@ import { supabase } from '@/lib/supabase'
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? 'weekly'
   const period = req.nextUrl.searchParams.get('period') ?? ''
-  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v2'
+  const modelParam = req.nextUrl.searchParams.get('model') ?? ''
+
+  // 모델 ID 결정: 파라미터 지정 → 기본값 (주간: lgbm_q_v2, 월간: lgbm_q_monthly_v1)
+  const defaultModel = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v2'
+  const VALID_MODELS = [
+    'lgbm_q_v2', 'ridge_v1', 'svr_linear_v1',
+    'lgbm_q_monthly_v1', 'ridge_monthly_v1', 'svr_linear_monthly_v1',
+  ]
+  const modelId = modelParam && VALID_MODELS.includes(modelParam) ? modelParam : defaultModel
 
   if (!period) {
     return NextResponse.json({ error: 'period parameter required' }, { status: 400 })
@@ -148,7 +156,7 @@ export async function GET(req: NextRequest) {
     }))
 
     return NextResponse.json({
-      period, type,
+      period, type, modelId,
       n_products: uniqueProducts.size,
       n_records: n,
       date_range: { start: startDate, end: endDate },
