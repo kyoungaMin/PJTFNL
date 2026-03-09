@@ -8,7 +8,7 @@ import { Badge, GradeBadge, RiskTypeBadge, PageHeader, Btn, FilterBar, Select, S
 
 /* ────── types ────── */
 type PlanItem = {
-  id: number; sku: string; name: string; line: string;
+  id: number; sku: string; name: string; spec?: string; category?: string; line: string;
   demandP50: number; demandP90: number; currentStock: number; safetyStock: number;
   dailyCapacity: number; maxCapacity: number; plannedQty: number; minQty: number; maxQty: number;
   priority: string; planType: string; riskGrade: string;
@@ -135,7 +135,6 @@ export default function PageActionQueue() {
       setCatChartData([])
       setCatList([])
       setTopProducts([])
-      setPriorityDist(PROD_PRIORITY_DIST)
       setDataSource('mock')
     } finally {
       setLoading(false)
@@ -609,7 +608,10 @@ export default function PageActionQueue() {
                       </td>
                       <td style={td}><Badge color={ps.color} bg={ps.bg} border={ps.border} size={10}>{ps.label}</Badge></td>
                       <td style={{ ...td, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:T.text3 }}>{item.sku}</td>
-                      <td style={{ ...td, fontWeight:600, color:T.text1, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</td>
+                      <td style={{ ...td, fontWeight:600, color:T.text1, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={item.spec ? `${item.name} | ${item.spec}` : item.name}>
+                        {item.name}
+                        {item.spec && <span style={{ fontWeight:400, fontSize:10, color:T.text3, marginLeft:4 }}>{item.spec}</span>}
+                      </td>
                       <td style={{ ...td, fontSize:11 }}>{item.line}</td>
                       <td style={{ ...td, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace" }}>{fmt(item.demandP50)}</td>
                       <td style={{ ...td, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", color:T.red }}>{fmt(item.demandP90)}</td>
@@ -686,6 +688,7 @@ export default function PageActionQueue() {
                   <GradeBadge grade={drawerItem.riskGrade}/>
                 </div>
                 <div style={{ fontSize:15, fontWeight:700, color:T.text1 }}>{drawerItem.name}</div>
+                {drawerItem.spec && <div style={{ fontSize:12, color:T.text2, marginTop:1 }}>{drawerItem.spec}</div>}
                 <div style={{ fontSize:12, color:T.text3, marginTop:2 }}>{drawerItem.sku} · {drawerItem.line} · {drawerItem.customer}</div>
               </div>
               <button onClick={() => setDrawerItem(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:T.text3, padding:4 }}>✕</button>

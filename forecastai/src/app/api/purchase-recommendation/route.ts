@@ -75,7 +75,7 @@ export async function GET(request: Request) {
       const batch = componentIds.slice(i, i + BATCH)
       const { data: masters } = await supabase
         .from('product_master')
-        .select('product_code,product_name,product_category')
+        .select('product_code,product_name,product_specification,product_category')
         .in('product_code', batch)
       for (const m of (masters ?? [])) masterMap[m.product_code] = m
     }
@@ -90,6 +90,7 @@ export async function GET(request: Request) {
         id: r.id,
         componentId: r.component_product_id,
         componentName: m.product_name ?? r.component_product_id,
+        componentSpec: m.product_specification ?? '',
         category: m.product_category ?? '',
         parentProducts: r.parent_product_ids ?? '',
         grossRequirement: Math.round(Number(r.gross_requirement ?? 0)),

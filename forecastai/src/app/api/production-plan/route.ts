@@ -105,7 +105,7 @@ export async function GET(request: Request) {
     const chartEndDate = chartEndDt.toISOString().slice(0, 10)
 
     const [products, risks, orders, leadTimes] = await Promise.all([
-      fetchBatchIn('product_master', 'product_code,product_name,product_category', 'product_code', productIds),
+      fetchBatchIn('product_master', 'product_code,product_name,product_specification,product_category', 'product_code', productIds),
       fetchBatchIn('risk_score', 'product_id,stockout_risk,excess_risk,delivery_risk,margin_risk,risk_grade,inventory_days,demand_p90,safety_stock,eval_date', 'product_id', productIds),
       fetchBatchIn('daily_order', 'product_id,customer_id,order_qty,status', 'product_id', productIds, q => q.eq('status', 'R')),
       fetchBatchIn('product_lead_time', 'product_id,avg_lead_days,p90_lead_days', 'product_id', productIds),
@@ -158,6 +158,7 @@ export async function GET(request: Request) {
         id: p.id,
         sku: p.product_id,
         name: prod.product_name ?? p.product_id,
+        spec: prod.product_specification ?? '',
         category: prod.product_category ?? '',
         line: '-',
         demandP50: Math.round(Number(p.demand_p50 ?? 0)),
@@ -203,7 +204,7 @@ export async function GET(request: Request) {
       for (let i = 0; i < missingIds.length; i += batchSize) {
         const batch = missingIds.slice(i, i + batchSize)
         const { data: extras } = await supabase.from('product_master')
-          .select('product_code,product_name,product_category')
+          .select('product_code,product_name,product_specification,product_category')
           .in('product_code', batch)
         for (const e of (extras ?? [])) extraMap[e.product_code] = e
       }
