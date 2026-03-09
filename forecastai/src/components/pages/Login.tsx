@@ -3,6 +3,16 @@ import React, { useState } from 'react'
 import { LOGIN_ACCOUNTS, type Member, type RoleType } from '@/lib/data'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
+// ─── 비밀번호 재설정 요청 ─────────────────────────────────────────────────────
+async function sendPasswordReset(email: string): Promise<{ ok: boolean; msg: string }> {
+  if (!email) return { ok: false, msg: '이메일을 입력해 주세요.' }
+  const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/reset-password',
+  })
+  if (error) return { ok: false, msg: error.message }
+  return { ok: true, msg: '비밀번호 변경 링크를 이메일로 발송했습니다. 메일함을 확인해 주세요.' }
+}
+
 // ─── role 첫 글자 대문자 변환 (DB: 'admin' → Member: 'Admin') ───────────────
 function toRoleType(role: string): RoleType {
   const map: Record<string, RoleType> = {
@@ -25,6 +35,19 @@ export default function LoginPage({ onLogin }: { onLogin: (member: Member) => vo
   const [error,    setError]    = useState("")
   const [loading,  setLoading]  = useState(false)
   const [showPw,   setShowPw]   = useState(false)
+
+  // 비밀번호 변경 모달
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetEmail, setResetEmail] = useState("")
+  const [resetMsg,   setResetMsg]   = useState("")
+  const [resetLoading, setResetLoading] = useState(false)
+
+  const handleReset = async () => {
+    setResetLoading(true)
+    const result = await sendPasswordReset(resetEmail)
+    setResetMsg(result.msg)
+    setResetLoading(false)
+  }
 
   const handleLogin = async () => {
     if (!email || !password) { setError("이메일과 비밀번호를 입력해 주세요."); return }
@@ -157,8 +180,54 @@ export default function LoginPage({ onLogin }: { onLogin: (member: Member) => vo
             ) : "로그인"}
           </button>
 
+          {/* 비밀번호 변경 링크 */}
+          <div style={{ textAlign:'right', marginTop:10 }}>
+            <button onClick={() => { setResetOpen(true); setResetMsg(''); setResetEmail(email) }}
+              style={{ fontSize:12, color:'#64748B', background:'none', border:'none', cursor:'pointer', textDecoration:'underline' }}>
+              비밀번호 변경
+            </button>
+          </div>
+
           <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
         </div>
+
+      {/* ── 비밀번호 변경 모달 ── */}
+      {resetOpen && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={() => setResetOpen(false)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:'#1E293B', border:'1px solid rgba(255,255,255,0.12)', borderRadius:16, padding:'28px 28px', width:360, boxShadow:'0 20px 48px rgba(0,0,0,0.5)' }}>
+            <div style={{ fontSize:15, fontWeight:700, color:'#F1F5F9', marginBottom:6 }}>비밀번호 변경</div>
+            <div style={{ fontSize:12, color:'#64748B', marginBottom:20 }}>
+              가입한 이메일을 입력하면 비밀번호 변경 링크를 보내드립니다.
+            </div>
+            <input
+              type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)}
+              placeholder="name@company.com"
+              style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:9, padding:'11px 13px', fontSize:13, color:'#F1F5F9', outline:'none', boxSizing:'border-box', marginBottom:14 }}
+            />
+            {resetMsg && (
+              <div style={{ fontSize:12, marginBottom:14, padding:'9px 12px', borderRadius:7,
+                background: resetMsg.startsWith('비밀번호') ? 'rgba(5,150,105,0.15)' : 'rgba(220,38,38,0.15)',
+                color:      resetMsg.startsWith('비밀번호') ? '#6EE7B7' : '#FCA5A5',
+                border:     `1px solid ${resetMsg.startsWith('비밀번호') ? 'rgba(5,150,105,0.3)' : 'rgba(220,38,38,0.3)'}`,
+              }}>
+                {resetMsg}
+              </div>
+            )}
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setResetOpen(false)}
+                style={{ flex:1, padding:'10px 0', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.10)', borderRadius:9, fontSize:13, color:'#94A3B8', cursor:'pointer' }}>
+                취소
+              </button>
+              <button onClick={handleReset} disabled={resetLoading}
+                style={{ flex:2, padding:'10px 0', background:'linear-gradient(135deg,#2563EB,#3B82F6)', border:'none', borderRadius:9, fontSize:13, fontWeight:700, color:'white', cursor:resetLoading?'not-allowed':'pointer', opacity:resetLoading?0.6:1 }}>
+                {resetLoading ? '발송 중…' : '변경 링크 발송'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
         {/* 빠른 로그인 — 폼 자동완성용 (Supabase에 동일 이메일 계정 필요) */}
         <div style={{ marginTop:20, padding:"16px 20px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:12 }}>

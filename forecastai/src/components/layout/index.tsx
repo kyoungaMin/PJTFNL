@@ -1,7 +1,8 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { T, NAV_STRUCTURE, ALL_MEMBERS, ROLE_LABEL, SEARCH_INDEX, TK, type Member, type RoleType } from '@/lib/data'
+import { T, NAV_STRUCTURE, ROLE_LABEL, type Member } from '@/lib/data'
 import { Badge, Btn } from '@/components/ui'
+import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
 export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { page:string, setPage:(p:string)=>void, collapsed:boolean, onToggle:()=>void, currentUser?: import('@/lib/data').Member|null }) {
   const [openGroups, setOpenGroups] = useState({"재고 관리":true,"수요예측":true,"최적화":true,"외부 지표":true});
@@ -80,12 +81,17 @@ export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { p
 
 export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }: {
   currentUser: import('@/lib/data').Member
-  setCurrentUser: (m: import('@/lib/data').Member) => void
+  setCurrentUser: (m: import('@/lib/data').Member | null) => void
   setPage: (p: string) => void
   alertCount?: number
 }) {
   const [alertOpen, setAlertOpen] = useState(false);
   const [userOpen,  setUserOpen]  = useState(false);
+
+  const handleLogout = async () => {
+    await supabaseBrowser.auth.signOut()
+    window.location.href = '/'
+  };
 
   const closeAll = () => { setAlertOpen(false); setUserOpen(false); };
 
@@ -157,23 +163,8 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
                   </div>
                 </div>
               </div>
-              <div style={{ padding:"7px 14px 3px", fontSize:10, fontWeight:700, color:T.text3, letterSpacing:"0.06em", textTransform:"uppercase" }}>담당자 전환</div>
-              {ALL_MEMBERS.filter(m=>m.id!==currentUser.id).map(m=>(
-                <div key={m.id} onClick={()=>{ setCurrentUser(m); setUserOpen(false); }}
-                  style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", cursor:"pointer", transition:"background 0.1s" }}
-                  onMouseEnter={e=>e.currentTarget.style.background=T.surface2}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <div style={{ width:32, height:32, borderRadius:"50%", background:m.grad, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#fff", flexShrink:0 }}>{m.initial}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:T.text1 }}>{m.name} {ROLE_LABEL[m.role]}</div>
-                    <div style={{ fontSize:10, color:T.text3 }}>{m.dept} · {m.role}</div>
-                  </div>
-                  <span style={{ fontSize:10, color:T.blue, fontWeight:600 }}>전환</span>
-                </div>
-              ))}
-              <div style={{ borderTop:`1px solid ${T.border}`, padding:"8px 10px", display:"flex", gap:6 }}>
-                <button style={{ flex:1, padding:"7px 0", background:T.surface2, border:`1px solid ${T.border}`, borderRadius:6, fontSize:11, color:T.text2, cursor:"pointer", fontWeight:600 }}>⚙ 내 설정</button>
-                <button style={{ flex:1, padding:"7px 0", background:T.redSoft, border:`1px solid ${T.redMid}`, borderRadius:6, fontSize:11, color:T.red, cursor:"pointer", fontWeight:600 }}>로그아웃</button>
+              <div style={{ borderTop:`1px solid ${T.border}`, padding:"8px 10px" }}>
+                <button onClick={handleLogout} style={{ width:"100%", padding:"7px 0", background:T.redSoft, border:`1px solid ${T.redMid}`, borderRadius:6, fontSize:11, color:T.red, cursor:"pointer", fontWeight:600 }}>로그아웃</button>
               </div>
             </div>
           )}
