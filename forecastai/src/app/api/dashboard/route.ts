@@ -126,17 +126,31 @@ export async function GET() {
       .order('severity', { ascending: true })  // critical이 알파벳순 앞
       .limit(3)
 
+    // action_queue에 나온 product_id 목록으로 product_name 일괄 조회
+    const actionProductIds = (actionRows ?? []).map(r => String(r.product_id))
+    let productNameMap: Record<string, string> = {}
+    if (actionProductIds.length > 0) {
+      const { data: pmRows } = await supabase
+        .from('product_master')
+        .select('product_id, product_name')
+        .in('product_id', actionProductIds)
+      for (const pm of (pmRows ?? [])) {
+        productNameMap[String(pm.product_id)] = String(pm.product_name ?? pm.product_id)
+      }
+    }
+
     // DB 컬럼 → 프론트 카드 형식 변환
     const RISK_TYPE_KO: Record<string, string> = {
       stockout: '결품', excess: '과잉', delivery: '납기', margin: '마진',
     }
     const ACTION_TYPE_KO: Record<string, string> = {
-      increase_production: '생산 증량 권고',
-      reduce_order: '발주 감소 권고',
-      expedite_po: '긴급 발주 권고',
-      adjust_price: '가격 조정 권고',
-      increase_po: '구매 발주 증량',
-      reduce_production: '생산 감량 권고',
+      increase_production:  '생산 증량 권고',
+      reduce_order:         '발주 감소 권고',
+      expedite_po:          '긴급 발주 권고',
+      expedite_production:  '긴급 생산 권고',
+      adjust_price:         '가격 조정 권고',
+      increase_po:          '구매 발주 증량',
+      reduce_production:    '생산 감량 권고',
     }
     const SEVERITY_TO_PRIORITY: Record<string, string> = {
       critical: 'HIGH', high: 'HIGH', medium: 'MED', low: 'LOW',
@@ -146,7 +160,7 @@ export async function GET() {
       id: r.id,
       priority: SEVERITY_TO_PRIORITY[String(r.severity)] ?? 'MED',
       sku: String(r.product_id),
-      name: String(r.product_id),                      // product_name 없어서 ID 사용
+      name: productNameMap[String(r.product_id)] ?? String(r.product_id),
       action: ACTION_TYPE_KO[String(r.action_type)] ?? String(r.action_type),
       detail: r.suggested_qty != null ? `권고 수량: ${Number(r.suggested_qty).toLocaleString()}EA` : '',
       impact: String(r.description ?? ''),

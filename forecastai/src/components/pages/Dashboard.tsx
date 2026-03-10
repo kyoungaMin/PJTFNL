@@ -575,8 +575,11 @@ export default function PageDashboard({
             <div style={sectionTitle}>위험 품목 현황</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Badge color={T.text3} bg={T.surface2} border={T.border}>전체 {total}건</Badge>
-              {!loading && dashData?.riskGrades.length === 0 && (
+              {!loading && (dashData?.riskGrades.length ?? 0) === 0 && (
                 <span style={{ fontSize: 9, color: T.amber, background: T.amberSoft, border: `1px solid ${T.amberMid}`, borderRadius: 4, padding: '2px 5px', fontWeight: 600 }}>샘플</span>
+              )}
+              {!loading && (dashData?.riskGrades.length ?? 0) > 0 && (
+                <span style={{ fontSize: 9, color: T.green, background: T.greenSoft, border: `1px solid ${T.greenMid}`, borderRadius: 4, padding: '2px 5px', fontWeight: 600 }}>✓ DB 실데이터</span>
               )}
             </div>
           </div>
@@ -644,6 +647,9 @@ export default function PageDashboard({
               <Badge color={T.red} bg={T.redSoft} border={T.redMid}>{actionCards.length}</Badge>
               {!isDbAction && !loading && (
                 <span style={{ fontSize: 9, color: T.amber, background: T.amberSoft, border: `1px solid ${T.amberMid}`, borderRadius: 4, padding: '2px 5px', fontWeight: 600 }}>샘플</span>
+              )}
+              {isDbAction && !loading && (
+                <span style={{ fontSize: 9, color: T.green, background: T.greenSoft, border: `1px solid ${T.greenMid}`, borderRadius: 4, padding: '2px 5px', fontWeight: 600 }}>✓ DB 실데이터</span>
               )}
             </div>
             <Btn variant="ghost" onClick={() => setPage?.('action-queue')}>전체 보기 →</Btn>
