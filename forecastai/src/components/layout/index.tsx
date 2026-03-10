@@ -87,6 +87,8 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
 }) {
   const [alertOpen, setAlertOpen] = useState(false);
   const [userOpen,  setUserOpen]  = useState(false);
+  const [alertItems, setAlertItems] = useState<{type:string;message:string;time:string}[]>([]);
+  const [alertLoaded, setAlertLoaded] = useState(false);
 
   const handleLogout = async () => {
     await supabaseBrowser.auth.signOut()
@@ -101,6 +103,19 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  // 벨 클릭 시 최초 1회만 실데이터 로드
+  const handleAlertOpen = () => {
+    setAlertOpen(p => !p);
+    setUserOpen(false);
+    if (!alertLoaded) {
+      fetch('/api/alerts')
+        .then(r => r.json())
+        .then(d => { if (d.alerts?.length) setAlertItems(d.alerts) })
+        .catch(() => {})
+        .finally(() => setAlertLoaded(true))
+    }
+  };
+
   return (
     <div style={{ height:58, background:"#FFFFFF", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"0 24px", flexShrink:0, position:"relative", zIndex:50 }}>
 
@@ -108,7 +123,7 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
 
         {/* Alert bell */}
         <div data-dropdown style={{ position:"relative" }}>
-          <button onClick={()=>{ setAlertOpen(p=>!p); setUserOpen(false); }}
+          <button onClick={handleAlertOpen}
             style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:4, fontSize:18, display:"flex", outline:"none" }}>
             🔔
             {alertCount > 0 && (
@@ -118,20 +133,30 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
             )}
           </button>
           {alertOpen && (
-            <div style={{ position:"absolute", top:44, right:0, width:308, background:T.surface, border:`1px solid ${T.border}`, borderRadius:10, boxShadow:"0 8px 32px rgba(15,23,42,0.14)", overflow:"hidden" }}>
-              <div style={{ padding:"12px 16px", borderBottom:`1px solid ${T.border}`, fontSize:12, fontWeight:700, color:T.text1, display:"flex", justifyContent:"space-between" }}>
-                알림 <span style={{ color:T.red }}>{alertCount}건</span>
+            <div style={{ position:"absolute", top:44, right:0, width:320, background:T.surface, border:`1px solid ${T.border}`, borderRadius:10, boxShadow:"0 8px 32px rgba(15,23,42,0.14)", overflow:"hidden" }}>
+              <div style={{ padding:"12px 16px", borderBottom:`1px solid ${T.border}`, fontSize:12, fontWeight:700, color:T.text1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span>알림</span>
+                <span style={{ fontSize:10, color:T.green, background:T.greenSoft, border:`1px solid ${T.greenMid}`, borderRadius:4, padding:"1px 6px", fontWeight:600 }}>✓ DB 실데이터</span>
               </div>
-              {[{t:"risk",m:"SKU-0421 E등급 전환 — 즉시 조치 필요",time:"09:10"},{t:"warn",m:"SCM 동기화 지연 감지 (07:30)",time:"07:32"},{t:"info",m:"주간 AI 예측 업데이트 완료 (504 SKU)",time:"03:05"}].map((a,i)=>(
-                <div key={i} style={{ padding:"11px 16px", borderBottom:i<2?`1px solid ${T.border}`:"none", display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer" }}
-                  onMouseEnter={e=>e.currentTarget.style.background=T.surface2}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <div style={{ width:28, height:28, borderRadius:"50%", background:a.t==="risk"?T.redSoft:a.t==="warn"?T.amberSoft:T.blueSoft, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, flexShrink:0 }}>
-                    {a.t==="risk"?"🔴":a.t==="warn"?"🟡":"🔵"}
+              {!alertLoaded ? (
+                <div style={{ padding:"20px 16px", textAlign:"center", fontSize:12, color:T.text3 }}>로딩 중...</div>
+              ) : alertItems.length === 0 ? (
+                <div style={{ padding:"20px 16px", textAlign:"center", fontSize:12, color:T.text3 }}>알림 없음</div>
+              ) : (
+                alertItems.map((a, i) => (
+                  <div key={i} style={{ padding:"11px 16px", borderBottom:i<alertItems.length-1?`1px solid ${T.border}`:"none", display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer" }}
+                    onMouseEnter={e=>{ (e.currentTarget as HTMLDivElement).style.background=T.surface2 }}
+                    onMouseLeave={e=>{ (e.currentTarget as HTMLDivElement).style.background="transparent" }}>
+                    <div style={{ width:28, height:28, borderRadius:"50%", background:a.type==="risk"?T.redSoft:a.type==="warn"?T.amberSoft:T.blueSoft, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, flexShrink:0 }}>
+                      {a.type==="risk"?"🔴":a.type==="warn"?"🟡":"🔵"}
+                    </div>
+                    <div>
+                      <div style={{ fontSize:12, color:T.text1, lineHeight:1.4 }}>{a.message}</div>
+                      <div style={{ fontSize:10, color:T.text3, marginTop:3 }}>{a.time}</div>
+                    </div>
                   </div>
-                  <div><div style={{ fontSize:12, color:T.text1, lineHeight:1.4 }}>{a.m}</div><div style={{ fontSize:10, color:T.text3, marginTop:3 }}>{a.time}</div></div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
         </div>

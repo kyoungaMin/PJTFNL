@@ -15,63 +15,48 @@ interface InsightItem {
 async function collectDashboardData() {
   const now = new Date()
 
-  // 1. 최근 2개월 수주량 비교 (이번 달 vs 저번 달)
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10)
+  // 1. 최근 3개월 수주량 (이번달 / 저번달 / 전전달)
+  // ⚠️ daily_order 직접 조회 → limit=1000에 걸려 월 수주량 과소 계산
+  //    → get_order_monthly_summary RPC로 해결 (DB/23_order_monthly_rpc.sql)
   const twoMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().slice(0, 10)
 
-  const { data: thisMonthOrders } = await supabase
-    .from('daily_order')
-    .select('order_qty')
-    .gte('order_date', thisMonthStart)
+  const { data: monthRows } = await supabase
+    .rpc('get_order_monthly_summary', { p_from_date: twoMonthsAgoStart })
 
-  const { data: lastMonthOrders } = await supabase
-    .from('daily_order')
-    .select('order_qty')
-    .gte('order_date', lastMonthStart)
-    .lt('order_date', thisMonthStart)
+  const monthMap: Record<string, number> = {}
+  for (const r of (monthRows ?? [])) monthMap[String(r.ym)] = Number(r.total_qty ?? 0)
 
-  const { data: twoMonthsOrders } = await supabase
-    .from('daily_order')
-    .select('order_qty')
-    .gte('order_date', twoMonthsAgoStart)
-    .lt('order_date', lastMonthStart)
+  const thisMonthYm  = now.toISOString().slice(0, 7)
+  const lastMonthYm  = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7)
+  const twoMonthsYm  = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().slice(0, 7)
 
-  const thisMonthQty  = (thisMonthOrders ?? []).reduce((s, r) => s + Number(r.order_qty ?? 0), 0)
-  const lastMonthQty  = (lastMonthOrders ?? []).reduce((s, r) => s + Number(r.order_qty ?? 0), 0)
-  const twoMonthsQty  = (twoMonthsOrders ?? []).reduce((s, r) => s + Number(r.order_qty ?? 0), 0)
+  const thisMonthQty = monthMap[thisMonthYm] ?? 0
+  const lastMonthQty = monthMap[lastMonthYm] ?? 0
+  const twoMonthsQty = monthMap[twoMonthsYm] ?? 0
 
   // 전월 대비 증감률
-  const momOrderRate = lastMonthQty > 0
+  const momOrderRate = lastMonthQty > 0 && twoMonthsQty > 0
     ? (((lastMonthQty - twoMonthsQty) / twoMonthsQty) * 100).toFixed(1)
     : '0'
 
   // 2. 재고 커버리지 (최신 스냅샷)
-  const { data: latestSnap } = await supabase
-    .from('inventory')
-    .select('snapshot_date')
-    .order('snapshot_date', { ascending: false })
-    .limit(1)
-
+  // ⚠️ inventory(617,720행) + daily_order 직접 조회 → limit=1000에 걸려 오계산
+  //    → get_inventory_coverage RPC로 해결 (DB/24_coverage_rpc.sql)
   let coverageDays = 0
-  if (latestSnap?.[0]?.snapshot_date) {
-    const { data: invRows } = await supabase
-      .from('inventory')
-      .select('inventory_qty')
-      .eq('snapshot_date', latestSnap[0].snapshot_date)
+  const thirtyAgo = new Date(now)
+  thirtyAgo.setDate(thirtyAgo.getDate() - 30)
 
-    const totalInv = (invRows ?? []).reduce((s, r) => s + Number(r.inventory_qty ?? 0), 0)
+  const { data: covRows } = await supabase
+    .rpc('get_inventory_coverage', {
+      p_from_date: thirtyAgo.toISOString().slice(0, 10),
+      p_to_date:   now.toISOString().slice(0, 10),
+    })
 
-    const thirtyAgo = new Date(now)
-    thirtyAgo.setDate(thirtyAgo.getDate() - 30)
-    const { data: demandRows } = await supabase
-      .from('daily_order')
-      .select('order_qty')
-      .gte('order_date', thirtyAgo.toISOString().slice(0, 10))
-
-    const dailyAvg = (demandRows ?? []).reduce((s, r) => s + Number(r.order_qty ?? 0), 0) / 30
-    coverageDays = dailyAvg > 0 ? Math.round(totalInv / dailyAvg) : 0
-  }
+  const covRow   = covRows?.[0]
+  const totalInv = Number(covRow?.total_inv_qty   ?? 0)
+  const demand30 = Number(covRow?.total_order_qty ?? 0)
+  const dailyAvg = demand30 / 30
+  coverageDays   = dailyAvg > 0 ? Math.round(totalInv / dailyAvg) : 0
 
   // 3. 미처리 구매 발주 건수
   const { count: pendingPO } = await supabase
@@ -209,6 +194,9 @@ export async function GET() {
 
     // GPT 호출
     const insights = await callGPT(data)
+
+    // 빈 배열 캐시 방지 — GPT가 빈 응답을 반환하면 캐시하지 않고 에러 처리
+    if (insights.length === 0) throw new Error('GPT가 빈 인사이트를 반환했습니다.')
 
     // 캐시 저장
     cache = { insights, generatedAt: Date.now() }

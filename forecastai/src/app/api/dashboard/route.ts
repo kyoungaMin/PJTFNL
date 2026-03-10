@@ -13,19 +13,19 @@ export async function GET() {
     // ─── 1. 수주량 월별 집계 (최근 15개월) — 차트용 ─────────────────────────
     // daily_revenue(매출=후행지표) 대신 daily_order(수주=선행지표) 사용
     // 생산계획팀은 수주량을 보고 생산 투입 결정 → 더 유의미한 지표
-    const { data: orderRows, error: orderErr } = await supabase
-      .from('daily_order')
-      .select('order_date, order_qty')
-      .gte('order_date', fromStr)
-      .order('order_date', { ascending: true })
+    //
+    // ⚠️ Supabase REST API 기본 limit=1000 문제:
+    //    daily_order(259,684행)를 직접 조회하면 첫 1000행만 반환 → '24.12 이후 끊김
+    //    → DB/23_order_monthly_rpc.sql의 get_order_monthly_summary RPC로 해결
+    //       (DB에서 월별 합산 후 최대 18행만 반환)
+    const { data: orderMonthRows, error: orderErr } = await supabase
+      .rpc('get_order_monthly_summary', { p_from_date: fromStr })
 
     if (orderErr) throw orderErr
 
     const orderMonthMap: Record<string, number> = {}
-    for (const row of (orderRows ?? [])) {
-      const d = String(row.order_date)
-      const ym = d.slice(0, 7)
-      orderMonthMap[ym] = (orderMonthMap[ym] ?? 0) + Number(row.order_qty ?? 0)
+    for (const row of (orderMonthRows ?? [])) {
+      orderMonthMap[String(row.ym)] = Number(row.total_qty ?? 0)
     }
 
     const orderActual = Object.entries(orderMonthMap)
@@ -107,49 +107,28 @@ export async function GET() {
     })
 
     // ─── 2. 재고 커버리지 KPI ─────────────────────────────────────────────────
-    const { data: latestSnap } = await supabase
-      .from('inventory')
-      .select('snapshot_date')
-      .order('snapshot_date', { ascending: false })
-      .limit(1)
+    // ⚠️ inventory(617,720행) + daily_order(259,684행) 직접 조회 → limit=1000에 걸려
+    //    inventory 합계·수요 분모가 모두 과소 계산 → 1,081일 오계산 버그
+    //    → DB/24_coverage_rpc.sql의 get_inventory_coverage RPC로 해결
+    const thirtyDaysAgo = new Date(now)
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    const thirtyDaysStr = thirtyDaysAgo.toISOString().slice(0, 10)
 
-    const latestDate = latestSnap?.[0]?.snapshot_date as string | undefined
+    const { data: covRows } = await supabase
+      .rpc('get_inventory_coverage', {
+        p_from_date: thirtyDaysStr,
+        p_to_date:   now.toISOString().slice(0, 10),
+      })
 
-    let coverageDays = 0
-    let totalInventoryQty = 0
-    let snapshotDate = ''
+    const covRow            = covRows?.[0]
+    const totalInventoryQty = Number(covRow?.total_inv_qty   ?? 0)
+    const totalDemand30     = Number(covRow?.total_order_qty ?? 0)
+    const snapshotDate      = String(covRow?.snapshot_date   ?? '')
 
-    if (latestDate) {
-      snapshotDate = latestDate
-
-      const { data: invRows } = await supabase
-        .from('inventory')
-        .select('inventory_qty')
-        .eq('snapshot_date', latestDate)
-
-      totalInventoryQty = (invRows ?? []).reduce(
-        (sum, r) => sum + Number(r.inventory_qty ?? 0), 0
-      )
-
-      // 최근 30일 일평균 수주량 기준으로 커버리지 계산
-      const thirtyDaysAgo = new Date(now)
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-      const thirtyDaysStr = thirtyDaysAgo.toISOString().slice(0, 10)
-
-      const { data: demandRows } = await supabase
-        .from('daily_order')
-        .select('order_qty')
-        .gte('order_date', thirtyDaysStr)
-
-      const totalDemand30 = (demandRows ?? []).reduce(
-        (sum, r) => sum + Number(r.order_qty ?? 0), 0
-      )
-      const dailyAvgDemand = totalDemand30 / 30
-
-      coverageDays = dailyAvgDemand > 0
-        ? Math.round(totalInventoryQty / dailyAvgDemand)
-        : 0
-    }
+    const dailyAvgDemand = totalDemand30 / 30
+    const coverageDays   = dailyAvgDemand > 0
+      ? Math.round(totalInventoryQty / dailyAvgDemand)
+      : 0
 
     // ─── 3. 구매 발주 KPI (R=미입고, P=처리중) ───────────────────────────────
     const { count: pendingCount, error: poErr } = await supabase

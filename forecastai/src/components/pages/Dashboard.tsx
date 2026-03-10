@@ -38,6 +38,20 @@ interface DashApiResponse {
   source: string
 }
 
+// ─── 주차 계산 헬퍼 ──────────────────────────────────────────────────────────
+// 이번 주 월요일 기준으로 "N월 N주차" + 날짜 범위 반환
+function getWeekInfo(date: Date): { year: number; month: number; week: number; start: string; end: string } {
+  const d = new Date(date)
+  const day = d.getDay() || 7   // 일=7, 월=1
+  d.setDate(d.getDate() - day + 1)  // 이번 주 월요일
+  const year  = d.getFullYear()
+  const month = d.getMonth() + 1
+  const week  = Math.ceil(d.getDate() / 7)
+  const start = d.toISOString().slice(0, 10)
+  d.setDate(d.getDate() + 6)        // 이번 주 일요일
+  return { year, month, week, start, end: d.toISOString().slice(0, 10) }
+}
+
 // 도넛 등급별 색상 (A~F)
 const GRADE_COLORS: Record<string, string> = {
   A: '#10B981', B: '#84CC16', C: '#F59E0B',
@@ -541,12 +555,14 @@ export default function PageDashboard({
 
   // ─── 위험 도넛 실데이터 merge ─────────────────────────────────────────────
   // ML 미실행(riskGrades 빈 배열)이면 RISK_DONUT Mock 사용
+  // 실데이터 있으면 A~F 6개 등급 항상 고정 표시 (DB에 없는 등급은 count=0)
   const donutData = useMemo(() => {
     if (!dashData || dashData.riskGrades.length === 0) return RISK_DONUT
-    return dashData.riskGrades.map(g => ({
-      grade: g.grade,
-      count: g.count,
-      color: GRADE_COLORS[g.grade] ?? '#94A3B8',
+    const gradeMap = Object.fromEntries(dashData.riskGrades.map(g => [g.grade, g.count]))
+    return ['A', 'B', 'C', 'D', 'E', 'F'].map(grade => ({
+      grade,
+      count: gradeMap[grade] ?? 0,
+      color: GRADE_COLORS[grade],
     }))
   }, [dashData])
 
@@ -566,7 +582,10 @@ export default function PageDashboard({
     <div>
       <PageHeader
         title="대시보드"
-        sub={`이번 주: ${new Date().getFullYear()}년 · 생산계획팀 주간 현황`}
+        sub={(() => {
+          const { year, month, week, start, end } = getWeekInfo(new Date())
+          return `${year}년 ${month}월 ${week}주차 · ${start} ~ ${end} · 생산계획팀 주간 현황`
+        })()}
         action={
           <Btn onClick={() => setShowWeeklyModal(true)}>
             📥 데이터 내보내기
@@ -775,9 +794,9 @@ export default function PageDashboard({
               )}
             </div>
 
-            {/* KPI 미리보기 */}
-            <div style={{ marginBottom: 22 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 10 }}>KPI 미리보기</div>
+            {/* 선택 기간 데이터 요약 */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 10 }}>선택 기간 데이터 요약</div>
               {modalLoading ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {[0,1,2,3].map(i => (
@@ -798,16 +817,16 @@ export default function PageDashboard({
                     )}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    {/* 수주량 */}
+                    {/* 기간 총 수주량 */}
                     <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 9, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>주간 수주량</div>
+                      <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>기간 총 수주량</div>
                       <div style={{ fontSize: 22, fontWeight: 800, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
                         {(modalPreview.kpi?.weekOrderQty ?? 0).toLocaleString()} EA
                       </div>
                     </div>
-                    {/* 수주금액 */}
+                    {/* 기간 총 수주금액 */}
                     <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 9, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>주간 수주금액</div>
+                      <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>기간 총 수주금액</div>
                       <div style={{ fontSize: 22, fontWeight: 800, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
                         {((modalPreview.kpi?.weekOrderAmt ?? 0) / 1e8).toFixed(1)}억
                       </div>
@@ -840,15 +859,38 @@ export default function PageDashboard({
                       </div>
                     </div>
                   </div>
-                  {/* 제품 데이터 건수 안내 */}
-                  {(modalPreview.weeklyProducts?.length ?? 0) > 0 && (
-                    <div style={{ marginTop: 10, fontSize: 11, color: T.text3 }}>
-                      ✓ 제품별 집계 {modalPreview.weeklyProducts.length}건 · 미처리 발주 {modalPreview.pendingOrders?.length ?? 0}건 포함 예정
-                    </div>
-                  )}
                 </>
               )}
             </div>
+
+            {/* 다운로드 데이터 구성 */}
+            {modalPreview && (modalPreview.weeklyProducts?.length ?? 0) > 0 && (
+              <div style={{
+                marginBottom: 22,
+                background: T.surface2,
+                border: `1px solid ${T.border}`,
+                borderRadius: 9,
+                padding: '12px 16px',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 8 }}>다운로드 데이터 구성</div>
+                <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <li style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.text2 }}>
+                    <span style={{ color: T.green, fontWeight: 700 }}>•</span>
+                    제품 집계 데이터:
+                    <span style={{ fontWeight: 700, color: T.text1, fontFamily: "'IBM Plex Mono',monospace" }}>
+                      {modalPreview.weeklyProducts.length}건
+                    </span>
+                  </li>
+                  <li style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.text2 }}>
+                    <span style={{ color: T.green, fontWeight: 700 }}>•</span>
+                    미처리 발주 데이터:
+                    <span style={{ fontWeight: 700, color: T.text1, fontFamily: "'IBM Plex Mono',monospace" }}>
+                      {modalPreview.pendingOrders?.length ?? 0}건
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            )}
 
             {/* 하단 버튼 */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
