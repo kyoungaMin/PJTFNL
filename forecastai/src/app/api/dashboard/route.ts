@@ -48,38 +48,24 @@ export async function GET() {
 
     if (latestFcstRow?.[0]?.forecast_date) {
       const fcstDate = String(latestFcstRow[0].forecast_date)
-      const { data: fcstRows } = await supabase
-        .from('forecast_result')
-        .select('product_id, horizon_days, p10, p50, p90')
-        .eq('forecast_date', fcstDate)
-        .limit(5000)
 
-      // 제품별 horizon별 중복 제거 후 합산
-      const horizonSum: Record<number, { p10: number; p50: number; p90: number }> = {}
-      const seen = new Set<string>()
-      for (const r of (fcstRows ?? [])) {
-        const key = `${r.product_id}_${r.horizon_days}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        const h = Number(r.horizon_days)
-        if (!horizonSum[h]) horizonSum[h] = { p10: 0, p50: 0, p90: 0 }
-        horizonSum[h].p10 += Number(r.p10 ?? 0)
-        horizonSum[h].p50 += Number(r.p50 ?? 0)
-        horizonSum[h].p90 += Number(r.p90 ?? 0)
-      }
+      // DB 집계 RPC 사용 (DB/22_dashboard_rpc.sql 참고)
+      // 144K+ 행을 REST로 전량 조회하는 대신 DB에서 horizon별 합산 후 소량 반환
+      const { data: horizonSums } = await supabase
+        .rpc('get_forecast_summary', { p_date: fcstDate })
 
       // horizon_days → 대상 월 매핑 (forecast_date + horizon_days → 월)
       const baseDate = new Date(fcstDate)
-      for (const [hStr, vals] of Object.entries(horizonSum)) {
+      for (const row of (horizonSums ?? [])) {
         const target = new Date(baseDate)
-        target.setDate(target.getDate() + Number(hStr))
+        target.setDate(target.getDate() + Number(row.horizon_days))
         target.setDate(1)
         const tYm = target.toISOString().slice(0, 7)
         const tM = `'${tYm.slice(2, 4)}.${tYm.slice(5, 7)}`
         horizonFcstMap[tM] = {
-          p10: Math.round(vals.p10),
-          p50: Math.round(vals.p50),
-          p90: Math.round(vals.p90),
+          p10: Math.round(Number(row.p10 ?? 0)),
+          p50: Math.round(Number(row.p50 ?? 0)),
+          p90: Math.round(Number(row.p90 ?? 0)),
         }
       }
       hasForecastData = Object.keys(horizonFcstMap).length > 0
@@ -185,19 +171,18 @@ export async function GET() {
 
     if (latestEval?.[0]?.eval_date) {
       const latestEvalDate = latestEval[0].eval_date as string
-      const { data: gradeRows } = await supabase
-        .from('risk_score')
-        .select('risk_grade')
-        .eq('eval_date', latestEvalDate)
 
-      const gradeMap: Record<string, number> = {}
-      for (const r of (gradeRows ?? [])) {
-        const g = String(r.risk_grade ?? 'X')
-        gradeMap[g] = (gradeMap[g] ?? 0) + 1
-      }
-      riskGrades = Object.entries(gradeMap)
-        .map(([grade, count]) => ({ grade, count }))
-        .sort((a, b) => a.grade.localeCompare(b.grade))
+      // DB 집계 RPC 사용 (DB/22_dashboard_rpc.sql 참고)
+      // 13K+ 행을 REST로 조회하면 기본 limit=1000에 걸려 등급 비율이 왜곡됨
+      const { data: gradeSums } = await supabase
+        .rpc('get_risk_grade_summary', { p_date: latestEvalDate })
+
+      riskGrades = (gradeSums ?? [])
+        .map((r: { risk_grade: string; cnt: number }) => ({
+          grade: String(r.risk_grade ?? 'X'),
+          count: Number(r.cnt ?? 0),
+        }))
+        .sort((a: { grade: string }, b: { grade: string }) => a.grade.localeCompare(b.grade))
     }
 
     // ─── 5. AI 생산 권고 Top3 (pending, severity 높은 순) ────────────────────

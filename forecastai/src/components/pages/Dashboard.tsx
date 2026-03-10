@@ -171,8 +171,8 @@ function OrderForecastChart({
   }
 
   const lastActualRow = [...data].filter(d => d.actual).pop()
-  const nextFcstRow   = data.find(d => !d.actual)
-  const mom = nextFcstRow && lastActualRow
+  const nextFcstRow   = data.find(d => !d.actual && d.p50 != null)
+  const mom = nextFcstRow && lastActualRow && lastActualRow.actual
     ? (((nextFcstRow.p50 - lastActualRow.actual) / lastActualRow.actual) * 100).toFixed(1)
     : null
   const isUp = parseFloat(mom ?? '0') >= 0
@@ -201,7 +201,7 @@ function OrderForecastChart({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 11, color: T.text3, fontWeight: 500 }}>다음달 P50 예측</span>
             <span style={{ fontSize: 17, fontWeight: 800, color: isUp ? T.green : T.red, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
-              {nextFcstRow.p50.toLocaleString()} EA
+              {nextFcstRow.p50?.toLocaleString() ?? '-'} EA
             </span>
             {mom != null && (
               <span style={{ fontSize: 12, color: isUp ? T.green : T.red, fontWeight: 700 }}>
@@ -480,6 +480,8 @@ export default function PageDashboard({
         if (d.source === 'database') {
           setDashData(d)
           onAlertCount?.(d.purchaseOrder.pendingCount)
+        } else {
+          console.warn('[Dashboard] API source:', d.source, (d as any).error)
         }
       })
       .catch(err => console.error('[Dashboard] API 호출 실패:', err))
