@@ -31,6 +31,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 BATCH_SIZE = 500
 BATCH_DELAY = 0.3
 MAX_RETRIES = 3
+EARLY_STOPPING_ROUNDS = 50      # LightGBM early stopping 라운드
 
 # 주간 피처 스토어 — LightGBM 학습용 피처 컬럼 목록
 WEEKLY_FEATURE_COLS = [
@@ -125,10 +126,11 @@ MONTHLY_PARAM_GRID = {
 }
 
 # ─── Walk-Forward CV 설정 ───
-WEEKLY_CV_FOLDS = 3
-MONTHLY_CV_FOLDS = 2
+WEEKLY_CV_FOLDS = 5
+MONTHLY_CV_FOLDS = 3
 TUNING_METRIC = "pinball_p50"
-TUNE_SAMPLE_PRODUCTS = 30
+TUNE_SAMPLE_PRODUCTS = 50
+OPTUNA_N_TRIALS     = 100       # Optuna 탐색 횟수 (클수록 정확, 느림)
 
 # 리스크 가중치
 RISK_WEIGHTS = {
@@ -143,7 +145,8 @@ RISK_GRADE_BOUNDS = [
     ("A", 20),
     ("B", 40),
     ("C", 60),
-    ("D", 80),
+    ("D", 75),
+    ("E", 88),
     ("F", 100),
 ]
 

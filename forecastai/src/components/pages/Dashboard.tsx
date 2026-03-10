@@ -15,8 +15,13 @@ interface ActionItem  {
   deadline: string; riskType: string; status: string
 }
 
+interface ChartRow { m: string; actual?: number; p10?: number; p50?: number; p90?: number }
+
 interface DashApiResponse {
   orderActual: OrderActual[]
+  orderChartData?: ChartRow[]
+  lastActualM?: string
+  hasForecastData?: boolean
   riskGrades: RiskGrade[]
   actionItems: ActionItem[]
   urgentCount: number
@@ -139,11 +144,15 @@ function KpiCard({ kpi, delay = 0, onNavigate }: {
 function OrderForecastChart({
   data = ORDER_FORECAST,
   hasDbData = false,
+  hasForecastData = false,
+  lastActualM = "'24.12",
   loading = false,
   onNavigate,
 }: {
-  data?: typeof ORDER_FORECAST
+  data?: ChartRow[]
   hasDbData?: boolean
+  hasForecastData?: boolean
+  lastActualM?: string
   loading?: boolean
   onNavigate?: (page: string) => void
 }) {
@@ -186,7 +195,7 @@ function OrderForecastChart({
           </button>
         </div>
         <div style={{ fontSize: 11, color: T.text3, marginBottom: 8 }}>
-          단위: EA &nbsp;·&nbsp; 실선=실적 (DB) &nbsp; 점선=AI 예측 밴드 (P10~P90, ML 연동 예정)
+          단위: EA &nbsp;·&nbsp; 실선=실적 (DB) &nbsp; 점선=AI 예측 밴드 (P10~P90{hasForecastData ? ', DB 실데이터' : ', ML 연동 예정'})
         </div>
         {nextFcstRow && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -222,7 +231,7 @@ function OrderForecastChart({
           <Line type="monotone" dataKey="actual" name="actual" stroke={T.orange} strokeWidth={2.5}
             dot={{ r: 3, fill: T.orange, stroke: 'white', strokeWidth: 1.5 }}
             activeDot={{ r: 5, fill: T.orange, stroke: 'white', strokeWidth: 2 }} connectNulls={false}/>
-          <ReferenceLine x="'24.12" stroke={T.borderMid} strokeDasharray="3 3"
+          <ReferenceLine x={lastActualM} stroke={T.borderMid} strokeDasharray="3 3"
             label={{ value: '실적↔예측', position: 'insideTopRight', fontSize: 9, fill: T.text3, dy: -2 }}/>
         </ComposedChart>
       </ResponsiveContainer>
@@ -242,9 +251,14 @@ function OrderForecastChart({
             ⚠ DB 실적 없음 · 샘플 데이터
           </span>
         )}
-        {!loading && hasDbData && (
+        {!loading && hasDbData && !hasForecastData && (
           <span style={{ fontSize: 10, color: T.green, background: T.greenSoft, border: `1px solid ${T.greenMid}`, borderRadius: 5, padding: '3px 8px', fontWeight: 600 }}>
-            ✓ DB 실데이터 연동
+            ✓ 실적 DB 연동
+          </span>
+        )}
+        {!loading && hasDbData && hasForecastData && (
+          <span style={{ fontSize: 10, color: T.green, background: T.greenSoft, border: `1px solid ${T.greenMid}`, borderRadius: 5, padding: '3px 8px', fontWeight: 600 }}>
+            ✓ 실적·예측 DB 연동
           </span>
         )}
         {loading && (
@@ -502,18 +516,24 @@ export default function PageDashboard({
   }, [dashData])
 
   // ─── 수주량 차트 실데이터 merge ───────────────────────────────────────────
-  // DB에서 받은 orderActual을 ORDER_FORECAST mock의 actual 자리에 덮어씌움
+  // API에서 orderChartData(실적+예측 통합)를 받으면 그대로 사용
+  // 없으면 ORDER_FORECAST mock에 orderActual을 덮어씌우는 기존 방식 fallback
   const hasDbOrderData = (dashData?.orderActual?.length ?? 0) > 0
-  const orderChartData = useMemo(() => {
+  const hasForecastData = dashData?.hasForecastData ?? false
+  const lastActualM = dashData?.lastActualM ?? "'24.12"
+
+  const orderChartData = useMemo<ChartRow[]>(() => {
+    // 신규: API에서 통합 차트 데이터가 오면 바로 사용
+    if (dashData?.orderChartData?.length) return dashData.orderChartData
+    // fallback: ORDER_FORECAST mock에 실적 덮어씌우기
     if (!hasDbOrderData) return ORDER_FORECAST
     const actualMap: Record<string, number> = {}
     for (const r of dashData!.orderActual) actualMap[r.m] = r.actual
     return ORDER_FORECAST.map(row => {
       const dbVal = actualMap[row.m]
       if (dbVal !== undefined) return { ...row, actual: dbVal }
-      // DB에 해당 월 데이터가 없으면 actual 제거 (예측만 표시)
       const { actual: _removed, ...rest } = row
-      return rest
+      return { ...rest }
     })
   }, [dashData, hasDbOrderData])
 
@@ -563,8 +583,10 @@ export default function PageDashboard({
       {/* ── Row 2: 수주량 추이 차트 + 위험 도넛 ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, marginBottom: 16 }}>
         <OrderForecastChart
-          data={orderChartData as typeof ORDER_FORECAST}
+          data={orderChartData}
           hasDbData={hasDbOrderData}
+          hasForecastData={hasForecastData}
+          lastActualM={lastActualM}
           loading={loading}
           onNavigate={setPage}
         />

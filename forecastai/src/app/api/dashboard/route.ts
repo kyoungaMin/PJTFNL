@@ -36,6 +36,90 @@ export async function GET() {
         actual: Math.round(total),
       }))
 
+    // ─── 1-b. 예측 밴드 (forecast_result 최신 기준, 전 제품 합산) ────────────
+    const { data: latestFcstRow } = await supabase
+      .from('forecast_result')
+      .select('forecast_date')
+      .order('forecast_date', { ascending: false })
+      .limit(1)
+
+    const horizonFcstMap: Record<string, { p10: number; p50: number; p90: number }> = {}
+    let hasForecastData = false
+
+    if (latestFcstRow?.[0]?.forecast_date) {
+      const fcstDate = String(latestFcstRow[0].forecast_date)
+      const { data: fcstRows } = await supabase
+        .from('forecast_result')
+        .select('product_id, horizon_days, p10, p50, p90')
+        .eq('forecast_date', fcstDate)
+        .limit(5000)
+
+      // 제품별 horizon별 중복 제거 후 합산
+      const horizonSum: Record<number, { p10: number; p50: number; p90: number }> = {}
+      const seen = new Set<string>()
+      for (const r of (fcstRows ?? [])) {
+        const key = `${r.product_id}_${r.horizon_days}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const h = Number(r.horizon_days)
+        if (!horizonSum[h]) horizonSum[h] = { p10: 0, p50: 0, p90: 0 }
+        horizonSum[h].p10 += Number(r.p10 ?? 0)
+        horizonSum[h].p50 += Number(r.p50 ?? 0)
+        horizonSum[h].p90 += Number(r.p90 ?? 0)
+      }
+
+      // horizon_days → 대상 월 매핑 (forecast_date + horizon_days → 월)
+      const baseDate = new Date(fcstDate)
+      for (const [hStr, vals] of Object.entries(horizonSum)) {
+        const target = new Date(baseDate)
+        target.setDate(target.getDate() + Number(hStr))
+        target.setDate(1)
+        const tYm = target.toISOString().slice(0, 7)
+        const tM = `'${tYm.slice(2, 4)}.${tYm.slice(5, 7)}`
+        horizonFcstMap[tM] = {
+          p10: Math.round(vals.p10),
+          p50: Math.round(vals.p50),
+          p90: Math.round(vals.p90),
+        }
+      }
+      hasForecastData = Object.keys(horizonFcstMap).length > 0
+    }
+
+    // ─── 1-c. 차트 데이터 통합 구성 (최근 15개월 실적 + 예측 밴드) ───────────
+    // 실적 월 목록 (now 기준 최근 15개월, data.ts ORDER_FORECAST 의존 제거)
+    const chartMonths: Array<{ ym: string; m: string }> = []
+    for (let i = 14; i >= 0; i--) {
+      const d = new Date(now)
+      d.setDate(1)
+      d.setMonth(d.getMonth() - i)
+      const ym = d.toISOString().slice(0, 7)
+      const m = `'${ym.slice(2, 4)}.${ym.slice(5, 7)}`
+      chartMonths.push({ ym, m })
+    }
+
+    // 실적/예측 경계: 마지막 실적 월
+    const lastActualYm = Object.keys(orderMonthMap).sort().pop() ?? ''
+    const lastActualM = lastActualYm
+      ? `'${lastActualYm.slice(2, 4)}.${lastActualYm.slice(5, 7)}`
+      : ''
+
+    // 예측 전용 월 (chartMonths에 없는 미래 월만 추가)
+    const chartMSet = new Set(chartMonths.map(c => c.m))
+    const fcstOnlyMonths = Object.keys(horizonFcstMap)
+      .filter(m => !chartMSet.has(m))
+      .sort()
+      .map(m => ({ ym: '', m }))
+
+    const orderChartData = [...chartMonths, ...fcstOnlyMonths].map(({ ym, m }) => {
+      const actual = ym ? orderMonthMap[ym] : undefined
+      const fcst = horizonFcstMap[m]
+      return {
+        m,
+        ...(actual !== undefined ? { actual: Math.round(actual) } : {}),
+        ...(fcst ? { p10: fcst.p10, p50: fcst.p50, p90: fcst.p90 } : {}),
+      }
+    })
+
     // ─── 2. 재고 커버리지 KPI ─────────────────────────────────────────────────
     const { data: latestSnap } = await supabase
       .from('inventory')
@@ -182,7 +266,10 @@ export async function GET() {
       .reduce((s, g) => s + g.count, 0)
 
     return NextResponse.json({
-      orderActual,          // 수주량 차트 (이전: revenueActual)
+      orderActual,          // 기존 유지 (호환성)
+      orderChartData,       // 신규: 실적+예측 통합 차트 데이터
+      lastActualM,          // 실적/예측 구분선 기준 월 ('YY.MM)
+      hasForecastData,      // 예측 밴드 실데이터 여부
       riskGrades,           // 위험 등급별 count (ML 미실행 시 빈 배열)
       actionItems,          // AI 생산 권고 Top3 (ML 미실행 시 빈 배열)
       urgentCount,          // E~F 등급 건수 (ML 미실행 시 0)
