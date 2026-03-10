@@ -17,15 +17,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 })
   }
 
-  // 2) service role key로 user_profile 조회 (RLS 우회)
-  const { data: profile, error: profileError } = await supabase
+  // 2) user_profile 조회 (RLS 우회: service role key 또는 anon key)
+  const { data: profile } = await supabase
     .from('user_profile')
-    .select('display_name, role, department, email')
+    .select('display_name, role, department, email, org_id')
     .eq('id', userData.user.id)
     .single()
 
-  if (profileError || !profile) {
-    return NextResponse.json({ error: '프로필 없음' }, { status: 404 })
+  // 3) user_profile 없으면 auth 사용자 정보로 기본 프로필 반환 (404 대신 200)
+  if (!profile) {
+    const email = userData.user.email ?? ''
+    return NextResponse.json({
+      display_name: email.split('@')[0],
+      role: 'viewer',
+      department: '',
+      email,
+      org_id: 'default',
+    })
   }
 
   return NextResponse.json(profile)

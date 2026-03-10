@@ -34,10 +34,15 @@ except ImportError:
 from dotenv import load_dotenv
 
 # ── 설정 ──────────────────────────────────────────────
-load_dotenv()
+from pathlib import Path
+_base = Path(__file__).resolve().parent.parent
+for _env_path in [_base / ".env", _base / "forecastai" / ".env.local"]:
+    if _env_path.exists():
+        load_dotenv(dotenv_path=_env_path)
+        break
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 FRED_API_KEY = os.getenv("FRED_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:

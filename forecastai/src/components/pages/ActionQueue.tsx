@@ -14,7 +14,7 @@ type PlanItem = {
   priority: string; planType: string; riskGrade: string;
   stockoutRisk: number; excessRisk: number;
   targetStart: string; targetEnd: string; description: string;
-  status: string; riskType: string; customer: string;
+  status: string; riskType: string; customer: string; category?: string;
   aiReason: { avgConsume: number; openOrder: number; depletionDay: number; leadTime: number; p90Demand: number };
 }
 type ChartData = Record<string, any>[]
@@ -135,7 +135,6 @@ export default function PageActionQueue() {
       setCatChartData([])
       setCatList([])
       setTopProducts([])
-      setPriorityDist(PROD_PRIORITY_DIST)
       setDataSource('mock')
     } finally {
       setLoading(false)

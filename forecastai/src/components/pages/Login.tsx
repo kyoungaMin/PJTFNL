@@ -44,33 +44,56 @@ export default function LoginPage({ onLogin }: { onLogin: (member: Member) => vo
     }
 
     // 2) /api/me 서버 API로 프로필 조회 (service role key가 RLS 우회)
-    const res = await fetch('/api/me', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ access_token: authData.session?.access_token }),
-    })
+    let member: Member | null = null
 
-    if (!res.ok) {
-      setError("사용자 프로필을 찾을 수 없습니다. 관리자에게 문의해주세요.")
-      setLoading(false)
-      return
-    }
+    try {
+      const res = await fetch('/api/me', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: authData.session?.access_token }),
+      })
 
-    const profile = await res.json()
+      if (res.ok) {
+        const profile = await res.json()
+        const role = toRoleType(profile.role ?? 'viewer')
+        const name = profile.display_name ?? email.split('@')[0]
+        member = {
+          id:      authData.user?.id ?? '',
+          name,
+          role,
+          dept:    profile.department ?? '',
+          email:   profile.email ?? email,
+          grad:    ROLE_GRAD[role],
+          initial: name.charAt(0) || '?',
+          orgId:   profile.org_id ?? 'default',
+        }
+      }
+    } catch { /* DB 프로필 조회 실패 → LOCAL fallback */ }
 
-    // 3) DB 값 → Member 타입 변환
-    const role = toRoleType(profile.role ?? 'viewer')
-    const name = profile.display_name ?? email.split('@')[0]
-
-    const member: Member = {
-      id:      authData.user?.id ?? '',
-      name,
-      role,
-      dept:    profile.department ?? '',
-      email:   profile.email ?? email,
-      grad:    ROLE_GRAD[role],
-      initial: name.charAt(0) || '?',
-      orgId:   profile.org_id ?? 'default',
+    // 3) DB 프로필 없으면 LOGIN_ACCOUNTS 로컬 데이터로 fallback
+    if (!member) {
+      const localAcc = LOGIN_ACCOUNTS.find(a => a.email.toLowerCase() === email.toLowerCase())
+      if (localAcc) {
+        member = {
+          ...localAcc.member,
+          id:    authData.user?.id ?? '',
+          email: localAcc.email,
+          grad:  ROLE_GRAD[localAcc.member.role],
+        }
+      } else {
+        // 완전 fallback: Viewer 권한으로 이메일 기반 생성
+        const name = email.split('@')[0]
+        member = {
+          id:      authData.user?.id ?? '',
+          name,
+          role:    'Viewer',
+          dept:    '',
+          email,
+          grad:    ROLE_GRAD['Viewer'],
+          initial: name.charAt(0) || '?',
+          orgId:   'default',
+        }
+      }
     }
 
     onLogin(member)
