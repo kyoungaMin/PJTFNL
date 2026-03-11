@@ -29,7 +29,10 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 # 신규 Supabase 프로젝트는 sb_secret_/sb_publishable_ 형식 키를 사용하는데
 # SDK 내부에서 JWT 형식(점 2개) 여부를 regex로 검사함 → 패치로 우회
 import re as _re
-from supabase._sync.client import SyncClient as _SyncClient
+try:
+    from supabase._sync.client import SyncClient as _SyncClient
+except ImportError:
+    from supabase._sync.client import Client as _SyncClient
 _orig_init = _SyncClient.__init__
 
 def _patched_init(self, supabase_url, supabase_key, options=None):
@@ -185,6 +188,33 @@ SUPPLIER_WEIGHTS = {
     "unit_price": 0.35,             # 단가 낮을수록 우수
     "reliability": 0.25,            # 납기 준수율 높을수록 우수
 }
+
+# ─── 구간별 모델 선택 (Segment-based Model Selection) ───
+SEGMENT_MODEL_ID = "segment_best_v1"      # 선택 결과 model_id
+
+# 수요 구간 경계 (일평균 수주량 기준)
+SEGMENT_THRESHOLDS = {
+    "low": 10,      # < 10 → 저수요
+    "high": 100,    # >= 100 → 고수요  (10~99 → 중수요)
+}
+
+# 구간별 최적 모델 매핑
+# 주간: 저수요=SVR (±5 정확도 62.6%), 중·고수요=LightGBM (R² 0.27)
+# 월간: 저수요=SVR (MAE 최저), 중·고수요=Ridge (R² 0.69)
+SEGMENT_MODEL_MAP = {
+    "weekly": {
+        "low":  "svr_linear_v1",         # ±5 정밀도 우수
+        "mid":  "lgbm_q_v3",             # 트렌드 설명력
+        "high": "lgbm_q_v3",             # 대규모 변동 추적
+    },
+    "monthly": {
+        "low":  "svr_linear_monthly_v1", # MAE 최저
+        "mid":  "ridge_monthly_v1",      # R² 최고 (0.69)
+        "high": "ridge_monthly_v1",      # 안정적 예측
+    },
+}
+
+SEGMENT_DEMAND_LOOKBACK_DAYS = 90         # 수요 구간 판정 기준 기간 (일)
 
 
 def get_risk_grade(score: float) -> str:

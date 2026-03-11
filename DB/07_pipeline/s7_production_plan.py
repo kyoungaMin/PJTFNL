@@ -13,6 +13,7 @@ from collections import defaultdict
 from config import (
     supabase, upsert_batch,
     PRODUCTION_PLAN_DAYS, PRODUCTION_CAPACITY_BUFFER, PRODUCTION_LOOKBACK_DAYS,
+    SEGMENT_MODEL_ID,
 )
 
 
@@ -42,22 +43,30 @@ def fetch_all(table: str, select: str = "*") -> list:
 
 
 def load_forecast_data() -> dict:
-    """forecast_result에서 제품별 최신 예측 로드
+    """forecast_result에서 제품별 최신 예측 로드 (segment_best_v1 우선)
     Returns: {product_id: {horizon_days: {p10, p50, p90}}}
     """
     rows = fetch_all("forecast_result",
-                     "product_id,p10,p50,p90,horizon_days,forecast_date")
-    # 최신 forecast_date만 유지
-    latest = {}
+                     "model_id,product_id,p10,p50,p90,horizon_days,forecast_date")
+    # segment_best_v1 우선, 없으면 최신 forecast_date 폴백
+    best = {}      # segment_best_v1 행
+    fallback = {}  # 기타 모델 행 (최신만)
     for r in rows:
         pid = r["product_id"]
         h = r["horizon_days"]
         key = (pid, h)
-        if key not in latest or r["forecast_date"] > latest[key]["forecast_date"]:
-            latest[key] = r
+        if r.get("model_id") == SEGMENT_MODEL_ID:
+            if key not in best or r["forecast_date"] > best[key]["forecast_date"]:
+                best[key] = r
+        else:
+            if key not in fallback or r["forecast_date"] > fallback[key]["forecast_date"]:
+                fallback[key] = r
+
+    # best 우선, 없으면 fallback
+    merged = {**fallback, **best}
 
     fc_map = defaultdict(dict)
-    for (pid, h), r in latest.items():
+    for (pid, h), r in merged.items():
         fc_map[pid][h] = {
             "p10": float(r["p10"] or 0),
             "p50": float(r["p50"] or 0),

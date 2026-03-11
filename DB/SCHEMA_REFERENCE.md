@@ -2,7 +2,7 @@
 
 > **프로젝트**: 반도체 부품·소재 수요예측 AI SaaS
 > **DB**: PostgreSQL (Supabase)
-> **최종 수정일**: 2026-03-01
+> **최종 수정일**: 2026-03-11
 
 ---
 
@@ -27,7 +27,7 @@
 | 15 | `product_lead_time` | 제품별 리드타임 | `06_analytics_ddl.sql` | — | 발주~입고 통계 |
 | 16 | `feature_store` | 피처 스토어 | `06_analytics_ddl.sql` | — | ML 입력 피처 |
 | 17 | `forecast_result` | 예측 결과 | `06_analytics_ddl.sql` | — | P10/P50/P90 밴드 |
-| 18 | `risk_score` | 리스크 스코어 | `06_analytics_ddl.sql` | — | 결품/과잉/납기/마진 |
+| 18 | `risk_score` | 리스크 스코어 | `06_analytics_ddl.sql` | ~186,303 | 결품/과잉/납기/마진 (주간+월간) |
 | 19 | `action_queue` | 조치 큐 | `06_analytics_ddl.sql` | — | 권장 조치 및 추적 |
 | 20 | `calendar_week` | 주차 캘린더 | `08_aggregation_ddl.sql` | 121 | ISO 8601 차원 테이블 |
 | 21 | `weekly_product_summary` | 주별 제품 집계 | `08_aggregation_ddl.sql` | 130,697 | 수주·매출·생산 통합 |
@@ -41,7 +41,7 @@
 | 29 | `feature_importance` | 피처 중요도 | `15_model_evaluation_ddl.sql` | — | LightGBM gain/split |
 | 30 | `tuning_result` | 튜닝 결과 | `15_model_evaluation_ddl.sql` | — | Grid Search 이력 |
 
-**총 30개 테이블** | 내부 데이터 451,093행 + 외부지표 11,715건 + 환율 ~5,300건 + 분석 6테이블 + 집계 5테이블 + ML 2테이블 + 평가 3테이블
+**총 30개 테이블** | 내부 데이터 451,093행 + 외부지표 11,715건 + 환율 ~5,300건 + 분석 6테이블(risk_score ~186K행) + 집계 5테이블 + ML 2테이블 + 평가 3테이블
 
 ---
 
@@ -299,6 +299,7 @@
 | id | BIGINT IDENTITY | PK | 자동 증가 |
 | product_id | VARCHAR(20) | NOT NULL | 제품 코드 |
 | eval_date | DATE | NOT NULL | 평가일 |
+| eval_type | VARCHAR(10) | DEFAULT 'weekly' | 평가 유형 (`weekly` / `monthly`) |
 | stockout_risk | NUMERIC(5,2) | | 결품 리스크 (0~100) |
 | excess_risk | NUMERIC(5,2) | | 과잉 리스크 (0~100) |
 | delivery_risk | NUMERIC(5,2) | | 납기 리스크 (0~100) |
@@ -309,10 +310,12 @@
 | demand_p90 | NUMERIC(18,6) | | P90 예측 수요 |
 | safety_stock | NUMERIC(18,6) | | 안전재고 수준 |
 | created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
-| | | **UNIQUE** | (product_id, eval_date) |
+| | | **UNIQUE** | (product_id, eval_date, eval_type) |
 
 **리스크 가중치**: 결품 35% + 과잉 25% + 납기 25% + 마진 15%
 **등급 기준**: A(0~20) / B(21~40) / C(41~60) / D(61~80) / F(81~100)
+**생성 주기**: 주간(매주 월요일) + 월간(매월 1일)
+**데이터 현황**: ~186,303행 (2026-01 ~ 2026-02 백필 포함)
 
 #### action_queue — 조치 큐
 | 컬럼 | 타입 | 제약조건 | 설명 |
@@ -1155,12 +1158,28 @@ python DB/12_load_ecos.py --only=kr_usd_rate,kr_ppi,kr_bsi_mfg
 | 2 | `s2_lead_time.py` | purchase_order | product_lead_time | 리드타임 통계 |
 | 3 | `s3_feature_store.py` | weekly_product/customer_summary + 외부지표 | feature_store_weekly | 주간 피처 엔지니어링 (~70개 피처) |
 | 4 | `s4_forecast.py` | feature_store_weekly | forecast_result + model_evaluation + feature_importance | LightGBM Quantile 예측 + Walk-Forward CV 평가 |
-| 5 | `s5_risk_score.py` | forecast + 재고 + 리드타임 | risk_score | 리스크 스코어링 |
+| 4L | `s4_linear_models.py` | feature_store_weekly/monthly | forecast_result + model_evaluation | Ridge + SVR Linear 예측 (주간+월간) |
+| 4S | `s4s_segment_selector.py` | forecast_result + daily_order | forecast_result (segment_best_v1) | 구간별 최적 모델 선택 (저/중/고수요) |
+| 5 | `s5_risk_score.py` | forecast + 재고 + 리드타임 | risk_score | 리스크 스코어링 (segment_best_v1 우선) |
 | 6 | `s6_action_queue.py` | risk_score | action_queue | 권장 조치 생성 |
 | 3m | `s3m_feature_store_monthly.py` | monthly_product/customer_summary + 외부지표 | feature_store_monthly | 월간 피처 엔지니어링 (~55개 피처) |
 | 4m | `s4m_forecast_monthly.py` | feature_store_monthly | forecast_result + model_evaluation + feature_importance | 월간 LightGBM Quantile 예측 + 평가 |
 
 **튜닝 모드**: `--tune` 플래그 추가 시 Step 4/4m에서 Grid Search 실행 → `tuning_result` 테이블에 결과 저장
+**리스크 백필**: `python s5_risk_score.py --backfill` → 2026-01~02 주간(매주 월요일 8회) + 월간(매월 1일 2회) 데이터 생성
+**구간별 모델 선택**: `python s4s_segment_selector.py` → 제품별 수요 규모(저/중/고)에 따라 최적 모델 자동 선택
+
+#### 구간별 모델 선택 전략 (Step 4S)
+
+| 수요 구간 | 기준 (일평균 수주) | 주간 모델 | 월간 모델 | 선택 근거 |
+|-----------|-------------------|----------|----------|----------|
+| 저수요 | < 10 | SVR Linear | SVR Linear (monthly) | ±5 정밀도 62.6% (LightGBM 6.7%) |
+| 중수요 | 10 ~ 99 | LightGBM | Ridge (monthly) | 트렌드 설명력 R² 우위 |
+| 고수요 | 100+ | LightGBM | Ridge (monthly) | 대규모 변동 추적, R² 0.69 |
+
+- 선택 결과는 `model_id = 'segment_best_v1'`로 `forecast_result`에 저장
+- 하류 파이프라인(S5~S8)은 `segment_best_v1`을 우선 참조, 없으면 기존 모델 폴백
+- 수요 구간 판정: 최근 90일 일평균 수주량 기준
 
 ---
 

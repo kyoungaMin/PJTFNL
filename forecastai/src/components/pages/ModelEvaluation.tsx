@@ -351,55 +351,59 @@ export default function PageModelEvaluation() {
   /* ═══ RENDER ══════════════════════════════════════════════════════════════ */
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <PageHeader title="모델 평가" sub={`7개 ML 모델 비교 분석 · ${data.timestamp.split('T')[0]}`} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <PageHeader title="모델 평가" sub={
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <span>7개 ML 모델 비교 분석 · {data.timestamp.split('T')[0]}</span>
           <button onClick={() => setShowGuide(g => !g)}
             style={{
-              padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 7, cursor: 'pointer',
-              border: `1px solid ${showGuide ? T.blue : T.border}`,
+              fontSize:11, fontWeight:700, color: showGuide ? T.blue : T.text3,
               background: showGuide ? T.blueSoft : T.surface2,
-              color: showGuide ? T.blue : T.text2, transition: 'all .15s',
+              border:`1px solid ${showGuide ? T.blueMid : T.border}`,
+              borderRadius:6, padding:'3px 8px', cursor:'pointer',
             }}>
             {showGuide ? '📖 가이드 닫기' : '📖 활용 가이드'}
           </button>
-          <PeriodToggle />
-          {periods.length > 0 && (
-            <select
-              value={selectedPeriod}
-              onChange={e => setSelectedPeriod(e.target.value)}
-              style={{
-                padding: '6px 12px', fontSize: 12, borderRadius: 7,
-                border: `1px solid ${selectedPeriod !== 'all' ? T.blue : T.border}`,
-                background: selectedPeriod !== 'all' ? '#eff6ff' : T.surface2,
-                color: selectedPeriod !== 'all' ? T.blue : T.text2,
-                fontWeight: selectedPeriod !== 'all' ? 700 : 400,
-                cursor: 'pointer', outline: 'none',
-              }}
-            >
-              <option value="all">전체 (집계)</option>
-              {periods.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          )}
-          {selectedPeriod !== 'all' && (
-            <select
-              value={selectedModel}
-              onChange={e => setSelectedModel(e.target.value)}
-              style={{
-                padding: '6px 12px', fontSize: 12, borderRadius: 7,
-                border: `1px solid ${selectedModel ? T.green : T.border}`,
-                background: selectedModel ? '#f0fdf4' : T.surface2,
-                color: selectedModel ? T.green : T.text2,
-                fontWeight: selectedModel ? 700 : 400,
-                cursor: 'pointer', outline: 'none',
-              }}
-            >
-              <option value="">기본 모델</option>
-              {MODEL_OPTIONS[period].map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-          )}
         </div>
-      </div>
+      } action={
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <PeriodToggle />
+          <span style={{ fontSize:11, color:T.text3, fontWeight:600 }}>
+            {period === 'weekly' ? '조회 주차' : '조회 월'}
+          </span>
+          <select
+            value={selectedPeriod}
+            onChange={e => setSelectedPeriod(e.target.value)}
+            style={{
+              fontSize:12, fontWeight:700, color:T.text1, background:T.surface,
+              border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
+              cursor:'pointer', outline:'none', fontFamily:"'IBM Plex Mono',monospace",
+            }}
+          >
+            <option value="all">전체 (집계)</option>
+            {periods.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          {selectedPeriod !== 'all' && (
+            <>
+              <span style={{ fontSize:11, color:T.text3, fontWeight:600 }}>모델</span>
+              <select
+                value={selectedModel}
+                onChange={e => setSelectedModel(e.target.value)}
+                style={{
+                  fontSize:12, fontWeight:700, color:T.text1, background:T.surface,
+                  border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
+                  cursor:'pointer', outline:'none',
+                }}
+              >
+                <option value="">기본 모델</option>
+                {MODEL_OPTIONS[period].map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </>
+          )}
+          <button onClick={() => { setSelectedPeriod('all'); setSelectedModel('') }}
+            style={{ fontSize:11, fontWeight:600, color:T.blue, background:T.blueSoft, border:`1px solid ${T.blueMid}`,
+              borderRadius:6, padding:'5px 10px', cursor:'pointer' }}>초기화</button>
+        </div>
+      } />
 
       {/* ── User Guide ── */}
       {showGuide && <UserGuidePanel onClose={() => setShowGuide(false)} />}
