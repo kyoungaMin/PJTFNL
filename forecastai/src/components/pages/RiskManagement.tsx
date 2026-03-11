@@ -31,13 +31,13 @@ export default function PageRiskManagement() {
 
   // API 필터 목록 상태
   const [availCategories, setAvailCategories] = useState<string[]>([])
-  const [availDates, setAvailDates] = useState<string[]>([])
-  
+  const [availDates,      setAvailDates]      = useState<string[]>([])
+
   // 사용자가 선택한 필터 상태
   const [selCategory, setSelCategory] = useState<string>('전체')
-  const [selDate, setSelDate] = useState<string>('') // 빈사슬이면 최신 날짜 자동 사용
+  const [dateFrom,    setDateFrom]    = useState<string>('')  // YYYY-MM-DD
+  const [dateTo,      setDateTo]      = useState<string>('')  // YYYY-MM-DD
 
-  /* ── 데이터 로드 ── */
   /* ── 초기 필터 정보 로드 ── */
   useEffect(() => {
     fetch('/api/risk/filters')
@@ -45,24 +45,26 @@ export default function PageRiskManagement() {
       .then(d => {
         if (d.categories) setAvailCategories(d.categories)
         if (d.dates && d.dates.length > 0) {
-           setAvailDates(d.dates)
-           // 최초 로드 시 가장 최신 날짜로 설정
-           if (!selDate) setSelDate(d.dates[0])
+          setAvailDates(d.dates)
+          // 최초 로드: From = 가장 오래된 날짜, To = 최신 날짜
+          setDateTo(d.dates[0])
+          setDateFrom(d.dates[d.dates.length - 1])
         }
       })
       .catch(e => console.error('Filter load error', e))
-  }, []) // 빈 배열: 최초 1회만
+  }, [])
 
   /* ── 데이터 로드 ── */
   useEffect(() => {
+    // dateFrom / dateTo 아직 확정 전이면 대기
+    if (!dateFrom || !dateTo) return
+
     setDataSource('loading')
     setRiskItems([])
-    
-    // 선택된 날짜가 아직 확정되지 않았다면 기다림 (최초 로드 시점)
-    if (availDates.length > 0 && !selDate) return;
 
     const query = new URLSearchParams()
-    if (selDate) query.set('date', selDate)
+    query.set('dateFrom', dateFrom)
+    query.set('dateTo',   dateTo)
     if (selCategory !== '전체') query.set('type', selCategory)
 
     fetch(`/api/risk?${query.toString()}`)
@@ -73,16 +75,15 @@ export default function PageRiskManagement() {
           setEvalDate(data.evalDate ?? '')
           setDataSource('database')
         } else if (data.source === 'empty') {
-          // 조회 결과가 없을 경우
           setRiskItems([])
-          setEvalDate(data.evalDate ?? selDate ?? '')
+          setEvalDate(data.evalDate ?? dateTo ?? '')
           setDataSource('empty')
         } else {
           setDataSource(data.source === 'error' ? 'error' : 'mock')
         }
       })
       .catch(() => setDataSource('error'))
-  }, [selDate, selCategory, availDates])
+  }, [dateFrom, dateTo, selCategory])
 
   const filtered = riskItems.filter(r => {
     const matchSearch = r.sku.includes(search) || r.name.includes(search)
@@ -109,7 +110,8 @@ export default function PageRiskManagement() {
             {evalDate && <span style={{ fontSize: 10, color: T.text3 }}>기준일: {evalDate}</span>}
             <Btn variant="secondary" onClick={() => {
                const query = new URLSearchParams();
-               if (selDate) query.set('date', selDate);
+               if (dateFrom) query.set('dateFrom', dateFrom);
+               if (dateTo)   query.set('dateTo',   dateTo);
                if (selCategory !== '전체') query.set('type', selCategory);
                window.open(`/risk-report?${query.toString()}`, '_blank', 'width=840,height=1188');
             }}>📄 리스크 보고서</Btn>
@@ -135,39 +137,61 @@ export default function PageRiskManagement() {
       </div>
 
       <FilterBar>
-        <SearchInput value={search} onChange={setSearch} placeholder="SKU / 품목명 검색"/>
-        
-        {/* 분리된 필터 영역 (위험 등급, 위험 유형) */}
-        <Select value={gradeF} onChange={setGradeF} options={['전체','A','B','C','D','E','F']}/>
-        <Select value={typeF}  onChange={setTypeF}  options={['전체','결품','과잉','납기','마진']}/>
-        
-        <div style={{ width: 1, height: 24, background: T.border, margin: '0 8px' }} />
-
-        {/* 제품 카테고리 (제품, 반제품 등) 필터 */}
+        {/* 기간 (From ~ To) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-           <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>분류</span>
-           <Select value={selCategory} onChange={setSelCategory} options={['전체', ...availCategories]} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>기간</span>
+          <input
+            type="date"
+            value={dateFrom}
+            min={availDates.length > 0 ? availDates[availDates.length - 1] : undefined}
+            max={dateTo || undefined}
+            onChange={e => setDateFrom(e.target.value)}
+            style={{
+              padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
+              background: T.surface, color: T.text1, fontSize: 13, outline: 'none', cursor: 'pointer'
+            }}
+          />
+          <span style={{ fontSize: 12, color: T.text3 }}>~</span>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            max={availDates.length > 0 ? availDates[0] : undefined}
+            onChange={e => setDateTo(e.target.value)}
+            style={{
+              padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
+              background: T.surface, color: T.text1, fontSize: 13, outline: 'none', cursor: 'pointer'
+            }}
+          />
         </div>
 
-        {/* 기준일 선택 달력 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 10 }}>
-           <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>기준일</span>
-           <select 
-             value={selDate}
-             onChange={e => setSelDate(e.target.value)}
-             style={{ 
-               padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
-               background: T.surface, color: T.text1, fontSize: 13, outline: 'none', cursor: 'pointer'
-             }}
-           >
-             {availDates.map(d => <option key={d} value={d}>{d}</option>)}
-           </select>
+        {/* 분류 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>분류</span>
+          <Select value={selCategory} onChange={setSelCategory} options={['전체', ...availCategories]}/>
         </div>
 
-        <Btn variant="secondary" onClick={() => { 
-            setSearch(''); setGradeF('전체'); setTypeF('전체'); 
-            setSelCategory('전체'); 
-            if (availDates.length > 0) setSelDate(availDates[0]);
+        {/* SKU / 품목명 */}
+        <SearchInput value={search} onChange={setSearch} placeholder="SKU / 품목명 검색"/>
+
+        {/* 등급 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>등급</span>
+          <Select value={gradeF} onChange={setGradeF} options={['전체','A','B','C','D','E','F']}/>
+        </div>
+
+        {/* 위험유형 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>위험유형</span>
+          <Select value={typeF} onChange={setTypeF} options={['전체','결품','과잉','납기','마진']}/>
+        </div>
+
+        <Btn variant="secondary" onClick={() => {
+          setSearch(''); setGradeF('전체'); setTypeF('전체'); setSelCategory('전체');
+          if (availDates.length > 0) {
+            setDateTo(availDates[0])
+            setDateFrom(availDates[availDates.length - 1])
+          }
         }}>초기화</Btn>
         <span style={{ fontSize: 11, color: T.text3, marginLeft: 'auto' }}>총 {filtered.length}건</span>
       </FilterBar>
