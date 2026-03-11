@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   // 3. 같은 회사 사용자 조회 (company_id가 없으면 전체 조회)
   let query = supabase
     .from('user_profile')
-    .select('id, email, display_name, role, department, is_active, last_login_at, company_id, invited_by, created_at')
+    .select('id, email, display_name, role, department, is_active, last_login_at, company_id, org_id, invited_by, created_at')
     .order('created_at', { ascending: true })
 
   if (myProfile.company_id) {

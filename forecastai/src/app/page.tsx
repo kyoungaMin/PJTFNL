@@ -1,7 +1,8 @@
 'use client'
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { T } from '@/lib/data'
-import type { Member } from '@/lib/data'
+import type { Member, RoleType } from '@/lib/data'
+import { supabaseBrowser } from '@/lib/supabaseBrowser'
 import { Sidebar, Header } from '@/components/layout'
 import LoginPage from '@/components/pages/Login'
 import PageDashboard from '@/components/pages/Dashboard'
@@ -17,8 +18,20 @@ import PageModelEvaluation from '@/components/pages/ModelEvaluation'
 import { PageExtSemi, PageExtGlobal, PageExtFX, PageExtSupply, PageExtRaw } from '@/components/pages/ExternalIndicators'
 import PageAdmin from '@/components/pages/Admin'
 
+const ROLE_GRAD: Record<RoleType, string> = {
+  Admin:   'linear-gradient(135deg,#7C3AED,#EC4899)',
+  Manager: 'linear-gradient(135deg,#3B82F6,#7C3AED)',
+  Analyst: 'linear-gradient(135deg,#10B981,#059669)',
+  Viewer:  'linear-gradient(135deg,#64748B,#94A3B8)',
+}
+function toRoleType(role: string): RoleType {
+  const map: Record<string, RoleType> = { admin:'Admin', manager:'Manager', analyst:'Analyst', viewer:'Viewer' }
+  return map[role.toLowerCase()] ?? 'Viewer'
+}
+
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false)
+  const [sessionChecked, setSessionChecked] = useState(false)
   const [page, setPage] = useState('dashboard')
   const [collapsed, setCollapsed] = useState(false)
   const [currentUser, setCurrentUser] = useState<Member | null>(null)
@@ -26,6 +39,38 @@ export default function Home() {
 
   // stable reference — Dashboard → Header 알림 배지 업데이트
   const handleAlertCount = useCallback((count: number) => setAlertCount(count), [])
+
+  // 새로고침 시 Supabase 세션 복원
+  useEffect(() => {
+    supabaseBrowser.auth.getSession().then(async ({ data }) => {
+      const session = data.session
+      if (!session) { setSessionChecked(true); return }
+
+      const res = await fetch('/api/me', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: session.access_token }),
+      })
+      if (res.ok) {
+        const profile = await res.json()
+        const role = toRoleType(profile.role ?? 'viewer')
+        const name = profile.display_name ?? session.user.email?.split('@')[0] ?? '?'
+        setCurrentUser({
+          id: session.user.id,
+          name, role,
+          dept:    profile.department ?? '',
+          email:   profile.email ?? session.user.email ?? '',
+          grad:    ROLE_GRAD[role],
+          initial: name.charAt(0) || '?',
+          orgId:   profile.org_id ?? 'default',
+        })
+        setLoggedIn(true)
+      }
+      setSessionChecked(true)
+    })
+  }, [])
+
+  if (!sessionChecked) return null  // 세션 확인 전 깜빡임 방지
 
   if (!loggedIn || !currentUser) {
     return (

@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   // 2. admin + company_id 확인
   const { data: myProfile } = await supabase
     .from('user_profile')
-    .select('role, company_id')
+    .select('role, company_id, org_id')
     .eq('id', userData.user.id)
     .single()
 
@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
     role:         safeRole,
     department:   department?.trim() ?? '',
     company_id:   myProfile?.company_id ?? null,
+    org_id:       myProfile?.org_id ?? 'default',
     invited_by:   userData.user.id,
     is_active:    true,
   })

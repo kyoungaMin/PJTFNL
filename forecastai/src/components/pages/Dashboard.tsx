@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { ComposedChart, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell, PieChart, Pie, CartesianGrid,
   ReferenceLine, Area, Line } from 'recharts'
-import { T, card, sectionTitle, KPI_DATA, ORDER_FORECAST, RISK_DONUT, ACTION_ITEMS_FULL, exportToCsv } from '@/lib/data'
+import { T, card, sectionTitle, KPI_DATA, ORDER_FORECAST, RISK_DONUT, ACTION_ITEMS_FULL } from '@/lib/data'
 import { Badge, RiskTypeBadge, PageHeader, Btn } from '@/components/ui'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
@@ -176,9 +176,9 @@ function OrderForecastChart({
     return (
       <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 9, padding: '10px 14px', boxShadow: '0 4px 16px rgba(15,23,42,0.12)', minWidth: 160 }}>
         <div style={{ fontSize: 11, color: T.text3, marginBottom: 6, fontWeight: 600 }}>{label}</div>
-        {vals.p90 != null && <div style={{ fontSize: 11, color: '#60A5FA', marginBottom: 2 }}>P90 (낙관): {vals.p90?.toLocaleString()} EA</div>}
-        {vals.p50 != null && <div style={{ fontSize: 13, color: T.blue, fontWeight: 700, marginBottom: 2 }}>P50 (기준): {vals.p50?.toLocaleString()} EA</div>}
-        {vals.p10 != null && <div style={{ fontSize: 11, color: '#60A5FA', marginBottom: 2 }}>P10 (보수): {vals.p10?.toLocaleString()} EA</div>}
+        {vals.p90 != null && <div style={{ fontSize: 11, color: '#60A5FA', marginBottom: 2 }}>P90 (상한): {vals.p90?.toLocaleString()} EA</div>}
+        {vals.p50 != null && <div style={{ fontSize: 13, color: T.blue, fontWeight: 700, marginBottom: 2 }}>P50 (중간): {vals.p50?.toLocaleString()} EA</div>}
+        {vals.p10 != null && <div style={{ fontSize: 11, color: '#60A5FA', marginBottom: 2 }}>P10 (하한): {vals.p10?.toLocaleString()} EA</div>}
         {vals.actual != null && <div style={{ fontSize: 12, color: T.orange, fontWeight: 600, marginTop: 4, paddingTop: 4, borderTop: `1px solid ${T.border}` }}>실적: {vals.actual?.toLocaleString()} EA</div>}
       </div>
     )
@@ -195,6 +195,22 @@ function OrderForecastChart({
 
   // Y축 포맷: 1000 단위로 'k' 표시
   const yFmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
+
+  if (loading) {
+    return (
+      <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '20px 24px', boxShadow: '0 1px 4px rgba(15,23,42,0.07)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="shimmer-box" style={{ height: 13, width: 80 }}/>
+          <div className="shimmer-box" style={{ height: 28, width: 82, borderRadius: 6 }}/>
+        </div>
+        <div className="shimmer-box" style={{ height: 11, width: '60%' }}/>
+        <div className="shimmer-box" style={{ height: 190, width: '100%', borderRadius: 8 }}/>
+        <div style={{ display: 'flex', gap: 18, paddingTop: 10, borderTop: `1px solid ${T.border}` }}>
+          {[80, 60, 90].map((w, i) => <div key={i} className="shimmer-box" style={{ height: 11, width: w }}/>)}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '20px 24px', boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
@@ -339,9 +355,14 @@ function AIInsightPanel() {
       {/* 본문 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9, flex: 1 }}>
         {loading ? (
-          // 로딩 스켈레톤 5개
           [0, 1, 2, 3, 4].map(i => (
-            <div key={i} className="shimmer-box" style={{ height: 44, borderRadius: 9 }}/>
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', background: T.surface2, borderRadius: 9, border: `1px solid ${T.border}` }}>
+              <div className="shimmer-box" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 4 }}/>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className="shimmer-box" style={{ height: 12, width: '90%' }}/>
+                <div className="shimmer-box" style={{ height: 12, width: `${60 + (i % 3) * 12}%` }}/>
+              </div>
+            </div>
           ))
         ) : insights.length === 0 ? (
           <div style={{ padding: '20px 0', textAlign: 'center', color: T.text3, fontSize: 13 }}>
@@ -384,108 +405,6 @@ export default function PageDashboard({
   const [activeGrade, setActiveGrade]   = useState<string | null>(null)
   const [dashData, setDashData]         = useState<DashApiResponse | null>(null)
   const [loading, setLoading]           = useState(true)
-  const [exporting, setExporting]       = useState(false)
-  // 주간보고 모달 날짜 범위
-  const [modalFromDate, setModalFromDate] = useState<string>('')
-  const [modalToDate, setModalToDate]     = useState<string>('')
-  // 주간보고 모달
-  const [showWeeklyModal, setShowWeeklyModal] = useState(false)
-  const [modalPreview, setModalPreview]       = useState<any>(null)
-  const [modalLoading, setModalLoading]       = useState(false)
-
-  // ─── 최신 주차 시작/종료일 초기 로드 (모달 기본값) ──────────────────────
-  useEffect(() => {
-    fetch('/api/weekly-report')
-      .then(r => r.json())
-      .then(d => {
-        if (d.meta?.weekStart) {
-          setModalFromDate(d.meta.weekStart)
-          setModalToDate(d.meta.weekEnd ?? d.meta.weekStart)
-        }
-      })
-      .catch(() => {/* 실패 시 무시 */})
-  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── 모달 열릴 때 / 날짜 변경 시 KPI 미리보기 조회 ──────────────────────
-  useEffect(() => {
-    if (!showWeeklyModal || !modalFromDate || !modalToDate) return
-    if (modalToDate < modalFromDate) return
-    setModalLoading(true)
-    setModalPreview(null)
-    fetch(`/api/weekly-report?from=${modalFromDate}&to=${modalToDate}`)
-      .then(r => r.json())
-      .then(d => { if (d.source !== 'error') setModalPreview(d) })
-      .catch(() => {})
-      .finally(() => setModalLoading(false))
-  }, [showWeeklyModal, modalFromDate, modalToDate])  // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── 주간 보고 CSV 내보내기 ───────────────────────────────────────────────
-  const handleExport = async () => {
-    if (exporting) return
-    setExporting(true)
-    try {
-      const url  = (modalFromDate && modalToDate)
-        ? `/api/weekly-report?from=${modalFromDate}&to=${modalToDate}`
-        : '/api/weekly-report'
-      const res  = await fetch(url)
-      const data = await res.json()
-      if (data.source === 'error') throw new Error(data.error)
-
-      const { meta, kpi, weeklyProducts, pendingOrders } = data
-      const weekLabel = (modalFromDate && modalToDate)
-        ? `${modalFromDate}_${modalToDate}`
-        : meta.targetWeek
-      const filename = `데이터_${weekLabel}_${meta.generatedAt.slice(0, 10)}.csv`
-
-      // ── 섹션 1: KPI 요약 ──
-      const kpiRows: (string | number)[][] = [
-        ['항목', '값', '상태'],
-        ['기준 주차', meta.targetWeek, ''],
-        ['주간 기간', `${meta.weekStart} ~ ${meta.weekEnd}`, ''],
-        ['수주량 합계', `${kpi.weekOrderQty.toLocaleString()} EA`, ''],
-        ['수주금액 합계', `${kpi.weekOrderAmt.toLocaleString()} 원`, ''],
-        ['매출금액 합계', `${kpi.weekRevenueAmt.toLocaleString()} 원`, ''],
-        ['생산량 합계', `${kpi.weekProducedQty.toLocaleString()} EA`, ''],
-        ['재고 커버리지', `${kpi.coverageDays}일`, kpi.coverageStatus],
-        ['미처리 구매 발주', `${kpi.pendingPO}건`, kpi.pendingPO > 3 ? '위험' : kpi.pendingPO > 0 ? '관찰' : '달성'],
-        ['보고서 생성 일시', meta.generatedAt.slice(0, 19).replace('T', ' '), ''],
-      ]
-
-      // ── 섹션 2: 제품별 주간 집계 ──
-      const weeklyHeaders = ['제품ID', '주차', '주시작일', '주종료일', '수주량(EA)', '수주금액(원)', '매출량(EA)', '매출금액(원)', '생산량(EA)']
-      const weeklyRows: (string | number)[][] = weeklyProducts.map((r: any) => [
-        r.product_id, r.year_week, r.week_start, r.week_end,
-        r.order_qty, r.order_amount, r.revenue_qty, r.revenue_amount, r.produced_qty,
-      ])
-
-      // ── 섹션 3: 미처리 발주 목록 ──
-      const poHeaders = ['발주처', '제품ID', '발주일', '납기일', '수량(EA)', '단가', '통화', '상태']
-      const poRows: (string | number)[][] = pendingOrders.map((r: any) => [
-        r.supplier, r.product_id, r.po_date, r.receipt_date,
-        r.po_qty, r.unit_price, r.currency, r.status,
-      ])
-
-      const allHeaders = ['항목', '값', '상태']
-      const allRows: (string | number)[][] = [
-        ...kpiRows,
-        [],
-        ['[제품별 주간 수주·매출·생산 집계]', '', ''],
-        weeklyHeaders as (string | number)[],
-        ...weeklyRows,
-        [],
-        ['[미처리 구매 발주 목록]', '', ''],
-        poHeaders as (string | number)[],
-        ...poRows,
-      ]
-
-      exportToCsv(filename, allHeaders, allRows)
-    } catch (err: any) {
-      alert(`내보내기 실패: ${err.message}`)
-    } finally {
-      setExporting(false)
-    }
-  }
-
   // ─── 실데이터 API 호출 ────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/dashboard')
@@ -557,6 +476,7 @@ export default function PageDashboard({
   // ML 미실행(riskGrades 빈 배열)이면 RISK_DONUT Mock 사용
   // 실데이터 있으면 A~F 6개 등급 항상 고정 표시 (DB에 없는 등급은 count=0)
   const donutData = useMemo(() => {
+    if (loading) return RISK_DONUT.map(d => ({ ...d, count: 0 }))
     if (!dashData || dashData.riskGrades.length === 0) return RISK_DONUT
     const gradeMap = Object.fromEntries(dashData.riskGrades.map(g => [g.grade, g.count]))
     return ['A', 'B', 'C', 'D', 'E', 'F'].map(grade => ({
@@ -586,11 +506,6 @@ export default function PageDashboard({
           const { year, month, week, start, end } = getWeekInfo(new Date())
           return `${year}년 ${month}월 ${week}주차 · ${start} ~ ${end} · 생산계획팀 주간 현황`
         })()}
-        action={
-          <Btn onClick={() => setShowWeeklyModal(true)}>
-            📥 데이터 내보내기
-          </Btn>
-        }
       />
 
       {/* ── KPI 4개 ── */}
@@ -626,57 +541,79 @@ export default function PageDashboard({
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ position: 'relative', width: 128, height: 128, flexShrink: 0 }}>
-              <PieChart width={128} height={128}>
-                <Pie data={donutData} dataKey="count" cx={59} cy={59}
-                  innerRadius={35} outerRadius={56} paddingAngle={2}
-                  startAngle={90} endAngle={-270}
-                  onMouseEnter={(_entry: unknown, i: number) => setActiveGrade(donutData[i].grade)}
-                  onMouseLeave={() => setActiveGrade(null)}>
-                  {donutData.map(e => (
-                    <Cell key={e.grade} fill={e.color} opacity={activeGrade && activeGrade !== e.grade ? 0.2 : 1} stroke="white" strokeWidth={2}/>
-                  ))}
-                </Pie>
-              </PieChart>
-              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', pointerEvents: 'none' }}>
-                <div style={{ fontSize: 19, fontWeight: 800, color: T.red, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>{efCount}</div>
-                <div style={{ fontSize: 8, color: T.text3, lineHeight: 1.4, marginTop: 2 }}>E~F<br/>위험</div>
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 128, height: 128, borderRadius: '50%', background: T.surface2, flexShrink: 0, animation: 'pulse 1.4s ease-in-out infinite' }}/>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+                {[80, 60, 70, 40, 30, 30].map((w, i) => (
+                  <div key={i} style={{ height: 10, borderRadius: 4, background: T.surface2, width: `${w}%`, animation: 'pulse 1.4s ease-in-out infinite' }}/>
+                ))}
               </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-              {donutData.map(d => (
-                <div key={d.grade} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  opacity: activeGrade && activeGrade !== d.grade ? 0.2 : 1,
-                  transition: 'opacity 0.15s',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 7, height: 7, borderRadius: 2, background: d.color, flexShrink: 0 }}/>
-                    <span style={{ fontSize: 11, color: T.text2, fontWeight: 500 }}>Grade {d.grade}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <div style={{ width: 44, height: 4, background: T.surface2, borderRadius: 2 }}>
-                      <div style={{ width: `${total > 0 ? (d.count / total) * 100 : 0}%`, height: '100%', background: d.color, borderRadius: 2 }}/>
-                    </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", minWidth: 22, textAlign: 'right' }}>{d.count}</span>
-                  </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ position: 'relative', width: 128, height: 128, flexShrink: 0 }}>
+                <PieChart width={128} height={128}>
+                  <Pie data={donutData} dataKey="count" cx={59} cy={59}
+                    innerRadius={35} outerRadius={56} paddingAngle={2}
+                    startAngle={90} endAngle={-270}
+                    onMouseEnter={(_entry: unknown, i: number) => setActiveGrade(donutData[i].grade)}
+                    onMouseLeave={() => setActiveGrade(null)}>
+                    {donutData.map(e => (
+                      <Cell key={e.grade} fill={e.color} opacity={activeGrade && activeGrade !== e.grade ? 0.2 : 1} stroke="white" strokeWidth={2}/>
+                    ))}
+                  </Pie>
+                </PieChart>
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', pointerEvents: 'none' }}>
+                  <div style={{ fontSize: 19, fontWeight: 800, color: T.red, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>{efCount}</div>
+                  <div style={{ fontSize: 8, color: T.text3, lineHeight: 1.4, marginTop: 2 }}>E~F<br/>위험</div>
                 </div>
-              ))}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                {donutData.map(d => (
+                  <div key={d.grade} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    opacity: activeGrade && activeGrade !== d.grade ? 0.2 : 1,
+                    transition: 'opacity 0.15s',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: 2, background: d.color, flexShrink: 0 }}/>
+                      <span style={{ fontSize: 11, color: T.text2, fontWeight: 500 }}>Grade {d.grade}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <div style={{ width: 44, height: 4, background: T.surface2, borderRadius: 2 }}>
+                        <div style={{ width: `${total > 0 ? (d.count / total) * 100 : 0}%`, height: '100%', background: d.color, borderRadius: 2 }}/>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", minWidth: 22, textAlign: 'right' }}>{d.count}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-          <div
-            onClick={() => setPage?.('risk')}
-            style={{
+          )}
+          {!loading && efCount > 0 ? (
+            <div
+              onClick={() => setPage?.('risk')}
+              style={{
+                marginTop: 12, padding: '8px 11px',
+                background: T.redSoft, border: `1px solid ${T.redMid}`,
+                borderRadius: 7, fontSize: 11, color: T.red, fontWeight: 500,
+                cursor: setPage ? 'pointer' : 'default',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+              <span>⚠ E~F 등급 {efCount}건 — 이번 주 내 조치 필요</span>
+              {setPage && <span style={{ fontSize: 10, fontWeight: 700 }}>리스크 관리 →</span>}
+            </div>
+          ) : !loading ? (
+            <div style={{
               marginTop: 12, padding: '8px 11px',
-              background: T.redSoft, border: `1px solid ${T.redMid}`,
-              borderRadius: 7, fontSize: 11, color: T.red, fontWeight: 500,
-              cursor: setPage ? 'pointer' : 'default',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              background: T.greenSoft, border: `1px solid ${T.greenMid}`,
+              borderRadius: 7, fontSize: 11, color: T.green, fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: 6,
             }}>
-            <span>⚠ E~F 등급 {efCount}건 — 이번 주 내 조치 필요</span>
-            {setPage && <span style={{ fontSize: 10, fontWeight: 700 }}>리스크 관리 →</span>}
-          </div>
+              <span>✓ E~F 등급 위험 없음</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -697,7 +634,22 @@ export default function PageDashboard({
             </div>
             <Btn variant="ghost" onClick={() => setPage?.('action-queue')}>전체 보기 →</Btn>
           </div>
-          {actionCards.length === 0 ? (
+          {loading ? (
+            [0, 1, 2].map(i => (
+              <div key={i} style={{ padding: '11px 13px', background: T.surface2, border: `1px solid ${T.border}`, borderLeft: `3px solid ${T.border}`, borderRadius: 8, marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <div className="shimmer-box" style={{ height: 18, width: 36, borderRadius: 4 }}/>
+                    <div className="shimmer-box" style={{ height: 18, width: 80, borderRadius: 4 }}/>
+                    <div className="shimmer-box" style={{ height: 18, width: 52, borderRadius: 4 }}/>
+                  </div>
+                  <div className="shimmer-box" style={{ height: 18, width: 50, borderRadius: 4 }}/>
+                </div>
+                <div className="shimmer-box" style={{ height: 14, width: '75%' }}/>
+                <div className="shimmer-box" style={{ height: 12, width: '55%' }}/>
+              </div>
+            ))
+          ) : actionCards.length === 0 ? (
             <div style={{ padding: '24px 0', textAlign: 'center', color: T.text3, fontSize: 13 }}>
               권고 항목이 없습니다
             </div>
@@ -730,184 +682,6 @@ export default function PageDashboard({
         <AIInsightPanel/>
       </div>
 
-      {/* ── 주간보고 모달 ── */}
-      {showWeeklyModal && (
-        <div
-          onClick={() => setShowWeeklyModal(false)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.48)',
-            zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: T.surface, borderRadius: 14, padding: '28px 28px',
-              width: 560, maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto',
-              boxShadow: '0 20px 60px rgba(15,23,42,0.22)', border: `1px solid ${T.border}`,
-            }}
-          >
-            {/* 헤더 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: T.text1 }}>📥 데이터 내보내기</div>
-              <button
-                onClick={() => setShowWeeklyModal(false)}
-                style={{ background: 'none', border: 'none', fontSize: 18, color: T.text3, cursor: 'pointer', padding: '2px 6px', lineHeight: 1 }}
-              >✕</button>
-            </div>
-
-            {/* 날짜 범위 선택 */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 10 }}>기간 선택</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'end' }}>
-                <div>
-                  <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>시작일</div>
-                  <input
-                    type="date"
-                    value={modalFromDate}
-                    onChange={e => setModalFromDate(e.target.value)}
-                    style={{
-                      width: '100%', fontSize: 13, color: T.text1, background: T.surface2,
-                      border: `1px solid ${T.border}`, borderRadius: 8, padding: '9px 12px',
-                      cursor: 'pointer', outline: 'none', boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-                <div style={{ fontSize: 13, color: T.text3, paddingBottom: 10, textAlign: 'center' }}>~</div>
-                <div>
-                  <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>종료일</div>
-                  <input
-                    type="date"
-                    value={modalToDate}
-                    min={modalFromDate}
-                    onChange={e => setModalToDate(e.target.value)}
-                    style={{
-                      width: '100%', fontSize: 13, color: T.text1, background: T.surface2,
-                      border: `1px solid ${T.border}`, borderRadius: 8, padding: '9px 12px',
-                      cursor: 'pointer', outline: 'none', boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-              </div>
-              {modalToDate && modalFromDate && modalToDate < modalFromDate && (
-                <div style={{ marginTop: 6, fontSize: 11, color: T.red }}>⚠ 종료일이 시작일보다 앞에 있습니다</div>
-              )}
-            </div>
-
-            {/* 선택 기간 데이터 요약 */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 10 }}>선택 기간 데이터 요약</div>
-              {modalLoading ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  {[0,1,2,3].map(i => (
-                    <div key={i} className="shimmer-box" style={{ height: 72, borderRadius: 9 }}/>
-                  ))}
-                </div>
-              ) : !modalPreview ? (
-                <div style={{ padding: '20px 0', textAlign: 'center', color: T.text3, fontSize: 13 }}>
-                  데이터를 불러올 수 없습니다
-                </div>
-              ) : (
-                <>
-                  {/* 주차 기간 배지 */}
-                  <div style={{ fontSize: 11, color: T.text3, marginBottom: 10 }}>
-                    📅 {modalPreview.meta?.weekStart} ~ {modalPreview.meta?.weekEnd}
-                    {modalPreview.meta?.isLatest && (
-                      <span style={{ marginLeft: 8, fontSize: 10, color: T.green, background: T.greenSoft, border: `1px solid ${T.greenMid}`, borderRadius: 4, padding: '2px 6px', fontWeight: 600 }}>최신</span>
-                    )}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    {/* 기간 총 수주량 */}
-                    <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 9, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>기간 총 수주량</div>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
-                        {(modalPreview.kpi?.weekOrderQty ?? 0).toLocaleString()} EA
-                      </div>
-                    </div>
-                    {/* 기간 총 수주금액 */}
-                    <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 9, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>기간 총 수주금액</div>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
-                        {((modalPreview.kpi?.weekOrderAmt ?? 0) / 1e8).toFixed(1)}억
-                      </div>
-                    </div>
-                    {/* 재고 커버리지 */}
-                    <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 9, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>재고 커버리지</div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
-                          {modalPreview.kpi?.coverageDays ?? 0}일
-                        </div>
-                        <span style={{
-                          fontSize: 10, fontWeight: 600, borderRadius: 4, padding: '2px 6px',
-                          color:      modalPreview.kpi?.coverageStatus === '달성' ? T.green : modalPreview.kpi?.coverageStatus === '관찰' ? T.amber : T.red,
-                          background: modalPreview.kpi?.coverageStatus === '달성' ? T.greenSoft : modalPreview.kpi?.coverageStatus === '관찰' ? T.amberSoft : T.redSoft,
-                          border: `1px solid ${modalPreview.kpi?.coverageStatus === '달성' ? T.greenMid : modalPreview.kpi?.coverageStatus === '관찰' ? T.amberMid : T.redMid}`,
-                        }}>{modalPreview.kpi?.coverageStatus}</span>
-                      </div>
-                    </div>
-                    {/* 미처리 발주 */}
-                    <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 9, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 11, color: T.text3, marginBottom: 6 }}>미처리 구매 발주</div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
-                          {modalPreview.kpi?.pendingPO ?? 0}건
-                        </div>
-                        {(modalPreview.kpi?.pendingPO ?? 0) > 0 && (
-                          <span style={{ fontSize: 10, fontWeight: 600, color: T.amber, background: T.amberSoft, border: `1px solid ${T.amberMid}`, borderRadius: 4, padding: '2px 6px' }}>처리 필요</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* 다운로드 데이터 구성 */}
-            {modalPreview && (modalPreview.weeklyProducts?.length ?? 0) > 0 && (
-              <div style={{
-                marginBottom: 22,
-                background: T.surface2,
-                border: `1px solid ${T.border}`,
-                borderRadius: 9,
-                padding: '12px 16px',
-              }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 8 }}>다운로드 데이터 구성</div>
-                <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <li style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.text2 }}>
-                    <span style={{ color: T.green, fontWeight: 700 }}>•</span>
-                    제품 집계 데이터:
-                    <span style={{ fontWeight: 700, color: T.text1, fontFamily: "'IBM Plex Mono',monospace" }}>
-                      {modalPreview.weeklyProducts.length}건
-                    </span>
-                  </li>
-                  <li style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.text2 }}>
-                    <span style={{ color: T.green, fontWeight: 700 }}>•</span>
-                    미처리 발주 데이터:
-                    <span style={{ fontWeight: 700, color: T.text1, fontFamily: "'IBM Plex Mono',monospace" }}>
-                      {modalPreview.pendingOrders?.length ?? 0}건
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            )}
-
-            {/* 하단 버튼 */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
-              <Btn variant="secondary" onClick={() => setShowWeeklyModal(false)}>취소</Btn>
-              <Btn
-                onClick={async () => {
-                  await handleExport()
-                  setShowWeeklyModal(false)
-                }}
-                style={exporting ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-              >
-                {exporting ? '⏳ 내보내는 중...' : `📥 ${modalFromDate} ~ ${modalToDate} CSV 저장`}
-              </Btn>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

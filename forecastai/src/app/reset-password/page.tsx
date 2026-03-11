@@ -15,11 +15,19 @@ export default function ResetPasswordPage() {
 
   // Supabase가 URL 해시에서 세션 복원하는 것을 기다림
   useEffect(() => {
-    supabaseBrowser.auth.onAuthStateChange((event) => {
+    // 이미 세션이 있는 경우 (페이지 로드 시 해시가 먼저 처리된 경우)
+    supabaseBrowser.auth.getSession().then(({ data }) => {
+      if (data.session) setReady(true)
+    })
+
+    // 또는 PASSWORD_RECOVERY 이벤트를 기다림
+    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setReady(true)
       }
     })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   const handleSubmit = async () => {

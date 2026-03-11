@@ -39,7 +39,7 @@ export async function GET() {
     // ─── 1-b. 예측 밴드 (forecast_result 최신 기준, 전 제품 합산) ────────────
     const { data: latestFcstRow } = await supabase
       .from('forecast_result')
-      .select('forecast_date')
+      .select('forecast_date, model_id')
       .order('forecast_date', { ascending: false })
       .limit(1)
 
@@ -47,12 +47,13 @@ export async function GET() {
     let hasForecastData = false
 
     if (latestFcstRow?.[0]?.forecast_date) {
-      const fcstDate = String(latestFcstRow[0].forecast_date)
+      const fcstDate   = String(latestFcstRow[0].forecast_date)
+      const fcstModel  = String(latestFcstRow[0].model_id)
 
       // DB 집계 RPC 사용 (DB/22_dashboard_rpc.sql 참고)
-      // 144K+ 행을 REST로 전량 조회하는 대신 DB에서 horizon별 합산 후 소량 반환
+      // model_id를 명시해 다른 날짜의 모델과 섞이지 않도록 보호
       const { data: horizonSums } = await supabase
-        .rpc('get_forecast_summary', { p_date: fcstDate })
+        .rpc('get_forecast_summary', { p_date: fcstDate, p_model_id: fcstModel })
 
       // horizon_days → 대상 월 매핑 (forecast_date + horizon_days → 월)
       const baseDate = new Date(fcstDate)

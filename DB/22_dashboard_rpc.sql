@@ -5,9 +5,10 @@
 -- 실행 위치: Supabase 대시보드 → SQL Editor에서 수동 실행
 
 -- ─── 1. 예측 밴드 집계 ────────────────────────────────────────────────────────
--- 특정 forecast_date의 horizon별 P10/P50/P90 합산
+-- 특정 forecast_date + model_id의 horizon별 P10/P50/P90 합산
+-- p_model_id 미지정(NULL) 시 해당 날짜 전체 집계 (하위 호환)
 -- (product_id + horizon_days 중복 제거 후 합산)
-CREATE OR REPLACE FUNCTION get_forecast_summary(p_date DATE)
+CREATE OR REPLACE FUNCTION get_forecast_summary(p_date DATE, p_model_id TEXT DEFAULT NULL)
 RETURNS TABLE(horizon_days INT, p10 NUMERIC, p50 NUMERIC, p90 NUMERIC)
 LANGUAGE sql STABLE AS $$
   SELECT
@@ -20,6 +21,7 @@ LANGUAGE sql STABLE AS $$
       horizon_days, p10, p50, p90
     FROM forecast_result
     WHERE forecast_date = p_date
+      AND (p_model_id IS NULL OR model_id = p_model_id)
     ORDER BY product_id, horizon_days
   ) t
   GROUP BY horizon_days

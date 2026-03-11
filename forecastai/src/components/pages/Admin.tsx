@@ -14,6 +14,7 @@ type DbUser = {
   is_active: boolean
   last_login_at: string | null
   company_id: string | null
+  org_id: string | null
 }
 
 // ─── 헬퍼 함수 ────────────────────────────────────────────────────────────────
@@ -267,7 +268,8 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
           </div>
         ) : (
           <Table
-            headers={['이름','이메일','역할','부서','마지막 로그인','상태','']}
+            headers={['이름','이메일','역할','부서','조직(org)','마지막 로그인','상태','']}
+            aligns={['left','left','center','center','center','center','center','center']}
             rows={filtered.map(u => {
               const displayRole = toDisplayRole(u.role)
               const name = u.display_name ?? u.email.split('@')[0]
@@ -301,6 +303,7 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
                   </div>
                 ),
                 <span style={{ fontSize:12, color:T.text2 }}>{u.department ?? '—'}</span>,
+                <span style={{ fontSize:12, color:T.text3 }}>{(!u.org_id || u.org_id === 'default') ? '—' : u.org_id}</span>,
                 <span style={{ fontSize:12, color:T.text3 }}>{formatLastLogin(u.last_login_at)}</span>,
                 <StatusBadge status={u.is_active ? '활성' : '비활성'}/>,
                 u.id !== currentUser.id ? (
