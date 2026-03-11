@@ -3,20 +3,21 @@ import React, { useState, useEffect } from 'react'
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { T, card, EXT_SEMI_DATA, EXT_GLOBAL_DATA, EXT_FX_DATA, EXT_SUPPLY_DATA, EXT_RAW_DATA, exportToCsv } from '@/lib/data'
 import { fetchSemiData, fetchGlobalData, fetchFXData, fetchSupplyData, fetchRawData, INDICATOR_META } from '@/lib/externalData'
+import { Freq, defaultMonthsForFreq, periodOptionsForFreq } from '@/lib/freqUtils'
 import { PageHeader, Btn } from '@/components/ui'
 
 // ── 데이터 훅 ─────────────────────────────────────────────────────────────────
 
-function useExtData<T>(fetcher: (months: number) => Promise<T>, fallback: T, months: number) {
+function useExtData<T>(fetcher: (months: number, freq: Freq) => Promise<T>, fallback: T, months: number, freq: Freq) {
   const [data, setData] = useState<T>(fallback)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     setLoading(true)
-    fetcher(months)
+    fetcher(months, freq)
       .then(d => setData(d as T))
       .catch(() => {/* fallback 유지 */})
       .finally(() => setLoading(false))
-  }, [months])
+  }, [months, freq])
   return { data, loading }
 }
 
@@ -191,12 +192,33 @@ function PeriodFilter({ period, onChange, options = [3, 6, 12] }: {
   )
 }
 
-function ExtLayout({ title, sub, isLive, loading, period, onPeriodChange, periodOptions, tickerItems, chartL, chartR, tableData, tableKeys, tableLabels, tableUnits, filename }: {
+/** 데이터 주기 필터 버튼 */
+function FreqFilter({ freq, onChange, options }: {
+  freq: Freq; onChange: (f: Freq) => void; options: Freq[]
+}) {
+  const label = (f: Freq) => f === 'day' ? '일별' : f === 'week' ? '주별' : '월별'
+  return (
+    <div style={{ display: 'flex', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 7, overflow: 'hidden' }}>
+      {options.map(f => (
+        <button key={f} onClick={() => onChange(f)} style={{
+          fontSize: 12, fontWeight: 600, padding: '6px 14px', border: 'none', cursor: 'pointer',
+          background: freq === f ? T.purple : 'transparent',
+          color: freq === f ? 'white' : T.text2,
+        }}>
+          {label(f)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ExtLayout({ title, sub, isLive, loading, period, onPeriodChange, periodOptions, tickerItems, chartL, chartR, tableData, tableKeys, tableLabels, tableUnits, filename, freqOptions, freq, onFreqChange }: {
   title: string; sub: string; isLive: boolean; loading: boolean;
   period: number; onPeriodChange: (n: number) => void; periodOptions?: readonly number[];
   tickerItems: React.ReactNode; chartL: React.ReactNode; chartR: React.ReactNode;
   tableData: Record<string, unknown>[]; tableKeys: string[]; tableLabels: string[]; tableUnits: string[];
   filename: string;
+  freqOptions?: Freq[]; freq?: Freq; onFreqChange?: (f: Freq) => void;
 }) {
   const handleCsv = () => exportToCsv(
     filename,
@@ -210,6 +232,10 @@ function ExtLayout({ title, sub, isLive, loading, period, onPeriodChange, period
         sub={sub}
         action={
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {freqOptions && freq && onFreqChange && (
+              <FreqFilter freq={freq} onChange={onFreqChange} options={freqOptions} />
+            )}
+            {freqOptions && <div style={{ width: 1, height: 24, background: T.border }} />}
             <PeriodFilter period={period} onChange={onPeriodChange} options={periodOptions} />
             <Btn variant="secondary" onClick={handleCsv}>CSV 내보내기</Btn>
           </div>
@@ -232,16 +258,23 @@ function ExtLayout({ title, sub, isLive, loading, period, onPeriodChange, period
 // ── 페이지 컴포넌트 ───────────────────────────────────────────────────────────
 
 // SOX=일간, DRAM/NAND=주간(매주 목)
-const SEMI_PERIOD_OPTIONS = [3, 6, 12, 24] as const
-
 export function PageExtSemi() {
+  const [freq, setFreq] = useState<Freq>('month')
   const [period, setPeriod] = useState(12)
-  const { data, loading } = useExtData(fetchSemiData, EXT_SEMI_DATA, period)
+
+  const handleFreqChange = (f: Freq) => {
+    setFreq(f)
+    setPeriod(defaultMonthsForFreq(f))
+  }
+
+  const { data, loading } = useExtData(fetchSemiData, EXT_SEMI_DATA, period, freq)
   const isLive = data !== EXT_SEMI_DATA
   const sox = calcChange(data, 'sox'), dram = calcChange(data, 'dram'), nand = calcChange(data, 'nand')
   return <ExtLayout
     title="산업 지표" sub="SOX 지수(일간) · DRAM / NAND 현물가(주간, 매주 목) · 반도체 업황"
-    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod} periodOptions={SEMI_PERIOD_OPTIONS}
+    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod}
+    periodOptions={periodOptionsForFreq(freq)}
+    freqOptions={['week', 'month']} freq={freq} onFreqChange={handleFreqChange}
     tickerItems={[
       <TickerCard key="sox"  label="SOX 지수"   value={sox.value as number}  unit="pt"   changePct={sox.pct}  chartData={data} dataKey="sox"
         source={INDICATOR_META.SOX.source} freq={INDICATOR_META.SOX.freq} isMock={!isLive} />,
@@ -263,7 +296,8 @@ const GLOBAL_PERIOD_OPTIONS = [6, 12, 24] as const
 
 export function PageExtGlobal() {
   const [period, setPeriod] = useState(12)
-  const { data, loading } = useExtData(fetchGlobalData, EXT_GLOBAL_DATA, period)
+  const fetchGlobalDataWrapped = (months: number, _freq: Freq) => fetchGlobalData(months)
+  const { data, loading } = useExtData(fetchGlobalDataWrapped, EXT_GLOBAL_DATA, period, 'month')
   const isLive = data !== EXT_GLOBAL_DATA
   const ipi = calcChange(data, 'ipi'), pmi = calcChange(data, 'pmi'), hs = calcChange(data, 'hs8541')
   return <ExtLayout
@@ -286,11 +320,16 @@ export function PageExtGlobal() {
 }
 
 // 환율=일간(영업일), 기준금리=비정기(연 8회)
-const FX_PERIOD_OPTIONS = [1, 3, 6, 12] as const
-
 export function PageExtFX() {
-  const [period, setPeriod] = useState(6)
-  const { data, loading } = useExtData(fetchFXData, EXT_FX_DATA, period)
+  const [freq, setFreq] = useState<Freq>('day')
+  const [period, setPeriod] = useState(3)
+
+  const handleFreqChange = (f: Freq) => {
+    setFreq(f)
+    setPeriod(defaultMonthsForFreq(f))
+  }
+
+  const { data, loading } = useExtData(fetchFXData, EXT_FX_DATA, period, freq)
   const isLive   = data !== EXT_FX_DATA
   const usd      = calcChange(data, 'usd')
   const eur      = calcChange(data, 'eur')
@@ -338,7 +377,9 @@ export function PageExtFX() {
         sub="USD/KRW · EUR/KRW · JPY/KRW · CNY/KRW(일간, 영업일) · 한국/미국 기준금리(비정기, 연 8회)"
         action={
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <PeriodFilter period={period} onChange={setPeriod} options={FX_PERIOD_OPTIONS} />
+            <FreqFilter freq={freq} onChange={handleFreqChange} options={['day', 'week', 'month']} />
+            <div style={{ width: 1, height: 24, background: T.border }} />
+            <PeriodFilter period={period} onChange={setPeriod} options={periodOptionsForFreq(freq)} />
             <Btn variant="secondary" onClick={() => exportToCsv(
               'ext_fx.csv',
               ['날짜', 'USD/KRW(원)', 'EUR/KRW(원)', 'JPY/KRW(원)', 'CNY/KRW(원)', '한국금리(%)', '미국금리(%)'],
@@ -495,16 +536,23 @@ export function PageExtFX() {
 }
 
 // BDI=일간(영업일), 해상운임=일간
-const SUPPLY_PERIOD_OPTIONS = [1, 3, 6, 12] as const
-
 export function PageExtSupply() {
+  const [freq, setFreq] = useState<Freq>('month')
   const [period, setPeriod] = useState(6)
-  const { data, loading } = useExtData(fetchSupplyData, EXT_SUPPLY_DATA, period)
+
+  const handleFreqChange = (f: Freq) => {
+    setFreq(f)
+    setPeriod(defaultMonthsForFreq(f))
+  }
+
+  const { data, loading } = useExtData(fetchSupplyData, EXT_SUPPLY_DATA, period, freq)
   const isLive = data !== EXT_SUPPLY_DATA
   const bdi = calcChange(data, 'bdi'), frt = calcChange(data, 'freight')
   return <ExtLayout
     title="물류" sub="BDI 발틱운임지수(일간, 영업일) · 아시아 해상 운임(일간)"
-    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod} periodOptions={SUPPLY_PERIOD_OPTIONS}
+    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod}
+    periodOptions={periodOptionsForFreq(freq)}
+    freqOptions={['day', 'week', 'month']} freq={freq} onFreqChange={handleFreqChange}
     tickerItems={[
       <TickerCard key="bdi" label="BDI 발틱운임지수"  value={bdi.value as number} unit="pt" changePct={bdi.pct} chartData={data} dataKey="bdi"
         source={INDICATOR_META.BALTIC_DRY.source} freq={INDICATOR_META.BALTIC_DRY.freq} />,
@@ -520,16 +568,23 @@ export function PageExtSupply() {
 }
 
 // WTI=일간(거래일), 구리 LME=일간(거래일), 금=일간
-const RAW_PERIOD_OPTIONS = [1, 3, 6, 12] as const
-
 export function PageExtRaw() {
+  const [freq, setFreq] = useState<Freq>('month')
   const [period, setPeriod] = useState(6)
-  const { data, loading } = useExtData(fetchRawData, EXT_RAW_DATA, period)
+
+  const handleFreqChange = (f: Freq) => {
+    setFreq(f)
+    setPeriod(defaultMonthsForFreq(f))
+  }
+
+  const { data, loading } = useExtData(fetchRawData, EXT_RAW_DATA, period, freq)
   const isLive = data !== EXT_RAW_DATA
   const cu = calcChange(data, 'copper'), wti = calcChange(data, 'wti'), gold = calcChange(data, 'gold')
   return <ExtLayout
     title="원자재" sub="구리 LME(일간, 거래일) · WTI 원유(일간, 거래일) · 금 COMEX(일간)"
-    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod} periodOptions={RAW_PERIOD_OPTIONS}
+    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod}
+    periodOptions={periodOptionsForFreq(freq)}
+    freqOptions={['day', 'week', 'month']} freq={freq} onFreqChange={handleFreqChange}
     tickerItems={[
       <TickerCard key="cu"   label="구리 (LME)" value={cu.value as number}   unit="$/t"   changePct={cu.pct}   chartData={data} dataKey="copper"
         source={INDICATOR_META.COPPER_LME.source} freq={INDICATOR_META.COPPER_LME.freq} />,

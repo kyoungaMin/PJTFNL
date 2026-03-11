@@ -259,10 +259,10 @@ export const EXT_GLOBAL_DATA = [
   {d:'10월',ipi:102.8,pmi:53.5,hs8541:2640},{d:'11월',ipi:103.2,pmi:53.9,hs8541:2710},{d:'12월',ipi:104.0,pmi:54.2,hs8541:2820},
 ]
 export const EXT_FX_DATA = [
-  {d:'1월',usd:1285,eur:1410,rate:3.50},{d:'2월',usd:1310,eur:1435,rate:3.50},{d:'3월',usd:1335,eur:1458,rate:3.50},
-  {d:'4월',usd:1358,eur:1482,rate:3.75},{d:'5월',usd:1342,eur:1465,rate:3.75},{d:'6월',usd:1325,eur:1448,rate:3.50},
-  {d:'7월',usd:1310,eur:1432,rate:3.50},{d:'8월',usd:1328,eur:1451,rate:3.25},{d:'9월',usd:1315,eur:1440,rate:3.25},
-  {d:'10월',usd:1340,eur:1462,rate:3.00},{d:'11월',usd:1355,eur:1478,rate:3.00},{d:'12월',usd:1342,eur:1465,rate:3.00},
+  {d:'1월',usd:1285,eur:1410,jpy:9.12,cny:180.5,rate:3.50,us_rate:5.33},{d:'2월',usd:1310,eur:1435,jpy:9.25,cny:182.1,rate:3.50,us_rate:5.33},{d:'3월',usd:1335,eur:1458,jpy:9.38,cny:184.8,rate:3.50,us_rate:5.33},
+  {d:'4월',usd:1358,eur:1482,jpy:9.45,cny:187.2,rate:3.75,us_rate:5.33},{d:'5월',usd:1342,eur:1465,jpy:9.35,cny:185.6,rate:3.75,us_rate:5.33},{d:'6월',usd:1325,eur:1448,jpy:9.22,cny:183.9,rate:3.50,us_rate:5.33},
+  {d:'7월',usd:1310,eur:1432,jpy:9.15,cny:182.3,rate:3.50,us_rate:5.33},{d:'8월',usd:1328,eur:1451,jpy:9.28,cny:184.1,rate:3.25,us_rate:5.33},{d:'9월',usd:1315,eur:1440,jpy:9.20,cny:183.2,rate:3.25,us_rate:5.25},
+  {d:'10월',usd:1340,eur:1462,jpy:9.32,cny:185.4,rate:3.00,us_rate:5.08},{d:'11월',usd:1355,eur:1478,jpy:9.40,cny:186.8,rate:3.00,us_rate:4.83},{d:'12월',usd:1342,eur:1465,jpy:9.35,cny:185.5,rate:3.00,us_rate:4.58},
 ]
 export const EXT_SUPPLY_DATA = [
   {d:'1월',bdi:1820,freight:1250},{d:'2월',bdi:1950,freight:1320},{d:'3월',bdi:2100,freight:1410},
@@ -620,9 +620,9 @@ export const CAT_COLORS: Record<string,string> = {
 }
 
 // ─── CSV 내보내기 유틸 ──────────────────────────────────────────────────────
-export function exportToCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+export function exportToCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
   const bom = '\uFEFF'
-  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+  const csv = [headers.join(','), ...rows.map(r => r.map(v => v ?? '').join(','))].join('\n')
   const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

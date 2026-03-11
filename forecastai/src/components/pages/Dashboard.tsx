@@ -224,9 +224,9 @@ function RevenueForecastChart({
       {/* 범례 + 상태 알림 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.border}`, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
-          {[['실적 (DB)', T.orange, 'solid', 2.5], ['P50 예측', T.blue, 'dashed', 2], ['P10~P90 밴드', '#93C5FD', 'dashed', 1]].map(([lbl, col, dash, w]) => (
+          {([['실적 (DB)', T.orange, 'solid', 2.5], ['P50 예측', T.blue, 'dashed', 2], ['P10~P90 밴드', '#93C5FD', 'dashed', 1]] as [string, string, string, number][]).map(([lbl, col, dash, w]) => (
             <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.text2 }}>
-              <svg width={18} height={10}><line x1={0} y1={5} x2={18} y2={5} stroke={col} strokeWidth={w} strokeDasharray={dash === 'dashed' ? '5 3' : '0'}/></svg>
+              <svg width={18} height={10}><line x1={0} y1={5} x2={18} y2={5} stroke={String(col)} strokeWidth={Number(w)} strokeDasharray={dash === 'dashed' ? '5 3' : '0'}/></svg>
               {lbl}
             </div>
           ))}
