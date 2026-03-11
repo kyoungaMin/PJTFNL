@@ -124,12 +124,10 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
         {/* Alert bell */}
         <div data-dropdown style={{ position:"relative" }}>
           <button onClick={handleAlertOpen}
-            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:4, fontSize:18, display:"flex", outline:"none" }}>
+            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:"6px 8px", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", outline:"none", borderRadius:8, lineHeight:1 }}>
             🔔
             {alertCount > 0 && (
-              <span style={{ position:"absolute", top:0, right:0, width:14, height:14, background:T.red, borderRadius:"50%", fontSize:8, fontWeight:700, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", border:"2px solid white" }}>
-                {alertCount > 9 ? '9+' : alertCount}
-              </span>
+              <span style={{ position:"absolute", top:2, right:2, width:9, height:9, background:"#EF4444", borderRadius:"50%", border:"2.5px solid white", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
             )}
           </button>
           {alertOpen && (
@@ -188,7 +186,12 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
                   </div>
                 </div>
               </div>
-              <div style={{ borderTop:`1px solid ${T.border}`, padding:"8px 10px" }}>
+              <div style={{ borderTop:`1px solid ${T.border}`, padding:"8px 10px", display:"flex", flexDirection:"column", gap:6 }}>
+                {currentUser.role === 'Admin' && (
+                  <button onClick={()=>{ setPage('admin'); setUserOpen(false); }} style={{ width:"100%", padding:"7px 0", background:T.blueSoft, border:`1px solid ${T.blueMid}`, borderRadius:6, fontSize:11, color:T.blue, cursor:"pointer", fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
+                    ⚙️ 관리자 설정
+                  </button>
+                )}
                 <button onClick={handleLogout} style={{ width:"100%", padding:"7px 0", background:T.redSoft, border:`1px solid ${T.redMid}`, borderRadius:6, fontSize:11, color:T.red, cursor:"pointer", fontWeight:600 }}>로그아웃</button>
               </div>
             </div>
