@@ -61,13 +61,19 @@ const STATUS_LABEL: Record<string, string> = {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const dateParam = searchParams.get('date')
-    const typeParam = searchParams.get('type') // 제품, 반제품, 부재료 등
+    const dateFromParam = searchParams.get('dateFrom')
+    const dateToParam   = searchParams.get('dateTo')
+    const dateParam     = searchParams.get('date')   // 하위 호환
+    const typeParam     = searchParams.get('type')   // 제품, 반제품, 부재료 등
 
-    let evalDate = dateParam
-    
-    // 1. eval_date 조회 (dateParam이 없을 때만 최신 조회)
-    if (!evalDate) {
+    // ── 1. eval_date 범위 결정 ─────────────────────────────────────────────
+    const isRange = !!(dateFromParam && dateToParam)
+    let evalDate: string | undefined = dateParam ?? undefined
+    let dateFrom = dateFromParam ?? undefined
+    let dateTo   = dateToParam   ?? undefined
+
+    if (!isRange && !evalDate) {
+      // 최신 날짜 자동 탐색
       const { data: snapRows, error: snapErr } = await supabase
         .from('risk_score')
         .select('eval_date')
@@ -77,12 +83,11 @@ export async function GET(request: Request) {
       evalDate = snapRows?.[0]?.eval_date as string | undefined
     }
 
-    if (!evalDate) {
+    if (!isRange && !evalDate) {
       return NextResponse.json({ items: [], evalDate: null, source: 'empty' })
     }
 
-    // [NEW] type 필터링이 필요한 경우 product_master와 JOIN이 불가능하므로, 
-    // product_master에서 먼저 대상 product_code를 필터링
+    // ── 2. 제품유형 필터: product_master에서 대상 product_code 목록 선추출 ─
     let validProductIds: string[] | null = null
     if (typeParam && typeParam !== '전체') {
       const { data: typeRows, error: typeErr } = await supabase
@@ -92,36 +97,44 @@ export async function GET(request: Request) {
       if (typeErr) throw typeErr
       validProductIds = typeRows.map((r: any) => r.product_code)
       if (validProductIds.length === 0) {
-         return NextResponse.json({ items: [], evalDate, source: 'empty' })
+        return NextResponse.json({ items: [], evalDate: evalDate ?? dateTo, source: 'empty' })
       }
     }
 
+    // ── 3. risk_score 조회 ─────────────────────────────────────────────────
+    const RISK_SELECT = 'product_id,eval_date,total_risk,risk_grade,stockout_risk,excess_risk,delivery_risk,margin_risk,safety_stock,inventory_days'
+
     let risks: any[] = []
 
-    if (validProductIds) {
-      // product_id 목록이 너무 많으면 URL 길이 제한(fetch error)이 발생하므로 batchIn으로 안전하게 분할 조회합니다.
-      risks = await batchIn('risk_score',
-        'product_id,total_risk,risk_grade,stockout_risk,excess_risk,delivery_risk,margin_risk,safety_stock,inventory_days',
-        'product_id',
-        validProductIds,
-        (q) => q.eq('eval_date', evalDate).order('total_risk', { ascending: false }).limit(200)
-      )
-      
-      // Batch 단위로 조회된 결과에서 다시 상위 200개를 추려냅니다.
-      risks.sort((a, b) => b.total_risk - a.total_risk)
-      risks = risks.slice(0, 200)
-      
-    } else {
-      // 카테고리 필터가 없는 경우 단순 조회
-      const { data, error: bErr } = await supabase
-        .from('risk_score')
-        .select('product_id,total_risk,risk_grade,stockout_risk,excess_risk,delivery_risk,margin_risk,safety_stock,inventory_days')
-        .eq('eval_date', evalDate)
-        .order('total_risk', { ascending: false })
-        .limit(200)
+    const applyDateFilter = (q: any) =>
+      isRange
+        ? q.gte('eval_date', dateFrom).lte('eval_date', dateTo)
+        : q.eq('eval_date', evalDate)
 
+    if (validProductIds) {
+      const rawRisks = await batchIn('risk_score', RISK_SELECT, 'product_id', validProductIds,
+        (q) => applyDateFilter(q).order('eval_date', { ascending: false }).order('total_risk', { ascending: false }))
+      risks = rawRisks
+    } else {
+      let q = supabase.from('risk_score').select(RISK_SELECT)
+      q = applyDateFilter(q).order('eval_date', { ascending: false }).order('total_risk', { ascending: false })
+      // 범위 조회 시 product × date 중복 있으므로 여유있게 가져옴
+      q = isRange ? q.limit(5000) : q.limit(200)
+      const { data, error: bErr } = await q
       if (bErr) throw bErr
       if (data) risks = data
+    }
+
+    // ── 4. 범위 조회: product_id별 최신 eval_date 1건만 유지 ──────────────
+    if (isRange && risks.length > 0) {
+      const seen = new Map<string, any>()
+      // eval_date desc 정렬 이미 됨 → 처음 나오는 것이 최신
+      for (const r of risks) {
+        if (!seen.has(r.product_id)) seen.set(r.product_id, r)
+      }
+      risks = Array.from(seen.values()).sort((a, b) => b.total_risk - a.total_risk).slice(0, 200)
+      // 응답에 쓸 evalDate = 범위 내 가장 최신 날짜
+      evalDate = risks[0]?.eval_date ?? dateTo
     }
 
     if (!risks || risks.length === 0) {
