@@ -35,6 +35,15 @@ interface DashApiResponse {
     pendingCount: number
     status: 'achieved' | 'watch' | 'risk'
   }
+  latestDataDate?: string  // 기존 호환성 유지
+  // daily_order max(order_date) 기준 주차 메타데이터
+  refWeekInfo?: {
+    yearWeek:     string   // e.g. '2026-W09'
+    weekStart:    string   // e.g. '2026-02-23' (월요일)
+    weekEnd:      string   // e.g. '2026-03-01' (일요일)
+    yearMonth:    string   // e.g. '2026-02' (재고현황 월 연계용)
+    maxOrderDate: string   // e.g. '2026-02-26' (실제 max 수주일)
+  }
   source: string
 }
 
@@ -47,9 +56,12 @@ function getWeekInfo(date: Date): { year: number; month: number; week: number; s
   const year  = d.getFullYear()
   const month = d.getMonth() + 1
   const week  = Math.ceil(d.getDate() / 7)
-  const start = d.toISOString().slice(0, 10)
-  d.setDate(d.getDate() + 6)        // 이번 주 일요일
-  return { year, month, week, start, end: d.toISOString().slice(0, 10) }
+  // toISOString()은 UTC 기준이라 한국(UTC+9)에서 하루 밀림 → 로컬 날짜 직접 계산
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const toLocal = (dt: Date) => `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`
+  const start = toLocal(d)
+  d.setDate(d.getDate() + 4)        // 이번 주 금요일 (주중 Mon~Fri)
+  return { year, month, week, start, end: toLocal(d) }
 }
 
 // 도넛 등급별 색상 (A~F)
@@ -196,6 +208,22 @@ function OrderForecastChart({
   // Y축 포맷: 1000 단위로 'k' 표시
   const yFmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
 
+  // X축 커스텀 tick: 주차(3W2) + 날짜(3/09) 두 줄 표시
+  // label 형식: "M/DD" (e.g., "3/09") → 위: "3W2", 아래: "3/09"
+  const CustomXTick = ({ x, y, payload }: any) => {
+    const label: string = payload?.value ?? ''
+    const parts = label.split('/')
+    if (parts.length !== 2) return null
+    const weekNum = Math.ceil(parseInt(parts[1], 10) / 7)
+    const weekLabel = `${parts[0]}W${weekNum}`
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text x={0} y={0} dy={11} textAnchor="middle" fill={T.text2} fontSize={9} fontWeight={700}>{weekLabel}</text>
+        <text x={0} y={0} dy={21} textAnchor="middle" fill={T.text3} fontSize={8}>{label}</text>
+      </g>
+    )
+  }
+
   if (loading) {
     return (
       <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '20px 24px', boxShadow: '0 1px 4px rgba(15,23,42,0.07)', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -225,17 +253,17 @@ function OrderForecastChart({
           </button>
         </div>
         <div style={{ fontSize: 11, color: T.text3, marginBottom: 8 }}>
-          단위: EA &nbsp;·&nbsp; 실선=실적 (DB) &nbsp; 점선=AI 예측 밴드 (P10~P90{hasForecastData ? ', DB 실데이터' : ', ML 연동 예정'})
+          단위: EA &nbsp;·&nbsp; 주간 실적 (DB) &nbsp; 점선=AI 예측 밴드 (P10~P90{hasForecastData ? ', DB 실데이터' : ', ML 연동 예정'})
         </div>
         {nextFcstRow && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 11, color: T.text3, fontWeight: 500 }}>다음달 P50 예측</span>
+            <span style={{ fontSize: 11, color: T.text3, fontWeight: 500 }}>다음주 P50 예측</span>
             <span style={{ fontSize: 17, fontWeight: 800, color: isUp ? T.green : T.red, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
               {nextFcstRow.p50?.toLocaleString() ?? '-'} EA
             </span>
             {mom != null && (
               <span style={{ fontSize: 12, color: isUp ? T.green : T.red, fontWeight: 700 }}>
-                {isUp ? '▲' : '▼'} {Math.abs(parseFloat(mom))}% MoM
+                {isUp ? '▲' : '▼'} {Math.abs(parseFloat(mom))}% WoW
               </span>
             )}
           </div>
@@ -243,8 +271,8 @@ function OrderForecastChart({
       </div>
 
       {/* ── 차트 ── */}
-      <ResponsiveContainer width="100%" height={190}>
-        <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
           <defs>
             <linearGradient id="orderBand" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={T.blue} stopOpacity={0.09}/>
@@ -252,7 +280,7 @@ function OrderForecastChart({
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false}/>
-          <XAxis dataKey="m" tick={{ fontSize: 9, fill: T.text3 }} axisLine={false} tickLine={false}/>
+          <XAxis dataKey="m" tick={<CustomXTick />} axisLine={false} tickLine={false} interval={2} height={34}/>
           <YAxis tick={{ fontSize: 9, fill: T.text3 }} axisLine={false} tickLine={false} tickFormatter={yFmt} width={32}/>
           <Tooltip content={<OrderTT/>}/>
           <Area type="monotone" dataKey="p90" name="p90" stroke="#93C5FD" strokeWidth={1} strokeDasharray="4 3" fill="url(#orderBand)" dot={false}/>
@@ -412,6 +440,12 @@ export default function PageDashboard({
       .then((d: DashApiResponse) => {
         if (d.source === 'database') {
           setDashData(d)
+          // 기준 주차 정보를 sessionStorage에 저장 → 상세화면에서 연계 사용
+          // 구매권고·생산권고·리스크관리: weekStart/weekEnd 필터
+          // 재고현황: yearMonth 필터
+          if (d.refWeekInfo) {
+            sessionStorage.setItem('dashRefWeek', JSON.stringify(d.refWeekInfo))
+          }
           onAlertCount?.(d.purchaseOrder.pendingCount)
         } else {
           console.warn('[Dashboard] API source:', d.source, (d as any).error)
@@ -453,7 +487,8 @@ export default function PageDashboard({
   // ─── 수주량 차트 실데이터 merge ───────────────────────────────────────────
   // API에서 orderChartData(실적+예측 통합)를 받으면 그대로 사용
   // 없으면 ORDER_FORECAST mock에 orderActual을 덮어씌우는 기존 방식 fallback
-  const hasDbOrderData = (dashData?.orderActual?.length ?? 0) > 0
+  // orderChartData가 있으면 실데이터로 판단 (주간으로 전환 후 orderActual은 빈 배열)
+  const hasDbOrderData = (dashData?.orderChartData?.length ?? 0) > 0 || (dashData?.orderActual?.length ?? 0) > 0
   const hasForecastData = dashData?.hasForecastData ?? false
   const lastActualM = dashData?.lastActualM ?? "'24.12"
 
@@ -503,6 +538,17 @@ export default function PageDashboard({
       <PageHeader
         title="대시보드"
         sub={(() => {
+          // 로딩 중 → 목업 날짜 플리커 방지
+          if (loading) return '데이터 로딩 중...'
+          const ref = dashData?.refWeekInfo
+          const pad = (n: number) => String(n).padStart(2, '0')
+          const toL = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+          if (ref?.weekStart) {
+            const { year, month, week } = getWeekInfo(new Date(ref.weekStart + 'T00:00:00'))
+            // DB의 weekStart ~ weekEnd 그대로 사용 (1주 기준)
+            const weekEndStr = ref.weekEnd || ref.weekStart
+            return `${year}년 ${month}월 ${week}주차 · ${ref.weekStart} ~ ${weekEndStr} · 생산계획팀 주간 현황`
+          }
           const { year, month, week, start, end } = getWeekInfo(new Date())
           return `${year}년 ${month}월 ${week}주차 · ${start} ~ ${end} · 생산계획팀 주간 현황`
         })()}
