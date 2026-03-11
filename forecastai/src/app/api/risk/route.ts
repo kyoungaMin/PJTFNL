@@ -56,38 +56,73 @@ const STATUS_LABEL: Record<string, string> = {
    GET /api/risk
    risk_score 최신 eval_date 기준으로 리스크 현황 목록을 반환합니다.
 ═══════════════════════════════════════════════════════════════════ */
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // 1. 최신 eval_date 조회
-    const { data: snapRows, error: snapErr } = await supabase
-      .from('risk_score')
-      .select('eval_date')
-      .order('eval_date', { ascending: false })
-      .limit(1)
-    if (snapErr) throw snapErr
+    const { searchParams } = new URL(request.url)
+    const dateParam = searchParams.get('date')
+    const typeParam = searchParams.get('type') // 제품, 반제품, 부재료 등
 
-    const evalDate = snapRows?.[0]?.eval_date as string | undefined
+    let evalDate = dateParam
+    
+    // 1. eval_date 조회 (dateParam이 없을 때만 최신 조회)
+    if (!evalDate) {
+      const { data: snapRows, error: snapErr } = await supabase
+        .from('risk_score')
+        .select('eval_date')
+        .order('eval_date', { ascending: false })
+        .limit(1)
+      if (snapErr) throw snapErr
+      evalDate = snapRows?.[0]?.eval_date as string | undefined
+    }
+
     if (!evalDate) {
       return NextResponse.json({ items: [], evalDate: null, source: 'empty' })
     }
 
-    // 2. 해당 날짜 risk_score 전체 (페이지네이션)
-    const risks: any[] = []
-    const PAGE = 1000
-    for (let off = 0; ; off += PAGE) {
-      const { data: batch, error: bErr } = await supabase
+    // [NEW] type 필터링이 필요한 경우 product_master와 JOIN이 불가능하므로, 
+    // product_master에서 먼저 대상 product_code를 필터링
+    let validProductIds: string[] | null = null
+    if (typeParam && typeParam !== '전체') {
+      const { data: typeRows, error: typeErr } = await supabase
+        .from('product_master')
+        .select('product_code')
+        .eq('product_type', typeParam)
+      if (typeErr) throw typeErr
+      validProductIds = typeRows.map((r: any) => r.product_code)
+      if (validProductIds.length === 0) {
+         return NextResponse.json({ items: [], evalDate, source: 'empty' })
+      }
+    }
+
+    let risks: any[] = []
+
+    if (validProductIds) {
+      // product_id 목록이 너무 많으면 URL 길이 제한(fetch error)이 발생하므로 batchIn으로 안전하게 분할 조회합니다.
+      risks = await batchIn('risk_score',
+        'product_id,total_risk,risk_grade,stockout_risk,excess_risk,delivery_risk,margin_risk,safety_stock,inventory_days',
+        'product_id',
+        validProductIds,
+        (q) => q.eq('eval_date', evalDate).order('total_risk', { ascending: false }).limit(200)
+      )
+      
+      // Batch 단위로 조회된 결과에서 다시 상위 200개를 추려냅니다.
+      risks.sort((a, b) => b.total_risk - a.total_risk)
+      risks = risks.slice(0, 200)
+      
+    } else {
+      // 카테고리 필터가 없는 경우 단순 조회
+      const { data, error: bErr } = await supabase
         .from('risk_score')
         .select('product_id,total_risk,risk_grade,stockout_risk,excess_risk,delivery_risk,margin_risk,safety_stock,inventory_days')
         .eq('eval_date', evalDate)
         .order('total_risk', { ascending: false })
-        .range(off, off + PAGE - 1)
+        .limit(200)
+
       if (bErr) throw bErr
-      if (!batch || batch.length === 0) break
-      risks.push(...batch)
-      if (batch.length < PAGE) break
+      if (data) risks = data
     }
 
-    if (risks.length === 0) {
+    if (!risks || risks.length === 0) {
       return NextResponse.json({ items: [], evalDate, source: 'empty' })
     }
 
