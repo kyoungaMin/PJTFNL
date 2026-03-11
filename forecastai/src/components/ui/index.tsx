@@ -117,14 +117,14 @@ function SearchInput({ value, onChange, placeholder="검색..." }) {
   );
 }
 
-function Table({ headers, rows, onRowClick=undefined }: any) {
+function Table({ headers, rows, aligns, onRowClick=undefined }: any) {
   return (
     <div style={{ overflowX:"auto" }}>
       <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
         <thead>
           <tr style={{ background:T.surface2, borderBottom:`2px solid ${T.border}` }}>
             {headers.map((h,i) => (
-              <th key={i} style={{ padding:"10px 14px", textAlign:"left", fontSize:11, fontWeight:700, color:T.text3, letterSpacing:"0.04em", whiteSpace:"nowrap" }}>{h}</th>
+              <th key={i} style={{ padding:"10px 14px", textAlign:aligns?.[i] ?? "left", fontSize:11, fontWeight:700, color:T.text3, letterSpacing:"0.04em", whiteSpace:"nowrap" }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -135,7 +135,7 @@ function Table({ headers, rows, onRowClick=undefined }: any) {
               onMouseEnter={e=>{ if(onRowClick) e.currentTarget.style.background=T.surface2; }}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               {row.cells.map((cell,j) => (
-                <td key={j} style={{ padding:"11px 14px", color:T.text2, verticalAlign:"middle" }}>{cell}</td>
+                <td key={j} style={{ padding:"11px 14px", color:T.text2, verticalAlign:"middle", textAlign:aligns?.[j] ?? "left" }}>{cell}</td>
               ))}
             </tr>
           ))}
