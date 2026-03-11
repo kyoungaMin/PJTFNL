@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 // ─── 인메모리 캐시 (서버 재시작 전까지 유지, 6시간마다 갱신) ────────────────
 // GPT 호출은 비용이 발생하므로 매 요청마다 호출하지 않고 캐싱
 let cache: { insights: InsightItem[]; generatedAt: number } | null = null

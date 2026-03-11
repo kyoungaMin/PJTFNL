@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/weekly-report?week=2026-W09  (week 파라미터 없으면 DB 최신 주차 자동 사용)
 export async function GET(request: Request) {
   try {
