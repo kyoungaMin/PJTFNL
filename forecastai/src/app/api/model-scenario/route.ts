@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-// GET /api/model-scenario?model=lgbm_q_v2&product=ALL&weeks=8
+// GET /api/model-scenario?model=lgbm_q_v3&product=ALL&weeks=8
 export async function GET(req: NextRequest) {
-  const modelId = req.nextUrl.searchParams.get('model') ?? 'lgbm_q_v2'
+  const modelId = req.nextUrl.searchParams.get('model') ?? 'lgbm_q_v3'
   const productId = req.nextUrl.searchParams.get('product') ?? ''
   const weeks = parseInt(req.nextUrl.searchParams.get('weeks') ?? '8')
 
@@ -160,7 +160,7 @@ export async function GET(req: NextRequest) {
         weekCount: predictions.length,
         dateRange,
         tables: usedTables,
-        modelDesc: modelId === 'lgbm_q_v2' ? 'LightGBM 주간 수요예측 모델 v2' : 'LightGBM 월간 수요예측 모델 v1',
+        modelDesc: modelId === 'lgbm_q_v3' ? 'LightGBM 주간 수요예측 모델 v3' : 'LightGBM 월간 수요예측 모델 v1',
         estimated: dataEstimated,
       },
     })

@@ -7,10 +7,10 @@ export async function GET(req: NextRequest) {
   const period = req.nextUrl.searchParams.get('period') ?? ''
   const modelParam = req.nextUrl.searchParams.get('model') ?? ''
 
-  // 모델 ID 결정: 파라미터 지정 → 기본값 (주간: lgbm_q_v2, 월간: lgbm_q_monthly_v1)
-  const defaultModel = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v2'
+  // 모델 ID 결정: 파라미터 지정 → 기본값 (주간: lgbm_q_v3, 월간: lgbm_q_monthly_v1)
+  const defaultModel = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
   const VALID_MODELS = [
-    'lgbm_q_v2', 'ridge_v1', 'svr_linear_v1',
+    'lgbm_q_v3', 'ridge_v1', 'svr_linear_v1',
     'lgbm_q_monthly_v1', 'ridge_monthly_v1', 'svr_linear_monthly_v1',
   ]
   const modelId = modelParam && VALID_MODELS.includes(modelParam) ? modelParam : defaultModel

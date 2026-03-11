@@ -46,26 +46,31 @@ export default function Home() {
       const session = data.session
       if (!session) { setSessionChecked(true); return }
 
-      const res = await fetch('/api/me', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_token: session.access_token }),
-      })
-      if (res.ok) {
-        const profile = await res.json()
-        const role = toRoleType(profile.role ?? 'viewer')
-        const name = profile.display_name ?? session.user.email?.split('@')[0] ?? '?'
-        setCurrentUser({
-          id: session.user.id,
-          name, role,
-          dept:    profile.department ?? '',
-          email:   profile.email ?? session.user.email ?? '',
-          grad:    ROLE_GRAD[role],
-          initial: name.charAt(0) || '?',
-          orgId:   profile.org_id ?? 'default',
+      try {
+        const res = await fetch('/api/me', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access_token: session.access_token }),
         })
-        setLoggedIn(true)
-      }
+        if (res.ok) {
+          const profile = await res.json()
+          const role = toRoleType(profile.role ?? 'viewer')
+          const name = profile.display_name ?? session.user.email?.split('@')[0] ?? '?'
+          setCurrentUser({
+            id: session.user.id,
+            name, role,
+            dept:    profile.department ?? '',
+            email:   profile.email ?? session.user.email ?? '',
+            grad:    ROLE_GRAD[role],
+            initial: name.charAt(0) || '?',
+            orgId:   profile.org_id ?? 'default',
+          })
+          setLoggedIn(true)
+        }
+      } catch { /* 세션 복원 실패 시 로그인 화면으로 */ }
+      setSessionChecked(true)
+    }).catch(() => {
+      // Supabase 연결 실패 시에도 로그인 화면 표시
       setSessionChecked(true)
     })
   }, [])
