@@ -226,7 +226,7 @@ function parsePeriodToDateRange(type: string, period: string) {
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? 'weekly'
   const period = req.nextUrl.searchParams.get('period') ?? ''
-  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v2'
+  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
 
   if (!period) {
     return NextResponse.json({ error: 'period parameter required' }, { status: 400 })
@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const type = body.type ?? 'weekly'
     const period = body.period ?? ''
-    const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v2'
+    const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
 
     if (!period) {
       return NextResponse.json({ error: 'period required' }, { status: 400 })
