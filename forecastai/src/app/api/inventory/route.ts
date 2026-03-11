@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 /* ─── 페이지네이션 전체 조회 ─── */
 async function fetchAll(
   table: string, select: string,
