@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 /* ─── 배치 .in() 헬퍼 ─── */
 const IN_BATCH = 400
 async function batchIn(table: string, select: string, col: string, ids: string[], extra?: (q: any) => any): Promise<any[]> {

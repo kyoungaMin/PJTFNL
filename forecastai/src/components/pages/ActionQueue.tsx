@@ -8,13 +8,13 @@ import { Badge, GradeBadge, RiskTypeBadge, PageHeader, Btn, FilterBar, Select, S
 
 /* ────── types ────── */
 type PlanItem = {
-  id: number; sku: string; name: string; line: string;
+  id: number; sku: string; name: string; spec?: string; category?: string; line: string;
   demandP50: number; demandP90: number; currentStock: number; safetyStock: number;
   dailyCapacity: number; maxCapacity: number; plannedQty: number; minQty: number; maxQty: number;
   priority: string; planType: string; riskGrade: string;
   stockoutRisk: number; excessRisk: number;
   targetStart: string; targetEnd: string; description: string;
-  status: string; riskType: string; customer: string;
+  status: string; riskType: string; customer: string; category?: string;
   aiReason: { avgConsume: number; openOrder: number; depletionDay: number; leadTime: number; p90Demand: number };
 }
 type ChartData = Record<string, any>[]
@@ -135,7 +135,6 @@ export default function PageActionQueue() {
       setCatChartData([])
       setCatList([])
       setTopProducts([])
-      setPriorityDist(PROD_PRIORITY_DIST)
       setDataSource('mock')
     } finally {
       setLoading(false)
@@ -388,9 +387,9 @@ export default function PageActionQueue() {
               <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
                 <tbody>
                   {([
-                    ['P10 (낙관)', '수요가 적을 확률 90%인 하한값. "최소 이 정도는 팔린다"는 의미입니다.'],
-                    ['P50 (기준)', '가장 가능성 높은 예측 수요. AI가 권고하는 생산량의 기준이 됩니다.'],
-                    ['P90 (보수)', '수요가 이보다 클 확률 10%인 상한값. "최대 이 정도 팔릴 수 있다"는 의미입니다.'],
+                    ['P10 (하한)', '수요가 적을 확률 90%인 하한값. "최소 이 정도는 팔린다"는 의미입니다.'],
+                    ['P50 (중간)', '가장 가능성 높은 예측 수요. AI가 권고하는 생산량의 기준이 됩니다.'],
+                    ['P90 (상한)', '수요가 이보다 클 확률 10%인 상한값. "최대 이 정도 팔릴 수 있다"는 의미입니다.'],
                     ['안전재고', '수요 변동과 리드타임을 고려하여 결품 방지를 위해 항상 유지해야 하는 최소 재고량입니다.'],
                     ['계획수량', 'AI가 권고하는 이번 주 최적 생산 수량입니다. 수요예측 + 안전재고 - 현재재고를 기반으로 산출됩니다.'],
                     ['현재재고', '현재 창고에 보유 중인 수량입니다.'],
@@ -609,7 +608,10 @@ export default function PageActionQueue() {
                       </td>
                       <td style={td}><Badge color={ps.color} bg={ps.bg} border={ps.border} size={10}>{ps.label}</Badge></td>
                       <td style={{ ...td, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:T.text3 }}>{item.sku}</td>
-                      <td style={{ ...td, fontWeight:600, color:T.text1, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</td>
+                      <td style={{ ...td, fontWeight:600, color:T.text1, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={item.spec ? `${item.name} | ${item.spec}` : item.name}>
+                        {item.name}
+                        {item.spec && <span style={{ fontWeight:400, fontSize:10, color:T.text3, marginLeft:4 }}>{item.spec}</span>}
+                      </td>
                       <td style={{ ...td, fontSize:11 }}>{item.line}</td>
                       <td style={{ ...td, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace" }}>{fmt(item.demandP50)}</td>
                       <td style={{ ...td, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", color:T.red }}>{fmt(item.demandP90)}</td>
@@ -686,6 +688,7 @@ export default function PageActionQueue() {
                   <GradeBadge grade={drawerItem.riskGrade}/>
                 </div>
                 <div style={{ fontSize:15, fontWeight:700, color:T.text1 }}>{drawerItem.name}</div>
+                {drawerItem.spec && <div style={{ fontSize:12, color:T.text2, marginTop:1 }}>{drawerItem.spec}</div>}
                 <div style={{ fontSize:12, color:T.text3, marginTop:2 }}>{drawerItem.sku} · {drawerItem.line} · {drawerItem.customer}</div>
               </div>
               <button onClick={() => setDrawerItem(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:T.text3, padding:4 }}>✕</button>

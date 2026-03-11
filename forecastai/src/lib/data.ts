@@ -48,6 +48,27 @@ export const REVENUE_FORECAST = [
   {m:"'25.01",p50:6300,p10:5000,p90:7800},{m:"'25.02",p50:6600,p10:5200,p90:8100},{m:"'25.03",p50:7000,p10:5500,p90:8600},
 ]
 
+// ─── 수주량 예측 밴드 Mock (단위: EA) — ML 연동 전 Fallback용 ────────────────
+// DB 실적이 들어오면 actual 값이 덮어씌워짐
+// p50/p10/p90은 forecast_result 연동 후 교체 예정
+export const ORDER_FORECAST = [
+  {m:"'24.01",p50:48200,p10:39000,p90:59000,actual:47500},
+  {m:"'24.02",p50:51000,p10:41000,p90:62000,actual:52300},
+  {m:"'24.03",p50:54000,p10:44000,p90:66000,actual:51800},
+  {m:"'24.04",p50:49000,p10:38000,p90:61000,actual:48700},
+  {m:"'24.05",p50:52000,p10:41000,p90:64000,actual:53200},
+  {m:"'24.06",p50:56000,p10:45000,p90:69000,actual:57100},
+  {m:"'24.07",p50:53000,p10:41000,p90:66000,actual:51900},
+  {m:"'24.08",p50:55000,p10:43000,p90:68000,actual:56200},
+  {m:"'24.09",p50:58000,p10:46000,p90:71000,actual:59400},
+  {m:"'24.10",p50:56500,p10:44000,p90:70000,actual:54800},
+  {m:"'24.11",p50:59000,p10:47000,p90:72000,actual:60200},
+  {m:"'24.12",p50:61000,p10:49000,p90:75000,actual:62300},
+  {m:"'25.01",p50:63000,p10:50000,p90:78000},
+  {m:"'25.02",p50:66000,p10:52000,p90:81000},
+  {m:"'25.03",p50:70000,p10:55000,p90:86000},
+]
+
 export const RISK_DONUT = [
   {grade:'A',count:187,color:'#10B981'},{grade:'B',count:143,color:'#84CC16'},
   {grade:'C',count:89,color:'#F59E0B'},{grade:'D',count:45,color:'#F97316'},
@@ -259,10 +280,10 @@ export const EXT_GLOBAL_DATA = [
   {d:'10월',ipi:102.8,pmi:53.5,hs8541:2640},{d:'11월',ipi:103.2,pmi:53.9,hs8541:2710},{d:'12월',ipi:104.0,pmi:54.2,hs8541:2820},
 ]
 export const EXT_FX_DATA = [
-  {d:'1월',usd:1285,eur:1410,rate:3.50},{d:'2월',usd:1310,eur:1435,rate:3.50},{d:'3월',usd:1335,eur:1458,rate:3.50},
-  {d:'4월',usd:1358,eur:1482,rate:3.75},{d:'5월',usd:1342,eur:1465,rate:3.75},{d:'6월',usd:1325,eur:1448,rate:3.50},
-  {d:'7월',usd:1310,eur:1432,rate:3.50},{d:'8월',usd:1328,eur:1451,rate:3.25},{d:'9월',usd:1315,eur:1440,rate:3.25},
-  {d:'10월',usd:1340,eur:1462,rate:3.00},{d:'11월',usd:1355,eur:1478,rate:3.00},{d:'12월',usd:1342,eur:1465,rate:3.00},
+  {d:'1월',usd:1285,eur:1410,jpy:9.12,cny:180.5,rate:3.50,us_rate:5.33},{d:'2월',usd:1310,eur:1435,jpy:9.25,cny:182.1,rate:3.50,us_rate:5.33},{d:'3월',usd:1335,eur:1458,jpy:9.38,cny:184.8,rate:3.50,us_rate:5.33},
+  {d:'4월',usd:1358,eur:1482,jpy:9.45,cny:187.2,rate:3.75,us_rate:5.33},{d:'5월',usd:1342,eur:1465,jpy:9.35,cny:185.6,rate:3.75,us_rate:5.33},{d:'6월',usd:1325,eur:1448,jpy:9.22,cny:183.9,rate:3.50,us_rate:5.33},
+  {d:'7월',usd:1310,eur:1432,jpy:9.15,cny:182.3,rate:3.50,us_rate:5.33},{d:'8월',usd:1328,eur:1451,jpy:9.28,cny:184.1,rate:3.25,us_rate:5.33},{d:'9월',usd:1315,eur:1440,jpy:9.20,cny:183.2,rate:3.25,us_rate:5.25},
+  {d:'10월',usd:1340,eur:1462,jpy:9.32,cny:185.4,rate:3.00,us_rate:5.08},{d:'11월',usd:1355,eur:1478,jpy:9.40,cny:186.8,rate:3.00,us_rate:4.83},{d:'12월',usd:1342,eur:1465,jpy:9.35,cny:185.5,rate:3.00,us_rate:4.58},
 ]
 export const EXT_SUPPLY_DATA = [
   {d:'1월',bdi:1820,freight:1250},{d:'2월',bdi:1950,freight:1320},{d:'3월',bdi:2100,freight:1410},
@@ -620,9 +641,9 @@ export const CAT_COLORS: Record<string,string> = {
 }
 
 // ─── CSV 내보내기 유틸 ──────────────────────────────────────────────────────
-export function exportToCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+export function exportToCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
   const bom = '\uFEFF'
-  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+  const csv = [headers.join(','), ...rows.map(r => r.map(v => v ?? '').join(','))].join('\n')
   const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

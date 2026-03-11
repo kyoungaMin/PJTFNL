@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 /* ─── 페이지네이션 헬퍼 (Supabase 기본 1000행 제한 회피) ─── */
 const PAGE_SIZE = 1000
 

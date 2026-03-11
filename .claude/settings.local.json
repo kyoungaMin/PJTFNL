@@ -32,7 +32,19 @@
       "Bash(git add DB/06_analytics_ddl.sql DB/07_pipeline/ DB/07_queries/ DB/08_aggregation_ddl.sql DB/09_exchange_rate_ddl.sql DB/10_load_exchange_rate.py DB/11_load_indices.py DB/SCHEMA_REFERENCE.md DEV_LOG.md DEV_LOG/kyoungaMin/2026-02-28.md README.md)",
       "WebFetch(domain:velog.io)",
       "WebFetch(domain:wooiljeong.github.io)",
-      "Bash(python DB/07_pipeline/run_pipeline.py --step=3)"
+      "Bash(python DB/07_pipeline/run_pipeline.py --step=3)",
+      "WebFetch(domain:localhost)",
+      "Bash(npm run dev)",
+      "Bash(git add forecastai/src/components/pages/Admin.tsx forecastai/src/components/pages/MonthlyForecast.tsx forecastai/src/components/pages/Simulation.tsx forecastai/src/components/pages/WeeklyForecast.tsx forecastai/src/components/ui/index.tsx forecastai/src/lib/data.ts)",
+      "Bash(git add README.md)",
+      "Bash(wc -l /c/AI/PJTFNL/DATA/*.csv)",
+      "Bash(curl -s \"http://localhost:3000/api/purchase-recommendation\")",
+      "Bash(node -e \"process.stdin.on\\(''data'',d=>{const j=JSON.parse\\(d\\);console.log\\(''source:'',j.source\\);console.log\\(''planDate:'',j.planDate\\);console.log\\(''availableDates:'',j.availableDates\\);console.log\\(''items:'',j.items?.length\\);console.log\\(''suppliers:'',j.suppliers\\);console.log\\(''urgencyDist:'',j.urgencyDist\\);if\\(j.items?.length>0\\){console.log\\(''first:'',j.items[0].componentId,j.items[0].componentName,j.items[0].urgency,j.items[0].supplierName,j.items[0].orderAmount\\)}}\\)\")",
+      "Bash(curl -s \"http://localhost:3000/api/production-plan\")",
+      "Bash(curl -s \"http://localhost:3000/api/model-evaluation/by-period?type=weekly&period=2025-W10\")",
+      "Bash(python3 -c \" import sys,json d=json.load\\(sys.stdin\\) print\\(''=== 주간 2025-W10 기간별 평가 ===''\\) print\\(f\"\"기간: {d.get\\(''period''\\)}\"\"\\) print\\(f\"\"제품수: {d.get\\(''n_products''\\)}, 레코드수: {d.get\\(''n_records''\\)}\"\"\\) m = d.get\\(''metrics'',{}\\) print\\(f\"\"MAE: {m.get\\(''mae''\\)}\"\"\\) print\\(f\"\"RMSE: {m.get\\(''rmse''\\)}\"\"\\) print\\(f\"\"R²: {m.get\\(''r2''\\)}\"\"\\) print\\(f\"\"MAPE: {m.get\\(''mape''\\)}%\"\"\\) print\\(f\"\"±5 적중률: {m.get\\(''tolerance_5_rate''\\)}%\"\"\\) \")",
+      "Bash(git checkout main)",
+      "Bash(git merge origin/dev/jieun --no-ff -m \"merge: dev/jieun → main \\(주간·월간 수요예측 DB 연결 + API 버그 5건 수정\\)\")"
     ]
   }
 }

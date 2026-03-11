@@ -579,7 +579,7 @@ export default function PageSimulation() {
                                 <span>예상(P50)</span><span style={{fontFamily:mono}}>{fmt(d.p50)} EA</span>
                               </div>
                               <div style={{display:'flex',justifyContent:'space-between',gap:16,color:T.green}}>
-                                <span>낙관(P90)</span><span style={{fontWeight:600,fontFamily:mono}}>{fmt(d.p90)} EA</span>
+                                <span>상한(P90)</span><span style={{fontWeight:600,fontFamily:mono}}>{fmt(d.p90)} EA</span>
                               </div>
                               <div style={{marginTop:4,paddingTop:4,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.text3}}>
                                 예측 범위 {fmt(d.p10)}~{fmt(d.p90)} EA (폭 {fmt(d.band)})

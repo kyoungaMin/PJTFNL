@@ -8,7 +8,7 @@ import { Badge, PageHeader, Btn, FilterBar, Select, SearchInput } from '@/compon
 
 /* ────── types ────── */
 type PurchaseItem = {
-  id: number; componentId: string; componentName: string; category: string;
+  id: number; componentId: string; componentName: string; componentSpec?: string; category: string;
   parentProducts: string; grossRequirement: number; currentInventory: number;
   pendingPo: number; netRequirement: number; safetyStock: number; reorderPoint: number;
   recommendedQty: number; orderMethod: string;
@@ -559,7 +559,10 @@ export default function PagePurchase() {
                       </td>
                       <td style={td}><Badge color={us.color} bg={us.bg} border={us.border} size={10}>{us.label}</Badge></td>
                       <td style={{ ...td, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:T.text3 }}>{item.componentId}</td>
-                      <td style={{ ...td, fontWeight:600, color:T.text1, maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.componentName}</td>
+                      <td style={{ ...td, fontWeight:600, color:T.text1, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={item.componentSpec ? `${item.componentName} | ${item.componentSpec}` : item.componentName}>
+                        {item.componentName}
+                        {item.componentSpec && <span style={{ fontWeight:400, fontSize:10, color:T.text3, marginLeft:4 }}>{item.componentSpec}</span>}
+                      </td>
                       <td style={{ ...td, fontSize:11, color:T.text2 }}>{item.supplierName}</td>
                       <td style={{ ...td, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace" }}>{fmt(item.grossRequirement)}</td>
                       <td style={{ ...td, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace",
@@ -647,6 +650,7 @@ export default function PagePurchase() {
                   </Badge>
                 </div>
                 <div style={{ fontSize:15, fontWeight:700, color:T.text1 }}>{drawerItem.componentName}</div>
+                {drawerItem.componentSpec && <div style={{ fontSize:12, color:T.text2, marginTop:1 }}>{drawerItem.componentSpec}</div>}
                 <div style={{ fontSize:12, color:T.text3, marginTop:2 }}>{drawerItem.componentId} · {drawerItem.category}</div>
               </div>
               <button onClick={() => setDrawerItem(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:T.text3, padding:4 }}>✕</button>

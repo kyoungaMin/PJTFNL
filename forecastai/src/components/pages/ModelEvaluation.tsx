@@ -30,6 +30,116 @@ const TABS = [
   { id: 'features'    as const, label: '피처 중요도',  icon: '📋' },
   { id: 'executive'   as const, label: '경영진 보고서', icon: '📑' },
 ]
+
+/* ─── User Guide Panel ────────────────────────────────────────────────────── */
+function UserGuidePanel({ onClose }: { onClose: () => void }) {
+  const guideCard: React.CSSProperties = {
+    background: '#FFFFFF', borderRadius: 10, padding: '16px 20px',
+    border: `1px solid #E2E8F0`,
+  }
+  const guideMetric: React.CSSProperties = {
+    display: 'inline-block', fontFamily: mono, fontWeight: 700,
+    fontSize: 11, padding: '2px 6px', borderRadius: 4, marginRight: 4,
+  }
+
+  return (
+    <div style={{
+      ...card, marginBottom: 20, padding: '24px 28px',
+      background: 'linear-gradient(135deg, #EFF6FF 0%, #F0FDF4 50%, #FFFBEB 100%)',
+      border: `1px solid ${T.blueMid}`, position: 'relative',
+    }}>
+      <button onClick={onClose} style={{
+        position: 'absolute', top: 12, right: 16, background: 'none', border: 'none',
+        fontSize: 18, color: T.text3, cursor: 'pointer', lineHeight: 1,
+      }}>×</button>
+
+      <div style={{ fontSize: 15, fontWeight: 800, color: T.text1, marginBottom: 4 }}>
+        모델 평가 대시보드 활용 가이드
+      </div>
+      <div style={{ fontSize: 12, color: T.text2, marginBottom: 16 }}>
+        AI 수요예측 모델의 성능을 이해하고, 실무 의사결정에 활용하는 방법을 안내합니다.
+      </div>
+
+      {/* ── 핵심 지표 해석 가이드 ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+        <div style={guideCard}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.blue, marginBottom: 8 }}>핵심 지표 해석</div>
+          <div style={{ fontSize: 11, lineHeight: 2, color: T.text2 }}>
+            <div><span style={{ ...guideMetric, background: '#DBEAFE', color: T.blue }}>R²</span> 모델이 데이터 변동의 몇 %를 설명하는가 (1에 가까울수록 우수)</div>
+            <div><span style={{ ...guideMetric, background: '#D1FAE5', color: T.green }}>MAE</span> 예측과 실제의 평균 오차 (낮을수록 정확)</div>
+            <div><span style={{ ...guideMetric, background: '#FEF3C7', color: T.amber }}>RMSE</span> 큰 오차에 가중치를 둔 평균 오차 (MAE보다 크면 이상치 존재)</div>
+            <div><span style={{ ...guideMetric, background: '#FEE2E2', color: T.red }}>MAPE</span> 백분율 기준 평균 오차 — 10% 미만이면 우수</div>
+            <div><span style={{ ...guideMetric, background: '#E0E7FF', color: '#4338CA' }}>±5 적중률</span> 오차 5개 이내 비율 — 자동화 가능성 판단 기준</div>
+          </div>
+        </div>
+
+        <div style={guideCard}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.green, marginBottom: 8 }}>R² 기준 의사결정 가이드</div>
+          <div style={{ fontSize: 11, lineHeight: 2, color: T.text2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ ...guideMetric, background: '#D1FAE5', color: T.green, minWidth: 70, textAlign: 'center' }}>0.5 이상</span>
+              <span><b style={{ color: T.green }}>실무 활용 가능</b> — AI 예측 기반 생산·발주 계획 수립</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ ...guideMetric, background: '#FEF3C7', color: T.amber, minWidth: 70, textAlign: 'center' }}>0.2 ~ 0.5</span>
+              <span><b style={{ color: T.amber }}>보조 참고용</b> — 담당자 판단과 병행하여 활용</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ ...guideMetric, background: '#FEE2E2', color: T.red, minWidth: 70, textAlign: 'center' }}>0.2 미만</span>
+              <span><b style={{ color: T.red }}>신뢰도 낮음</b> — 모델 개선 필요, 수동 관리 유지</span>
+            </div>
+            <div style={{ marginTop: 8, padding: '8px 12px', background: '#F0FDF4', borderRadius: 6, fontSize: 11, color: T.text2 }}>
+              💡 <b>쉬운 비유</b>: R² = 0.5이면 "10번 예측 중 약 5번 맞춘다"는 의미입니다.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 탭별 활용법 ── */}
+      <div style={guideCard}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.purple, marginBottom: 10 }}>탭별 활용법</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+          {[
+            { icon: '📊', tab: '종합 요약', who: '전체 사용자', desc: '7개 모델 성능 비교, 최적 모델 한눈에 파악' },
+            { icon: '🎯', tab: '정확도 분석', who: '데이터 담당자', desc: 'MAE·RMSE·MAPE 상세 비교, 모델별 강약점 분석' },
+            { icon: '⚠️', tab: '과적합 분석', who: '데이터 담당자', desc: 'Train vs Validation 차이로 모델 안정성 검증' },
+            { icon: '📋', tab: '피처 중요도', who: '분석가·기획자', desc: '예측에 영향 큰 변수 파악 → 데이터 수집 우선순위' },
+            { icon: '📑', tab: '경영진 보고서', who: '의사결정권자', desc: '자동 해설 + 실무 권고사항, 비기술인도 이해 가능' },
+          ].map(t => (
+            <div key={t.tab} style={{ padding: '10px 12px', background: '#F8FAFC', borderRadius: 8, fontSize: 11 }}>
+              <div style={{ fontSize: 16, marginBottom: 4 }}>{t.icon}</div>
+              <div style={{ fontWeight: 700, color: T.text1, marginBottom: 2 }}>{t.tab}</div>
+              <div style={{ color: T.blue, fontWeight: 600, fontSize: 10, marginBottom: 4 }}>{t.who}</div>
+              <div style={{ color: T.text3, lineHeight: 1.5 }}>{t.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 실무 활용 팁 ── */}
+      <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div style={{ ...guideCard, borderLeft: `3px solid ${T.green}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.green, marginBottom: 6 }}>생산·발주 담당자</div>
+          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.6 }}>
+            R²가 높은 모델의 예측값을 기반으로 생산 계획을 수립하세요. "오차 상위 제품"은 수동 보정이 필요합니다.
+          </div>
+        </div>
+        <div style={{ ...guideCard, borderLeft: `3px solid ${T.amber}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.amber, marginBottom: 6 }}>재고 관리자</div>
+          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.6 }}>
+            ±5 적중률이 높은 제품부터 자동 발주 파일럿을 검토하세요. MAPE가 높은 제품은 안전재고를 상향 조정하세요.
+          </div>
+        </div>
+        <div style={{ ...guideCard, borderLeft: `3px solid ${T.purple}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.purple, marginBottom: 6 }}>경영진</div>
+          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.6 }}>
+            "경영진 보고서" 탭에서 기간별 자동 해설과 권고사항을 확인하세요. 주간/월간 추이로 모델 개선 효과를 모니터링할 수 있습니다.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 type TabId = typeof TABS[number]['id']
 
 /* ─── Types ────────────────────────────────────────────────────────────────── */
@@ -59,10 +169,15 @@ type ComparisonData = {
   weekly_meta: Meta; monthly_meta: Meta
   weekly: ModelResult[]; monthly: ModelResult[]
 }
+type SegmentResult = {
+  label: string; count: number; mae: number; rmse: number; r2: number; mape: number; wmape: number; tolerance_5_rate: number
+}
+
 type PeriodResult = {
-  period: string; type: string; n_products: number; n_records: number
+  period: string; type: string; modelId?: string; n_products: number; n_records: number
   date_range: { start: string; end: string }
-  metrics: { mae: number; rmse: number; r2: number; mape: number; tolerance_5_rate: number }
+  metrics: { mae: number; rmse: number; r2: number; mape: number; wmape?: number; tolerance_5_rate: number }
+  segments?: SegmentResult[]
   top_error_products: { product_id: string; predicted: number; actual: number; error: number }[]
   top_accurate_products: { product_id: string; predicted: number; actual: number; error: number }[]
 }
@@ -99,12 +214,28 @@ export default function PageModelEvaluation() {
   const [data, setData] = useState<ComparisonData | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedModelIdx, setSelectedModelIdx] = useState(0)
+  const [showGuide, setShowGuide] = useState(true)
 
   // Period filter state
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all')
   const [periods, setPeriods] = useState<string[]>([])
   const [periodData, setPeriodData] = useState<PeriodResult | null>(null)
   const [periodLoading, setPeriodLoading] = useState(false)
+
+  // 모델 선택
+  const MODEL_OPTIONS = {
+    weekly: [
+      { id: 'lgbm_q_v2', label: 'LightGBM Quantile (기본)' },
+      { id: 'ridge_v1', label: 'Ridge Regression' },
+      { id: 'svr_linear_v1', label: 'SVR Linear' },
+    ],
+    monthly: [
+      { id: 'lgbm_q_monthly_v1', label: 'LightGBM Quantile (기본)' },
+      { id: 'ridge_monthly_v1', label: 'Ridge Regression' },
+      { id: 'svr_linear_monthly_v1', label: 'SVR Linear' },
+    ],
+  }
+  const [selectedModel, setSelectedModel] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -125,6 +256,7 @@ export default function PageModelEvaluation() {
   useEffect(() => {
     setSelectedPeriod('all')
     setPeriodData(null)
+    setSelectedModel('')
     fetch(`/api/model-evaluation/periods?type=${period}`)
       .then(r => r.json())
       .then(json => { if (json.periods) setPeriods(json.periods) })
@@ -135,12 +267,13 @@ export default function PageModelEvaluation() {
   useEffect(() => {
     if (selectedPeriod === 'all') { setPeriodData(null); return }
     setPeriodLoading(true)
-    fetch(`/api/model-evaluation/by-period?type=${period}&period=${selectedPeriod}`)
+    const modelQ = selectedModel ? `&model=${selectedModel}` : ''
+    fetch(`/api/model-evaluation/by-period?type=${period}&period=${selectedPeriod}${modelQ}`)
       .then(r => r.json())
       .then(json => { if (!json.error) setPeriodData(json) })
       .catch(() => {})
       .finally(() => setPeriodLoading(false))
-  }, [selectedPeriod, period])
+  }, [selectedPeriod, period, selectedModel])
 
   const models = data ? data[period] : []
   const meta = data ? (period === 'weekly' ? data.weekly_meta : data.monthly_meta) : null
@@ -221,6 +354,15 @@ export default function PageModelEvaluation() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <PageHeader title="모델 평가" sub={`7개 ML 모델 비교 분석 · ${data.timestamp.split('T')[0]}`} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => setShowGuide(g => !g)}
+            style={{
+              padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 7, cursor: 'pointer',
+              border: `1px solid ${showGuide ? T.blue : T.border}`,
+              background: showGuide ? T.blueSoft : T.surface2,
+              color: showGuide ? T.blue : T.text2, transition: 'all .15s',
+            }}>
+            {showGuide ? '📖 가이드 닫기' : '📖 활용 가이드'}
+          </button>
           <PeriodToggle />
           {periods.length > 0 && (
             <select
@@ -239,8 +381,28 @@ export default function PageModelEvaluation() {
               {periods.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           )}
+          {selectedPeriod !== 'all' && (
+            <select
+              value={selectedModel}
+              onChange={e => setSelectedModel(e.target.value)}
+              style={{
+                padding: '6px 12px', fontSize: 12, borderRadius: 7,
+                border: `1px solid ${selectedModel ? T.green : T.border}`,
+                background: selectedModel ? '#f0fdf4' : T.surface2,
+                color: selectedModel ? T.green : T.text2,
+                fontWeight: selectedModel ? 700 : 400,
+                cursor: 'pointer', outline: 'none',
+              }}
+            >
+              <option value="">기본 모델</option>
+              {MODEL_OPTIONS[period].map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          )}
         </div>
       </div>
+
+      {/* ── User Guide ── */}
+      {showGuide && <UserGuidePanel onClose={() => setShowGuide(false)} />}
 
       {/* ── Meta info bar ── */}
       {meta && (
@@ -953,6 +1115,12 @@ function TabPeriodOverview({ data, loading }: { data: PeriodResult; loading: boo
             </div>
           </div>
           <div style={{ display: 'flex', gap: 24 }}>
+            {data.modelId && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: T.text3, marginBottom: 2 }}>모델</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.green, fontFamily: mono }}>{data.modelId}</div>
+              </div>
+            )}
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: T.text3, marginBottom: 2 }}>조회 유형</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>{isWeekly ? '주간 예측' : '월간 예측'}</div>
@@ -973,14 +1141,138 @@ function TabPeriodOverview({ data, loading }: { data: PeriodResult; loading: boo
         </div>
       </div>
 
+      {/* ── 사용자 친화적 결과 해석 요약 ── */}
+      {(() => {
+        const r2Val = m.r2
+        const maeVal = m.mae
+        const wmapeVal = m.wmape ?? m.mape
+        const tolVal = m.tolerance_5_rate
+        // 종합 등급 판정
+        const grade = r2Val >= 0.5 && wmapeVal < 30 ? 'excellent'
+          : r2Val >= 0.3 && wmapeVal < 50 ? 'good'
+          : r2Val >= 0.15 ? 'fair' : 'poor'
+        const gradeMap = {
+          excellent: { label: '우수', color: T.green, bg: '#D1FAE5', icon: '✅', border: '#10B981' },
+          good:      { label: '양호', color: T.blue,  bg: '#DBEAFE', icon: '👍', border: '#3B82F6' },
+          fair:      { label: '보통', color: T.amber, bg: '#FEF3C7', icon: '⚠️', border: '#F59E0B' },
+          poor:      { label: '개선 필요', color: T.red,   bg: '#FEE2E2', icon: '🔧', border: '#EF4444' },
+        }
+        const g = gradeMap[grade]
+
+        // 해석 문구 생성
+        const summaryLines: string[] = []
+        if (grade === 'excellent') {
+          summaryLines.push(`이 기간의 AI 예측은 <strong>매우 정확</strong>합니다. 실제 수주량의 변동을 <strong>${r2Pct}%</strong> 설명하고 있어 실무 의사결정에 직접 활용할 수 있는 수준입니다.`)
+        } else if (grade === 'good') {
+          summaryLines.push(`이 기간의 AI 예측은 <strong>양호한 수준</strong>입니다. 전체 변동의 <strong>${r2Pct}%</strong>를 설명하며, 참고 지표로 충분히 활용 가능합니다.`)
+        } else if (grade === 'fair') {
+          summaryLines.push(`이 기간의 AI 예측은 <strong>보통 수준</strong>입니다. 설명력(${r2Pct}%)이 다소 낮으므로, 다른 정보와 함께 보조적으로 참고하시기 바랍니다.`)
+        } else {
+          summaryLines.push(`이 기간의 AI 예측은 <strong>개선이 필요한 수준</strong>입니다. 설명력이 ${r2Pct}%로 낮아, 예측값 단독 활용보다는 추세 참고 용도로 사용하시기 바랍니다.`)
+        }
+
+        // MAE 해석
+        summaryLines.push(`예측과 실제의 평균 차이는 <strong>${maeVal.toFixed(1)}개</strong>이며, 전체 예측 중 <strong>${tolVal.toFixed(1)}%</strong>가 실제값과 ±5개 이내로 정확했습니다.`)
+
+        // WMAPE vs MAPE 비교
+        if (m.wmape !== undefined && m.wmape < m.mape * 0.8) {
+          summaryLines.push(`MAPE(${m.mape.toFixed(1)}%)보다 수량 가중 WMAPE(<strong>${wmapeVal.toFixed(1)}%</strong>)가 크게 낮아, <strong>대량 수주 제품의 예측이 특히 정확</strong>합니다. 소량 제품의 높은 백분율 오차가 MAPE를 끌어올린 것이므로, 실질적 예측 품질은 WMAPE 기준으로 판단하세요.`)
+        } else if (m.wmape !== undefined) {
+          summaryLines.push(`수량 가중 오차율(WMAPE)은 <strong>${wmapeVal.toFixed(1)}%</strong>입니다.`)
+        }
+
+        return (
+          <div style={{
+            ...card, marginBottom: 20, padding: '20px 24px',
+            border: `2px solid ${g.border}`, borderLeft: `5px solid ${g.border}`,
+            background: `linear-gradient(135deg, ${g.bg}44 0%, #FFFFFF 100%)`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <span style={{ fontSize: 24 }}>{g.icon}</span>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: T.text1 }}>
+                    {periodTitle} 예측 결과 요약
+                  </span>
+                  <span style={{
+                    display: 'inline-block', padding: '3px 12px', borderRadius: 12,
+                    fontSize: 12, fontWeight: 700, background: g.bg, color: g.color,
+                  }}>
+                    종합 평가: {g.label}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>
+                  {isWeekly ? '주간' : '월간'} 예측 모델이 이 기간 동안 얼마나 정확했는지를 쉽게 요약해 드립니다.
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 2, color: T.text2, paddingLeft: 36 }}>
+              {summaryLines.map((line, i) => (
+                <div key={i} style={{ marginBottom: 2 }} dangerouslySetInnerHTML={{ __html: `• ${line}` }} />
+              ))}
+            </div>
+            <div style={{
+              marginTop: 12, paddingLeft: 36, fontSize: 11, color: T.text3,
+              borderTop: `1px solid ${T.border}`, paddingTop: 10,
+            }}>
+              <strong>용어 안내</strong> &nbsp;|&nbsp;
+              <strong>R²</strong> = 모델이 데이터 변동을 설명하는 비율 (100%에 가까울수록 우수) &nbsp;|&nbsp;
+              <strong>MAE</strong> = 예측 오차 평균 (개 단위) &nbsp;|&nbsp;
+              <strong>WMAPE</strong> = 수량 가중 백분율 오차 (대량 제품 중심 정확도) &nbsp;|&nbsp;
+              <strong>±5 적중률</strong> = 오차 5개 이내 비율
+            </div>
+          </div>
+        )
+      })()}
+
       {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 24 }}>
         <KpiCard icon="📊" label="결정계수(R²)" value={`${r2Pct}%`} sub={parseFloat(r2Pct) >= 50 ? '실무 활용 가능 수준' : '보조 지표용 수준'} color={parseFloat(r2Pct) >= 50 ? T.green : T.amber} />
         <KpiCard icon="📉" label="평균절대오차(MAE)" value={m.mae.toFixed(1)} sub="예측 vs 실제 평균 차이" color={T.blue} />
         <KpiCard icon="📐" label="평균제곱근오차(RMSE)" value={m.rmse.toFixed(1)} sub="큰 오차에 더 민감한 지표" color={T.purple} />
         <KpiCard icon="🎯" label="±5 적중률(Hit Rate)" value={`${m.tolerance_5_rate.toFixed(1)}%`} sub="오차 ±5 이내 비율" color={T.green} />
-        <KpiCard icon="📊" label="평균백분율오차(MAPE)" value={`${m.mape.toFixed(1)}%`} sub="평균 절대 백분율 오차" color={T.amber} />
+        <KpiCard icon="📊" label="MAPE" value={`${m.mape.toFixed(1)}%`} sub="평균 절대 백분율 오차" color={T.amber} />
+        <KpiCard icon="⚖️" label="WMAPE (가중)" value={`${(m.wmape ?? 0).toFixed(1)}%`} sub="수량 가중 백분율 오차" color={m.wmape && m.wmape < m.mape ? T.green : T.amber} />
       </div>
+
+      {/* Segment evaluation table */}
+      {data.segments && data.segments.length > 0 && (
+        <div style={{ ...card, marginBottom: 24 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: T.text1 }}>수량 구간별 모델 성능 비교</div>
+          <div style={{ fontSize: 11, color: T.text3, marginBottom: 14 }}>
+            제품 수주량 규모에 따라 모델 정확도가 어떻게 달라지는지 비교합니다. WMAPE는 해당 구간 내 수량 가중 오차율입니다.
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${T.border}`, background: '#f8fafc' }}>
+                {['구간', '건수', 'MAE', 'RMSE', 'R²', 'MAPE', 'WMAPE', '±5 적중률'].map(h => (
+                  <th key={h} style={{ padding: '10px 8px', textAlign: h === '구간' ? 'left' : 'right', color: T.text3, fontWeight: 600, fontSize: 11 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.segments.map((seg, i) => {
+                const r2Color = seg.r2 >= 0.5 ? T.green : seg.r2 >= 0.2 ? T.amber : T.red
+                return (
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <td style={{ padding: '9px 8px', fontWeight: 600, fontSize: 12, color: T.text1 }}>{seg.label}</td>
+                    <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{fmt(seg.count)}</td>
+                    <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{seg.mae.toFixed(1)}</td>
+                    <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{seg.rmse.toFixed(1)}</td>
+                    <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: mono, fontSize: 11, color: r2Color, fontWeight: 700 }}>{seg.r2.toFixed(4)}</td>
+                    <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{seg.mape.toFixed(1)}%</td>
+                    <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: mono, fontSize: 11, fontWeight: 700, color: T.blue }}>{seg.wmape.toFixed(1)}%</td>
+                    <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{seg.tolerance_5_rate.toFixed(1)}%</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <div style={chartGuide}>
+            <strong>해석 가이드:</strong> 대량 제품은 MAPE가 낮고 R²가 높아 예측 신뢰도가 높습니다. 소량 제품은 MAPE가 높게 나타나지만, 절대 오차(MAE)는 작으므로 실무 영향은 제한적입니다. WMAPE를 기준으로 구간별 실질 정확도를 비교하세요.
+          </div>
+        </div>
+      )}
 
       {/* Top error / accurate products side by side */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
