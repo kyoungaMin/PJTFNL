@@ -135,39 +135,46 @@ export default function PageRiskManagement() {
       </div>
 
       <FilterBar>
-        <SearchInput value={search} onChange={setSearch} placeholder="SKU / 품목명 검색"/>
-        
-        {/* 분리된 필터 영역 (위험 등급, 위험 유형) */}
-        <Select value={gradeF} onChange={setGradeF} options={['전체','A','B','C','D','E','F']}/>
-        <Select value={typeF}  onChange={setTypeF}  options={['전체','결품','과잉','납기','마진']}/>
-        
-        <div style={{ width: 1, height: 24, background: T.border, margin: '0 8px' }} />
-
-        {/* 제품 카테고리 (제품, 반제품 등) 필터 */}
+        {/* 기준일 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-           <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>분류</span>
-           <Select value={selCategory} onChange={setSelCategory} options={['전체', ...availCategories]} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>기준일</span>
+          <select
+            value={selDate}
+            onChange={e => setSelDate(e.target.value)}
+            style={{
+              padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
+              background: T.surface, color: T.text1, fontSize: 13, outline: 'none', cursor: 'pointer'
+            }}
+          >
+            {availDates.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
         </div>
 
-        {/* 기준일 선택 달력 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 10 }}>
-           <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>기준일</span>
-           <select 
-             value={selDate}
-             onChange={e => setSelDate(e.target.value)}
-             style={{ 
-               padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
-               background: T.surface, color: T.text1, fontSize: 13, outline: 'none', cursor: 'pointer'
-             }}
-           >
-             {availDates.map(d => <option key={d} value={d}>{d}</option>)}
-           </select>
+        {/* 분류 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>분류</span>
+          <Select value={selCategory} onChange={setSelCategory} options={['전체', ...availCategories]}/>
         </div>
 
-        <Btn variant="secondary" onClick={() => { 
-            setSearch(''); setGradeF('전체'); setTypeF('전체'); 
-            setSelCategory('전체'); 
-            if (availDates.length > 0) setSelDate(availDates[0]);
+        {/* SKU / 품목명 */}
+        <SearchInput value={search} onChange={setSearch} placeholder="SKU / 품목명 검색"/>
+
+        {/* 등급 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>등급</span>
+          <Select value={gradeF} onChange={setGradeF} options={['전체','A','B','C','D','E','F']}/>
+        </div>
+
+        {/* 위험유형 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>위험유형</span>
+          <Select value={typeF} onChange={setTypeF} options={['전체','결품','과잉','납기','마진']}/>
+        </div>
+
+        <Btn variant="secondary" onClick={() => {
+          setSearch(''); setGradeF('전체'); setTypeF('전체');
+          setSelCategory('전체');
+          if (availDates.length > 0) setSelDate(availDates[0]);
         }}>초기화</Btn>
         <span style={{ fontSize: 11, color: T.text3, marginLeft: 'auto' }}>총 {filtered.length}건</span>
       </FilterBar>

@@ -5,7 +5,7 @@ import {
   CartesianGrid, PieChart, Pie, Cell,
 } from 'recharts'
 import { T, card } from '@/lib/data'
-import { SearchInput } from '@/components/ui'
+import { SearchInput, Select } from '@/components/ui'
 
 // ── 유형 색상 (실제 DB 유형: 제품, 반제품, 부재료, 소모품, 원재료, 자산) ─────
 const TYPE_COLORS: Record<string, string> = {
@@ -294,12 +294,6 @@ export default function PageInventory() {
       .sort((a, b) => b.value - a.value)
   }, [skuList, typeFilter, typeStats])
 
-  // ── 카테고리 목록 (현재 유형 기준) ──────────────────────────────────────
-  const cats = useMemo(() => {
-    const filtered = typeFilter === '전체' ? skuList : skuList.filter(i => i.productType === typeFilter)
-    return ['전체', ...new Set(filtered.map(i => i.category))]
-  }, [skuList, typeFilter])
-
   // ── 상태 카운트 ──────────────────────────────────────────────────────────
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { 전체: 0, 위험: 0, 부족: 0, 정상: 0, 과잉: 0 }
@@ -342,33 +336,22 @@ export default function PageInventory() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div>
-      {/* ── 헤더 + 월 선택기 ── */}
+      {/* ── 헤더 + 조회조건 (조회년월 · 품목유형) ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 800, color: T.text1 }}>재고 현황</div>
           <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>전체 SKU 재고 수준 · 커버리지 · 회전율</div>
         </div>
-        {!dashLoading && availableMonths.length > 0 && (
-          <MonthPicker value={selectedMonth} available={availableMonths} onChange={handleMonthChange}/>
-        )}
-      </div>
-
-      {/* ── 제품 유형 탭 ── */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-        {productTypes.map(t => {
-          const ts = getTypeStyle(t)
-          const active = typeFilter === t
-          return (
-            <button key={t} onClick={() => handleTypeChange(t)}
-              style={{ fontSize: 12, fontWeight: 600, padding: '6px 16px', borderRadius: 20,
-                border: `1.5px solid ${active ? ts.color : T.border}`,
-                background: active ? ts.bg : 'transparent',
-                color: active ? ts.color : T.text2,
-                cursor: 'pointer', transition: 'all 0.15s' }}>
-              {t}
-            </button>
-          )
-        })}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {availableMonths.length > 0 ? (
+            <MonthPicker value={selectedMonth} available={availableMonths} onChange={handleMonthChange}/>
+          ) : (
+            <div style={{ padding: '7px 14px', border: `1.5px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.text3 }}>
+              {dashLoading ? '조회 중…' : '월 데이터 없음'}
+            </div>
+          )}
+          <Select value={typeFilter} onChange={handleTypeChange} options={productTypes}/>
+        </div>
       </div>
 
       {/* ── KPI 4개 ── */}
@@ -480,25 +463,9 @@ export default function PageInventory() {
 
       {/* ── SKU 목록 ── */}
       <div style={card}>
-        {/* ─ 상태 필터 + 검색 ─ */}
+        {/* ─ 조회조건: 품목유형 · SKU 코드 또는 품목명 · 상태 ─ */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-          {/* 상태 필터 */}
-          {[
-            { label: '전체',  color: T.text2,   bg: T.surface2,    border: T.border   },
-            { label: '위험',  color: T.red,     bg: T.redSoft,     border: T.redMid   },
-            { label: '부족',  color: T.amber,   bg: T.amberSoft,   border: T.amberMid },
-            { label: '정상',  color: T.green,   bg: T.greenSoft,   border: T.greenMid },
-            { label: '과잉',  color: T.purple,  bg: T.purpleSoft,  border: T.purpleMid ?? T.purple + '40' },
-          ].map(s => (
-            <button key={s.label} onClick={() => setStatusF(s.label)}
-              style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 16,
-                border: `1.5px solid ${statusF === s.label ? s.border : T.border}`,
-                background: statusF === s.label ? s.bg : 'transparent',
-                color: statusF === s.label ? s.color : T.text3, cursor: 'pointer' }}>
-              {s.label} {statusCounts[s.label] > 0 ? `(${statusCounts[s.label]})` : ''}
-            </button>
-          ))}
-
+          <Select value={typeFilter} onChange={handleTypeChange} options={productTypes}/>
           <div style={{ flex: 1, minWidth: 180 }}>
             <SearchInput value={search} onChange={(v: string) => { setSearch(v) }}
               placeholder="SKU 코드 또는 품목명 검색…"
@@ -506,17 +473,17 @@ export default function PageInventory() {
               onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && loadSkuList(selectedMonth, typeFilter, search, 1)}
             />
           </div>
-
-          {/* 카테고리 필터 */}
-          {cats.length > 2 && cats.map(c => (
-            <button key={c} onClick={() => setCatFilter(c)}
-              style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6,
-                border: `1px solid ${catFilter === c ? T.blue : T.border}`,
-                background: catFilter === c ? T.blueSoft : 'transparent',
-                color: catFilter === c ? T.blue : T.text2, cursor: 'pointer' }}>
-              {c}
-            </button>
-          ))}
+          <Select
+            value={statusF}
+            onChange={setStatusF}
+            options={[
+              { value: '전체', label: `전체 (${statusCounts['전체']})` },
+              { value: '위험', label: `위험 (${statusCounts['위험']})` },
+              { value: '부족', label: `부족 (${statusCounts['부족']})` },
+              { value: '정상', label: `정상 (${statusCounts['정상']})` },
+              { value: '과잉', label: `과잉 (${statusCounts['과잉']})` },
+            ]}
+          />
         </div>
 
         {/* ─ 테이블 ─ */}
