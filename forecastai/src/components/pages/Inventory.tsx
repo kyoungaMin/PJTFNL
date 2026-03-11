@@ -172,7 +172,10 @@ export default function PageInventory() {
 
   const [typeFilter,  setTypeFilter]  = useState('전체')
   const [skuList,     setSkuList]     = useState<SkuItem[]>([])
+  const [apiPage,     setApiPage]     = useState(1)
+  const [totalCount,  setTotalCount]  = useState(0)
   const [listLoading, setListLoading] = useState(false)
+  const [moreLoading, setMoreLoading] = useState(false)
   const [search,      setSearch]      = useState('')
   const [statusF,     setStatusF]     = useState('전체')  // 상태 필터
   const [catFilter,   setCatFilter]   = useState('전체')  // 카테고리 필터
@@ -203,18 +206,35 @@ export default function PageInventory() {
   }, [])
 
   // ── SKU 목록 로드 ─────────────────────────────────────────────────────────
-  const loadSkuList = useCallback((month: string, type: string, q: string) => {
-    setListLoading(true)
+  const loadSkuList = useCallback((month: string, type: string, q: string, page: number = 1) => {
+    if (page === 1) setListLoading(true)
+    else setMoreLoading(true)
+
     const params = new URLSearchParams({ mode: 'list' })
     if (month)          params.set('month', month)
     if (type !== '전체') params.set('type', type)
     if (q)              params.set('search', q)
+    params.set('page', page.toString())
 
     fetch(`/api/inventory?${params}`)
       .then(r => r.json())
-      .then(data => { if (data.skuList) { setSkuList(data.skuList); setCatFilter('전체') } })
+      .then(data => { 
+        if (data.skuList) { 
+          if (page === 1) {
+             setSkuList(data.skuList); 
+             setCatFilter('전체');
+          } else {
+             setSkuList(prev => [...prev, ...data.skuList]);
+          }
+          setTotalCount(data.totalCount || 0)
+          setApiPage(page)
+        } 
+      })
       .catch(console.error)
-      .finally(() => setListLoading(false))
+      .finally(() => {
+        setListLoading(false)
+        setMoreLoading(false)
+      })
   }, [])
 
   // ── 초기 로드 ────────────────────────────────────────────────────────────
@@ -483,7 +503,7 @@ export default function PageInventory() {
             <SearchInput value={search} onChange={(v: string) => { setSearch(v) }}
               placeholder="SKU 코드 또는 품목명 검색…"
               // @ts-ignore
-              onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && loadSkuList(selectedMonth, typeFilter, search)}
+              onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && loadSkuList(selectedMonth, typeFilter, search, 1)}
             />
           </div>
 
@@ -584,12 +604,30 @@ export default function PageInventory() {
                   }}
                   onMouseOver={(e) => e.currentTarget.style.background = T.surface2}
                   onMouseOut={(e) => e.currentTarget.style.background = T.surface}>
-                  더보기 ({visibleCount} / {filtered.length})
+                  펼쳐보기 ({visibleCount} / {filtered.length})
                 </button>
               </div>
             )}
+            
+            {/* DB 전체에서 더 가져올 데이터가 남아있는 경우 */}
+            {skuList.length < totalCount && visibleCount >= filtered.length && (
+              <div style={{ marginTop: 16, textAlign: 'center' }}>
+                <button
+                  onClick={() => loadSkuList(selectedMonth, typeFilter, search, apiPage + 1)}
+                  disabled={moreLoading}
+                  style={{
+                    padding: '10px 32px', fontSize: 13, fontWeight: 700, color: '#fff',
+                    background: T.blue, border: 'none', borderRadius: 24,
+                    cursor: moreLoading ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
+                    opacity: moreLoading ? 0.7 : 1
+                  }}>
+                  {moreLoading ? '불러오는 중...' : `더 보기 (다음 200건 가져오기)`}
+                </button>
+              </div>
+            )}
+
             <div style={{ marginTop: 10, fontSize: 11, color: T.text3, textAlign: 'right' }}>
-              {filtered.length}개 SKU 표시 중 (전체 {skuList.filter(i => typeFilter === '전체' || i.productType === typeFilter).length}개)
+              {filtered.length}개 SKU 표시 중 (데이터베이스 조회: {skuList.length}건 / 전체: {totalCount}건)
               {selectedMonth && <span style={{ marginLeft: 12 }}>기준: {fmtMonth(selectedMonth)}</span>}
             </div>
           </>

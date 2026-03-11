@@ -52,6 +52,7 @@ export async function GET(req: Request) {
     const monthParam = searchParams.get('month')
     const typeParam  = searchParams.get('type') ?? '전체'
     const search     = searchParams.get('search') ?? ''
+    const page       = parseInt(searchParams.get('page') ?? '1', 10)
     const now        = new Date()
 
     // ── 사용 가능한 월 목록 (cursor, 최대 24개월) ──────────────────────────
@@ -91,38 +92,37 @@ export async function GET(req: Request) {
       let productIds = Object.keys(invByProduct)
       if (!productIds.length) return NextResponse.json({ skuList: [], selectedMonth, source: 'database' })
 
-      // 2. product_master (검색 + 유형 필터)
-      let pmQuery = supabase
-        .from('product_master')
-        .select('product_code,product_name,product_category,product_type')
-        .in('product_code', productIds.slice(0, IN_BATCH))
-        .limit(2000)
-      if (search) pmQuery = pmQuery.or(`product_code.ilike.%${search}%,product_name.ilike.%${search}%`)
-      if (typeParam && typeParam !== '전체') pmQuery = pmQuery.eq('product_type', typeParam)
-
-      // 검색/필터가 있으면 전체 product_ids를 넣을 수 없으므로 별도 처리
+      // 검색/필터가 있으면 여기서 1차로 필터링한 후 해당 페이지 분량만 가져옵니다 (성능 개선)
       let products: any[] = []
+      const limit = 200
+      const offset = (page - 1) * limit
+      
+      let totalCount = productIds.length
+      
       if (search || (typeParam && typeParam !== '전체')) {
-        const PAGE = 1000
-        for (let off = 0; ; off += PAGE) {
-          let q = supabase
-            .from('product_master')
-            .select('product_code,product_name,product_category,product_type')
-            .range(off, off + PAGE - 1)
-          if (search) q = q.or(`product_code.ilike.%${search}%,product_name.ilike.%${search}%`)
-          if (typeParam && typeParam !== '전체') q = q.eq('product_type', typeParam)
-          const { data } = await q
-          if (!data?.length) break
-          // inventory에 있는 것만 필터
-          products.push(...data.filter((p: any) => invByProduct[p.product_code] !== undefined))
-          if (data.length < PAGE) break
+        let q = supabase
+          .from('product_master')
+          .select('product_code,product_name,product_category,product_type', { count: 'exact' })
+        
+        if (search) q = q.or(`product_code.ilike.%${search}%,product_name.ilike.%${search}%`)
+        if (typeParam && typeParam !== '전체') q = q.eq('product_type', typeParam)
+        
+        const { data, count } = await q.range(offset, offset + limit - 1)
+        if (count !== null) totalCount = count
+        
+        if (data && data.length > 0) {
+          products = data.filter((p: any) => invByProduct[p.product_code] !== undefined)
         }
       } else {
+        // 필터가 없을 때는 재고가 많은 순서대로 짤라서 가져옵니다
+        productIds = productIds.sort((a,b) => invByProduct[b] - invByProduct[a]).slice(offset, offset + limit)
         products = await batchIn('product_master', 'product_code,product_name,product_category,product_type', 'product_code', productIds)
       }
 
       const productMap: Record<string, any> = {}
       for (const p of products) productMap[p.product_code] = p
+      
+      // 진짜로 화면에 보여줄 ID 목록 최신화
       productIds = products.map((p: any) => p.product_code)
       if (!productIds.length) return NextResponse.json({ skuList: [], selectedMonth, source: 'database' })
 
@@ -136,7 +136,7 @@ export async function GET(req: Request) {
         .then(async ({ data: riskSnap }) => {
           const latestRiskDate = riskSnap?.[0]?.eval_date
           const map: Record<string, { safetyStock: number; grade: string }> = {}
-          if (latestRiskDate) {
+          if (latestRiskDate && productIds.length > 0) {
             const riskRows = await batchIn('risk_score', 'product_id,safety_stock,risk_grade', 'product_id', productIds,
               q => q.eq('eval_date', latestRiskDate))
             for (const r of riskRows) map[r.product_id] = { safetyStock: Number(r.safety_stock ?? 0), grade: r.risk_grade ?? '-' }
@@ -196,7 +196,7 @@ export async function GET(req: Request) {
         grade:       riskMap[pid]?.grade ?? '-',
       }))
 
-      return NextResponse.json({ skuList, selectedMonth, source: 'database' })
+      return NextResponse.json({ skuList, totalCount, selectedMonth, source: 'database' })
     }
 
     // ══════════════════════════════════════════════════════════════════════
