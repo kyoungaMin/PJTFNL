@@ -7,6 +7,7 @@ export interface AlertItem {
   type: 'risk' | 'warn' | 'info'
   message: string
   time: string
+  page?: string
 }
 
 export async function GET() {
@@ -37,6 +38,7 @@ export async function GET() {
         type: 'risk',
         message: `${String(row.product_id)} — ${ACTION_TYPE_KO[String(row.action_type)] ?? row.action_type} 긴급 조치 필요`,
         time: String(row.eval_date ?? '').slice(5, 10),
+        page: 'action-queue',
       })
     }
 
@@ -60,6 +62,7 @@ export async function GET() {
           type: 'risk',
           message: `위험 등급 E·F SKU ${efCount}건 — 이번 주 내 조치 필요`,
           time: evalDate.slice(5, 10),
+          page: 'risk',
         })
       }
     }
@@ -76,6 +79,7 @@ export async function GET() {
         type: 'warn',
         message: `미처리 구매 발주 ${pendingPO}건 — 입고 확인 필요`,
         time: today,
+        page: 'purchase',
       })
     }
 
@@ -94,6 +98,7 @@ export async function GET() {
           type: 'warn',
           message: `${String(row.product_id)} — ${ACTION_TYPE_KO[String(row.action_type)] ?? row.action_type} 권고`,
           time: String(row.eval_date ?? '').slice(5, 10),
+          page: 'action-queue',
         })
       }
     }

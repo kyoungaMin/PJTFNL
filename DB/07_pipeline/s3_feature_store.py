@@ -567,12 +567,30 @@ def build_features(df_wps: pd.DataFrame, df_conc: pd.DataFrame,
     df["is_year_end"] = df["week_num"] >= 51
 
     # ── 타겟 (forward-shift) ──
+    # 3구간 동결 구조 기반 호라이즌:
+    #   Frozen Zone : target_1w(7d) / target_2w(14d) / target_4w(28d)
+    #   Slushy Zone : target_3w(21d) / target_8w(56d)
+    #   Liquid Zone : target_13w(91d)
     df["target_1w"] = grp["order_qty"].shift(-1)
     shift_m2 = grp["order_qty"].shift(-2)
     df["target_2w"] = df["target_1w"] + shift_m2
     shift_m3 = grp["order_qty"].shift(-3)
+    df["target_3w"] = df["target_2w"] + shift_m3
     shift_m4 = grp["order_qty"].shift(-4)
-    df["target_4w"] = df["target_2w"] + shift_m3 + shift_m4
+    df["target_4w"] = df["target_3w"] + shift_m4
+    # target_8w: target_4w + 4주 추가 합산
+    shift_m5 = grp["order_qty"].shift(-5)
+    shift_m6 = grp["order_qty"].shift(-6)
+    shift_m7 = grp["order_qty"].shift(-7)
+    shift_m8 = grp["order_qty"].shift(-8)
+    df["target_8w"] = df["target_4w"] + shift_m5 + shift_m6 + shift_m7 + shift_m8
+    # target_13w: target_8w + 5주 추가 합산
+    shift_m9  = grp["order_qty"].shift(-9)
+    shift_m10 = grp["order_qty"].shift(-10)
+    shift_m11 = grp["order_qty"].shift(-11)
+    shift_m12 = grp["order_qty"].shift(-12)
+    shift_m13 = grp["order_qty"].shift(-13)
+    df["target_13w"] = df["target_8w"] + shift_m9 + shift_m10 + shift_m11 + shift_m12 + shift_m13
 
     return df
 
@@ -616,8 +634,9 @@ OUTPUT_COLS = [
     "semi_export_amt", "semi_import_amt", "semi_trade_balance", "semi_export_roc",
     # K: 시간
     "week_num", "month", "quarter", "is_holiday_week", "is_year_end",
-    # 타겟
-    "target_1w", "target_2w", "target_4w",
+    # 타겟 (3구간 동결 구조: Frozen=1/2/3/4W, Slushy=8W, Liquid=13W)
+    "target_1w", "target_2w", "target_3w", "target_4w",
+    "target_8w", "target_13w",
 ]
 
 
