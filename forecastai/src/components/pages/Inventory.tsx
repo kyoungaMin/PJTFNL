@@ -238,7 +238,20 @@ export default function PageInventory() {
   }, [])
 
   // ── 초기 로드 ────────────────────────────────────────────────────────────
-  useEffect(() => { loadDashboard() }, [loadDashboard])
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('dashRefWeek')
+      if (raw) {
+        const ref = JSON.parse(raw)
+        if (ref.yearMonth) {
+          // '2026-02' → '202602' (inventory API는 YYYYMM 형식 사용)
+          const m = ref.yearMonth.replace('-', '')
+          loadDashboard(m); return
+        }
+      }
+    } catch {}
+    loadDashboard()
+  }, [loadDashboard])
 
   // ── selectedMonth 확정 후 SKU 자동 로드 ─────────────────────────────────
   useEffect(() => {

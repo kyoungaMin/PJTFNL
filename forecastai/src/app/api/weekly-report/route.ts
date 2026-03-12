@@ -33,20 +33,22 @@ export async function GET(request: Request) {
       const totalProducedQty = rows.reduce((s, r) => s + Number(r.produced_qty  ?? 0), 0)
 
       // 3. 재고 커버리지 (최신 스냅샷 기준)
-      let coverageDays = 0
-      const { data: latestSnap2 } = await supabase
-        .from('inventory').select('snapshot_date').order('snapshot_date', { ascending: false }).limit(1)
+      // ⚠️ inventory(617,720행) + daily_order(259,684행) 직접 조회 → limit=1000 잘림 버그
+      //    → get_inventory_coverage RPC로 해결 (DB/24_coverage_rpc.sql)
+      const { data: covRows2 } = await supabase
+        .rpc('get_inventory_coverage', {
+          p_from_date: fromParam,
+          p_to_date:   toParam,
+        })
 
-      if (latestSnap2?.[0]?.snapshot_date) {
-        const { data: invRows } = await supabase
-          .from('inventory').select('inventory_qty').eq('snapshot_date', latestSnap2[0].snapshot_date)
-        const totalInv  = (invRows ?? []).reduce((s, r) => s + Number(r.inventory_qty ?? 0), 0)
-        const periodDays = Math.max(1, Math.round(
-          (new Date(toParam).getTime() - new Date(fromParam).getTime()) / (24 * 60 * 60 * 1000)
-        ) + 1)
-        const dailyAvg  = totalOrderQty / periodDays
-        coverageDays    = dailyAvg > 0 ? Math.round(totalInv / dailyAvg) : 0
-      }
+      const covRow2    = covRows2?.[0]
+      const totalInv2  = Number(covRow2?.total_inv_qty   ?? 0)
+      const demand2    = Number(covRow2?.total_order_qty ?? 0)
+      const periodDays = Math.max(1, Math.round(
+        (new Date(toParam).getTime() - new Date(fromParam).getTime()) / (24 * 60 * 60 * 1000)
+      ) + 1)
+      const dailyAvg2  = demand2 / periodDays
+      let coverageDays = dailyAvg2 > 0 ? Math.round(totalInv2 / dailyAvg2) : 0
 
       // 4. 미처리 구매 발주
       const { data: poRows2, error: poErr2 } = await supabase
@@ -158,37 +160,25 @@ export async function GET(request: Request) {
     if (weeklyErr) throw weeklyErr
 
     // ─── 4. 재고 커버리지 KPI ─────────────────────────────────────────────
-    const { data: latestSnap } = await supabase
-      .from('inventory')
-      .select('snapshot_date')
-      .order('snapshot_date', { ascending: false })
-      .limit(1)
+    // ⚠️ inventory(617,720행) + daily_order(259,684행) 직접 조회 → limit=1000 잘림 버그
+    //    → get_inventory_coverage RPC로 해결 (DB/24_coverage_rpc.sql)
+    const toDateStr     = targetWeekEnd ?? targetWeekStart
+    const thirtyAgoStr  = new Date(
+      new Date(toDateStr).getTime() - 30 * 24 * 60 * 60 * 1000
+    ).toISOString().slice(0, 10)
 
-    let coverageDays = 0
-    let snapshotDate = ''
+    const { data: covRows } = await supabase
+      .rpc('get_inventory_coverage', {
+        p_from_date: thirtyAgoStr,
+        p_to_date:   toDateStr,
+      })
 
-    if (latestSnap?.[0]?.snapshot_date) {
-      snapshotDate = latestSnap[0].snapshot_date as string
-      const { data: invRows } = await supabase
-        .from('inventory')
-        .select('inventory_qty')
-        .eq('snapshot_date', snapshotDate)
-
-      const totalInv = (invRows ?? []).reduce((s, r) => s + Number(r.inventory_qty ?? 0), 0)
-
-      const thirtyAgoStr = new Date(
-        new Date(targetWeekEnd ?? targetWeekStart).getTime() - 30 * 24 * 60 * 60 * 1000
-      ).toISOString().slice(0, 10)
-
-      const { data: demandRows } = await supabase
-        .from('daily_order')
-        .select('order_qty')
-        .gte('order_date', thirtyAgoStr)
-        .lte('order_date', targetWeekEnd ?? targetWeekStart)
-
-      const dailyAvg = (demandRows ?? []).reduce((s, r) => s + Number(r.order_qty ?? 0), 0) / 30
-      coverageDays = dailyAvg > 0 ? Math.round(totalInv / dailyAvg) : 0
-    }
+    const covRow     = covRows?.[0]
+    const snapshotDate = String(covRow?.snapshot_date ?? '')
+    const totalInv   = Number(covRow?.total_inv_qty   ?? 0)
+    const demand30   = Number(covRow?.total_order_qty ?? 0)
+    const dailyAvg   = demand30 / 30
+    let coverageDays = dailyAvg > 0 ? Math.round(totalInv / dailyAvg) : 0
 
     // ─── 5. 미처리 구매 발주 목록 ────────────────────────────────────────────
     const { data: poRows, error: poErr } = await supabase

@@ -40,6 +40,19 @@ export default function PageRiskManagement() {
 
   /* ── 초기 필터 정보 로드 ── */
   useEffect(() => {
+    let dashWeekStart: string | null = null
+    let dashPlanDate: string | null = null
+    let dashEvalDate: string | null = null
+    try {
+      const raw = sessionStorage.getItem('dashRefWeek')
+      if (raw) {
+        const ref = JSON.parse(raw)
+        dashWeekStart = ref.weekStart ?? null
+        dashPlanDate  = ref.planDate ?? null
+        dashEvalDate  = ref.evalDate ?? null  // risk_score 실제 eval_date
+      }
+    } catch {}
+
     fetch('/api/risk/filters')
       .then(r => r.json())
       .then(d => {

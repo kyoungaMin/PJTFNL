@@ -30,7 +30,18 @@ from ml_utils import (
 )
 
 MODEL_ID    = "lgbm_q_v3"
-HORIZONS    = {"target_1w": 7, "target_2w": 14, "target_4w": 28}
+# 3구간 동결 구조 기반 호라이즌
+# Frozen Zone : 1W(7d) / 2W(14d) / 3W(21d) / 4W(28d)
+# Slushy Zone : 8W(56d) — 발주 수량 조정 핵심, 리드타임 커버
+# Liquid Zone : 13W(91d) — 원자재 선행구매, 중기 수요계획
+HORIZONS    = {
+    "target_1w":  7,
+    "target_2w":  14,
+    "target_3w":  21,
+    "target_4w":  28,
+    "target_8w":  56,
+    "target_13w": 91,
+}
 MIN_SAMPLES = 26
 TRAIN_RATIO = 0.8
 
