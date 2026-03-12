@@ -69,9 +69,11 @@ export async function GET() {
       .limit(1)
     const refWeek = refCalRows?.[0]
 
-    const latestActualDate = String(refWeek?.week_start ?? (
-      weekActuals.length > 0 ? weekActuals[weekActuals.length - 1].weekStart : toLocalDateStr(now)
-    ))
+    // qty=0인 주(3월 초 등 미수주 주차)를 제외하고 실제 수주가 있는 마지막 주 사용
+    const lastNonZeroWeek = [...weekActuals].reverse().find(w => (orderWeekMap[w.label] ?? 0) > 0)
+    const latestActualDate = String(
+      lastNonZeroWeek?.weekStart ?? refWeek?.week_start ?? toLocalDateStr(now)
+    )
 
     // latestActualDate 기준 해당 주 월요일 계산
     const latestAnchor = new Date(latestActualDate + 'T00:00:00')
@@ -175,6 +177,28 @@ export async function GET() {
       ? Math.round(totalInventoryQty / dailyAvgDemand)
       : 0
 
+    // ─── 2-b. 구매·생산 권고 plan_date 조회 (상세화면 연계용) ─────────────
+    // latestActualDate 주(월~토) 이내에서 가장 최신 plan_date 선택
+    // → 미래 주차(예: 3/02) 데이터 혼입 방지, 대시보드 기준 주와 동일 주차 보장
+    const latestActualWeekEnd = (() => {
+      const d = new Date(latestActualDate + 'T00:00:00')
+      d.setDate(d.getDate() + 6)  // 월요일 + 6 = 토요일
+      return toLocalDateStr(d)
+    })()
+    const { data: latestPlanRow } = await supabase
+      .from('purchase_recommendation')
+      .select('plan_date')
+      .lte('plan_date', latestActualWeekEnd)  // 이번 주(토) 이하만
+      .order('plan_date', { ascending: false })
+      .limit(1)
+    const planDate = String(latestPlanRow?.[0]?.plan_date ?? '')
+    // planDate 주 종료일 (planDate + 6일): risk·action eval_date 범위 필터에 사용
+    const planDateEnd = planDate ? (() => {
+      const d = new Date(planDate + 'T00:00:00')
+      d.setDate(d.getDate() + 6)
+      return toLocalDateStr(d)
+    })() : ''
+
     // ─── 3. 구매 발주 KPI (R=미입고, P=처리중) ───────────────────────────────
     const { count: pendingCount, error: poErr } = await supabase
       .from('purchase_order')
@@ -183,18 +207,44 @@ export async function GET() {
 
     if (poErr) throw poErr
 
-    // ─── 4. 위험 등급 집계 (최신 eval_date 기준) ─────────────────────────────
+    // ─── 4. 위험 등급 집계 (planDate 주차 우선, 없으면 최신 eval_date) ────────
     // ML 미실행 시 빈 배열 반환 → 프론트에서 Mock fallback
-    const { data: latestEval } = await supabase
-      .from('risk_score')
-      .select('eval_date')
-      .order('eval_date', { ascending: false })
-      .limit(1)
+    // planDate 주차(planDate~planDateEnd)에서 eval_date 먼저 찾고, 없으면 최신 fallback
+    let evalDataRow: any = null
+    if (planDate && planDateEnd) {
+      const { data: weekEval } = await supabase
+        .from('risk_score')
+        .select('eval_date')
+        .gte('eval_date', planDate)
+        .lte('eval_date', planDateEnd)
+        .order('eval_date', { ascending: false })
+        .limit(1)
+      evalDataRow = weekEval?.[0] ?? null
+    }
+    if (!evalDataRow) {
+      const { data: fallbackEval } = await supabase
+        .from('risk_score')
+        .select('eval_date')
+        .order('eval_date', { ascending: false })
+        .limit(1)
+      evalDataRow = fallbackEval?.[0] ?? null
+    }
+
+    // ─── 헤더 표시용 기준 주차 계산 ─────────────────────────────────────────
+    // ML plan_date(월요일)가 있으면 그 전날(일요일)을 헤더 기준으로 사용
+    // → 구매·생산권고 상세화면과 동일한 ML 주차를 표시 (날짜 일치)
+    // ML plan_date 없으면 daily_order 기준 일요일로 fallback
+    const headerPlanDate: string = (() => {
+      const anchor = planDate || latestActualDate  // planDate=월요일, latestActualDate=월요일
+      const d = new Date(anchor + 'T00:00:00')
+      d.setDate(d.getDate() - 1)  // 월요일 → 일요일
+      return toLocalDateStr(d)
+    })()
 
     let riskGrades: { grade: string; count: number }[] = []
 
-    if (latestEval?.[0]?.eval_date) {
-      const latestEvalDate = latestEval[0].eval_date as string
+    if (evalDataRow?.eval_date) {
+      const latestEvalDate = String(evalDataRow.eval_date)
 
       // DB 집계 RPC 사용 (DB/22_dashboard_rpc.sql 참고)
       // 13K+ 행을 REST로 조회하면 기본 limit=1000에 걸려 등급 비율이 왜곡됨
@@ -209,15 +259,32 @@ export async function GET() {
         .sort((a: { grade: string }, b: { grade: string }) => a.grade.localeCompare(b.grade))
     }
 
-    // ─── 5. AI 생산 권고 Top3 (pending, severity 높은 순) ────────────────────
+    // ─── 5. AI 생산 권고 Top3 (planDate 주차 pending, severity 높은 순) ─────
     // ML 미실행 시 빈 배열 반환 → 프론트에서 Mock fallback
-    const { data: actionRows } = await supabase
-      .from('action_queue')
-      .select('id, product_id, risk_type, severity, action_type, description, suggested_qty, eval_date')
-      .eq('status', 'pending')
-      .in('severity', ['critical', 'high', 'medium'])
-      .order('severity', { ascending: true })  // critical이 알파벳순 앞
-      .limit(3)
+    // planDate 주차 내 항목 우선 → 없으면 전체 최신 pending fallback
+    let actionRows: any[] | null = null
+    if (planDate && planDateEnd) {
+      const { data: weekActions } = await supabase
+        .from('action_queue')
+        .select('id, product_id, risk_type, severity, action_type, description, suggested_qty, eval_date')
+        .eq('status', 'pending')
+        .in('severity', ['critical', 'high', 'medium'])
+        .gte('eval_date', planDate)
+        .lte('eval_date', planDateEnd)
+        .order('severity', { ascending: true })
+        .limit(3)
+      if (weekActions && weekActions.length > 0) actionRows = weekActions
+    }
+    if (!actionRows || actionRows.length === 0) {
+      const { data: fallbackActions } = await supabase
+        .from('action_queue')
+        .select('id, product_id, risk_type, severity, action_type, description, suggested_qty, eval_date')
+        .eq('status', 'pending')
+        .in('severity', ['critical', 'high', 'medium'])
+        .order('severity', { ascending: true })
+        .limit(3)
+      actionRows = fallbackActions ?? []
+    }
 
     // action_queue에 나온 product_id 목록으로 product_name 일괄 조회
     const actionProductIds = (actionRows ?? []).map(r => String(r.product_id))
@@ -306,8 +373,15 @@ export async function GET() {
           d.setDate(d.getDate() + 5)
           return toLocalDateStr(d)
         })(),
-        yearMonth: String(refWeek?.year_month ?? ''),
+        // yearMonth: planDate 기준 월 우선 (재고현황 연계), 없으면 calendar_week 기준
+        yearMonth: planDate ? planDate.substring(0, 7) : String(refWeek?.year_month ?? ''),
         maxOrderDate,
+        // 헤더·전 상세화면 공통 기준: ML plan_date 주의 일요일
+        planDate: headerPlanDate,
+        // 구매·생산 권고 페이지 날짜 연계: purchase_recommendation.plan_date 실제값
+        mlPlanDate: planDate,
+        // 리스크 관리 페이지 날짜 연계: risk_score.eval_date 실제값
+        evalDate: evalDataRow?.eval_date ? String(evalDataRow.eval_date) : '',
       },
       source: 'database',
     })

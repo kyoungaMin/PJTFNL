@@ -40,14 +40,34 @@ export default function PageRiskManagement() {
   /* ── 데이터 로드 ── */
   /* ── 초기 필터 정보 로드 ── */
   useEffect(() => {
+    let dashWeekStart: string | null = null
+    let dashPlanDate: string | null = null
+    let dashEvalDate: string | null = null
+    try {
+      const raw = sessionStorage.getItem('dashRefWeek')
+      if (raw) {
+        const ref = JSON.parse(raw)
+        dashWeekStart = ref.weekStart ?? null
+        dashPlanDate  = ref.planDate ?? null
+        dashEvalDate  = ref.evalDate ?? null  // risk_score 실제 eval_date
+      }
+    } catch {}
+
     fetch('/api/risk/filters')
       .then(r => r.json())
       .then(d => {
         if (d.categories) setAvailCategories(d.categories)
         if (d.dates && d.dates.length > 0) {
            setAvailDates(d.dates)
-           // 최초 로드 시 가장 최신 날짜로 설정
-           if (!selDate) setSelDate(d.dates[0])
+           // 대시보드 기준 주차 우선 선택: evalDate → planDate → weekStart → 최신 순으로 시도
+           if (!selDate) {
+             const preferred =
+               (dashEvalDate  && d.dates.includes(dashEvalDate))  ? dashEvalDate  :
+               (dashPlanDate  && d.dates.includes(dashPlanDate))  ? dashPlanDate  :
+               (dashWeekStart && d.dates.includes(dashWeekStart)) ? dashWeekStart :
+               d.dates[0]
+             setSelDate(preferred)
+           }
         }
       })
       .catch(e => console.error('Filter load error', e))

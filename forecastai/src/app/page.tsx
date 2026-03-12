@@ -124,6 +124,9 @@ export default function Home() {
         <Header currentUser={currentUser} setCurrentUser={setCurrentUser} setPage={setPage} alertCount={alertCount} />
         <div style={{ flex:1, overflowY:'auto', padding:'28px 32px' }}>
           {PAGE_MAP[page] ?? <PageDashboard />}
+          <div style={{ textAlign:'center', marginTop:16, paddingBottom:8, fontSize:11, color:'#64748B' }}>
+            Copyright © 2026 ICA 1 Team. All rights reserved.
+          </div>
         </div>
       </div>
     </div>

@@ -39,10 +39,13 @@ interface DashApiResponse {
   // daily_order max(order_date) 기준 주차 메타데이터
   refWeekInfo?: {
     yearWeek:     string   // e.g. '2026-W09'
-    weekStart:    string   // e.g. '2026-02-23' (월요일)
-    weekEnd:      string   // e.g. '2026-03-01' (일요일)
+    weekStart:    string   // e.g. '2026-02-23' (월요일, calendar_week 기준)
+    weekEnd:      string   // e.g. '2026-02-28' (토요일)
     yearMonth:    string   // e.g. '2026-02' (재고현황 월 연계용)
     maxOrderDate: string   // e.g. '2026-02-26' (실제 max 수주일)
+    planDate: string   // 헤더·전 상세화면 공통 기준 (ML eval_date 기준 주 일요일)
+    mlPlanDate?: string  // purchase_recommendation 실제 plan_date (구매·생산권고 연계)
+    evalDate?: string    // risk_score 실제 eval_date (리스크관리 연계)
   }
   source: string
 }
@@ -538,19 +541,24 @@ export default function PageDashboard({
       <PageHeader
         title="대시보드"
         sub={(() => {
-          // 로딩 중 → 목업 날짜 플리커 방지
           if (loading) return '데이터 로딩 중...'
-          const ref = dashData?.refWeekInfo
+          // YYYY-MM-DD → M/DD 포맷 변환
+          const toMD = (s: string) => { const [,m,d] = s.split('-'); return `${Number(m)}/${d}` }
           const pad = (n: number) => String(n).padStart(2, '0')
           const toL = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+          const ref = dashData?.refWeekInfo
           if (ref?.weekStart) {
-            const { year, month, week } = getWeekInfo(new Date(ref.weekStart + 'T00:00:00'))
-            // DB의 weekStart ~ weekEnd 그대로 사용 (1주 기준)
-            const weekEndStr = ref.weekEnd || ref.weekStart
-            return `${year}년 ${month}월 ${week}주차 · ${ref.weekStart} ~ ${weekEndStr} · 생산계획팀 주간 현황`
+            const displayStart = ref.planDate || ref.weekStart
+            const labelAnchor = new Date(displayStart + 'T00:00:00')
+            if (labelAnchor.getDay() === 0) labelAnchor.setDate(labelAnchor.getDate() + 1) // 일→월
+            const { year, month, week } = getWeekInfo(labelAnchor)
+            const weekEndStr = ref.planDate
+              ? (() => { const d = new Date(ref.planDate + 'T00:00:00'); d.setDate(d.getDate() + 6); return toL(d) })()
+              : ref.weekEnd || ref.weekStart
+            return `${year}년 ${month}월 ${week}주차 · ${toMD(displayStart)} ~ ${toMD(weekEndStr)} · 생산계획팀 주간 현황`
           }
-          const { year, month, week, start, end } = getWeekInfo(new Date())
-          return `${year}년 ${month}월 ${week}주차 · ${start} ~ ${end} · 생산계획팀 주간 현황`
+          // 데이터 미로드 시 로딩 표시 유지 (오늘 날짜 fallback 제거)
+          return '데이터 로딩 중...'
         })()}
       />
 

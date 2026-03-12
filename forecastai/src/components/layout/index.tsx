@@ -87,7 +87,7 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
 }) {
   const [alertOpen, setAlertOpen] = useState(false);
   const [userOpen,  setUserOpen]  = useState(false);
-  const [alertItems, setAlertItems] = useState<{type:string;message:string;time:string}[]>([]);
+  const [alertItems, setAlertItems] = useState<{type:string;message:string;time:string;page?:string}[]>([]);
   const [alertLoaded, setAlertLoaded] = useState(false);
 
   const handleLogout = async () => {
@@ -142,7 +142,8 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
                 <div style={{ padding:"20px 16px", textAlign:"center", fontSize:12, color:T.text3 }}>알림 없음</div>
               ) : (
                 alertItems.map((a, i) => (
-                  <div key={i} style={{ padding:"11px 16px", borderBottom:i<alertItems.length-1?`1px solid ${T.border}`:"none", display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer" }}
+                  <div key={i} style={{ padding:"11px 16px", borderBottom:i<alertItems.length-1?`1px solid ${T.border}`:"none", display:"flex", gap:10, alignItems:"flex-start", cursor: a.page ? "pointer" : "default" }}
+                    onClick={() => { if (a.page) { setPage(a.page); closeAll(); } }}
                     onMouseEnter={e=>{ (e.currentTarget as HTMLDivElement).style.background=T.surface2 }}
                     onMouseLeave={e=>{ (e.currentTarget as HTMLDivElement).style.background="transparent" }}>
                     <div style={{ width:28, height:28, borderRadius:"50%", background:a.type==="risk"?T.redSoft:a.type==="warn"?T.amberSoft:T.blueSoft, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, flexShrink:0 }}>

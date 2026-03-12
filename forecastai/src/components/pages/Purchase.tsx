@@ -109,7 +109,19 @@ export default function PagePurchase() {
     }
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('dashRefWeek')
+      if (raw) {
+        const ref = JSON.parse(raw)
+        // mlPlanDate = purchase_recommendation 실제 plan_date (정확한 매칭)
+        // planDate, weekStart는 fallback
+        const date = ref.mlPlanDate || ref.planDate || ref.weekStart
+        if (date) { loadData(date); return }
+      }
+    } catch {}
+    loadData()
+  }, [loadData])
 
   const handleWeekChange = (week: string) => { setPlanDate(week); loadData(week) }
 

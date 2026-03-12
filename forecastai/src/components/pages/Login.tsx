@@ -268,7 +268,7 @@ export default function LoginPage({ onLogin }: { onLogin: (member: Member) => vo
         </div>
 
         <div style={{ textAlign:"center", marginTop:20, fontSize:11, color:"#334155" }}>
-          © 2025 ForecastAI · Anthropic 기반
+          Copyright © 2026 ICA 1 Team. All rights reserved.
         </div>
       </div>
     </div>
