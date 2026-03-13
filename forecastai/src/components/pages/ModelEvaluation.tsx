@@ -218,14 +218,15 @@ export default function PageModelEvaluation() {
 
   // Period filter state
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all')
-  const [periods, setPeriods] = useState<string[]>([])
+  const [periods, setPeriods] = useState<{ key: string; label: string; dateRange: string }[]>([])
   const [periodData, setPeriodData] = useState<PeriodResult | null>(null)
   const [periodLoading, setPeriodLoading] = useState(false)
 
   // 모델 선택
   const MODEL_OPTIONS = {
     weekly: [
-      { id: 'lgbm_q_v2', label: 'LightGBM Quantile (기본)' },
+      { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3 (기본)' },
+      { id: 'lgbm_q_v2', label: 'LightGBM Quantile v2' },
       { id: 'ridge_v1', label: 'Ridge Regression' },
       { id: 'svr_linear_v1', label: 'SVR Linear' },
     ],
@@ -259,7 +260,15 @@ export default function PageModelEvaluation() {
     setSelectedModel('')
     fetch(`/api/model-evaluation/periods?type=${period}`)
       .then(r => r.json())
-      .then(json => { if (json.periods) setPeriods(json.periods) })
+      .then(json => {
+        if (json.periods) {
+          setPeriods(json.periods)
+          // 최신 기간을 기본 선택
+          if (json.periods.length > 0) {
+            setSelectedPeriod(json.periods[0].key)
+          }
+        }
+      })
       .catch(() => setPeriods([]))
   }, [period])
 
@@ -338,22 +347,14 @@ export default function PageModelEvaluation() {
       </div>
     )
   }
-  if (!data) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', color: T.red }}>
-        <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
-        <div>모델 비교 데이터를 불러올 수 없습니다.</div>
-        <div style={{ fontSize: 12, color: T.text3, marginTop: 8 }}>model_comparison.json 파일을 확인해주세요.</div>
-      </div>
-    )
-  }
+  // data(file 기반)가 없어도 기간별 평가는 동작 가능 — 에러 화면 제거
 
   /* ═══ RENDER ══════════════════════════════════════════════════════════════ */
   return (
     <div>
       <PageHeader title="모델 평가" sub={
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <span>7개 ML 모델 비교 분석 · {data.timestamp.split('T')[0]}</span>
+          <span>ML 모델 기간별 평가 분석{data ? ` · ${data.timestamp.split('T')[0]}` : ''}</span>
           <button onClick={() => setShowGuide(g => !g)}
             style={{
               fontSize:11, fontWeight:700, color: showGuide ? T.blue : T.text3,
@@ -379,10 +380,10 @@ export default function PageModelEvaluation() {
               cursor:'pointer', outline:'none', fontFamily:"'IBM Plex Mono',monospace",
             }}
           >
-            <option value="all">전체 (집계)</option>
-            {periods.map(p => <option key={p} value={p}>{p}</option>)}
+            {periods.length === 0 && <option value="all">기간 없음</option>}
+            {periods.map(p => <option key={p.key} value={p.key}>{p.label} ({p.key})</option>)}
           </select>
-          {selectedPeriod !== 'all' && (
+          {selectedPeriod !== 'all' && periods.length > 0 && (
             <>
               <span style={{ fontSize:11, color:T.text3, fontWeight:600 }}>모델</span>
               <select
@@ -399,9 +400,9 @@ export default function PageModelEvaluation() {
               </select>
             </>
           )}
-          <button onClick={() => { setSelectedPeriod('all'); setSelectedModel('') }}
+          <button onClick={() => { setSelectedPeriod(periods.length > 0 ? periods[0].key : 'all'); setSelectedModel('') }}
             style={{ fontSize:11, fontWeight:600, color:T.blue, background:T.blueSoft, border:`1px solid ${T.blueMid}`,
-              borderRadius:6, padding:'5px 10px', cursor:'pointer' }}>초기화</button>
+              borderRadius:6, padding:'5px 10px', cursor:'pointer' }}>최신</button>
         </div>
       } />
 
@@ -430,16 +431,22 @@ export default function PageModelEvaluation() {
       </div>
 
       {/* ── Tab content ── */}
-      {activeTab === 'overview' && selectedPeriod !== 'all' && periodData && (
-        <TabPeriodOverview data={periodData} loading={periodLoading} />
-      )}
-      {activeTab === 'overview' && (selectedPeriod === 'all' || !periodData) && !periodLoading && (
-        <TabOverview models={models} bestR2={bestR2} bestTol={bestTol} avgRmse={avgRmse} minGap={minGap} />
-      )}
       {activeTab === 'overview' && periodLoading && (
         <div style={{ padding: 40, textAlign: 'center', color: T.text3 }}>
           <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
           <div>{selectedPeriod} 기간 데이터를 불러오는 중...</div>
+        </div>
+      )}
+      {activeTab === 'overview' && !periodLoading && periodData && (
+        <TabPeriodOverview data={periodData} loading={periodLoading} />
+      )}
+      {activeTab === 'overview' && !periodLoading && !periodData && models.length > 0 && (
+        <TabOverview models={models} bestR2={bestR2} bestTol={bestTol} avgRmse={avgRmse} minGap={minGap} />
+      )}
+      {activeTab === 'overview' && !periodLoading && !periodData && models.length === 0 && (
+        <div style={{ padding: 40, textAlign: 'center', color: T.text3 }}>
+          <div style={{ fontSize: 24, marginBottom: 8 }}>📊</div>
+          <div>조회 기간을 선택해주세요.</div>
         </div>
       )}
       {activeTab === 'accuracy' && <TabAccuracy models={models} />}
