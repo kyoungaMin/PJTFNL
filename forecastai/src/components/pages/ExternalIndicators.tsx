@@ -375,7 +375,7 @@ function FreqFilter({ freq, onChange, options }: {
 
 function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, tableData, tableKeys, tableLabels, tableUnits, filename, freqOptions, freq, onFreqChange, indicatorType }: {
   title: string; sub: string; isLive: boolean; loading: boolean;
-  tickerItems: React.ReactNode; chartL: React.ReactNode; chartR: React.ReactNode;
+  tickerItems: React.ReactNode; chartL: React.ReactNode; chartR?: React.ReactNode;
   tableData: Record<string, unknown>[]; tableKeys: string[]; tableLabels: string[]; tableUnits: string[];
   filename: string;
   freqOptions?: Freq[]; freq?: Freq; onFreqChange?: (f: Freq) => void;
@@ -458,7 +458,7 @@ function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, t
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 12, marginBottom: 20 }}>
         {loading ? [1, 2, 3].map(i => <LoadingCard key={i} />) : tickerItems}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: chartR ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 16 }}>
         {chartL}{chartR}
       </div>
       <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
@@ -534,7 +534,6 @@ export function PageExtGlobal() {
         source={INDICATOR_META.INDPRO.source} freq={INDICATOR_META.INDPRO.freq} isMock={!isLive} />,
     ]}
     chartL={<ExtChartCard title="IPI 추이" data={data} lineKeys={['ipi']} colors={[T.blue]} />}
-    chartR={<ExtChartCard title="IPI 추이 (동일)" data={data} lineKeys={['ipi']} colors={[T.blue]} />}
     tableData={data} tableKeys={['ipi']}
     tableLabels={['IPI']} tableUnits={['']}
     filename="ext_global.csv"
@@ -823,21 +822,18 @@ export function PageExtSupply() {
 
   const { data, loading } = useExtData(fetchSupplyData, EXT_SUPPLY_DATA, period, freq)
   const isLive = data !== EXT_SUPPLY_DATA
-  const bdi = calcChange(data, 'bdi'), frt = calcChange(data, 'freight')
+  const bdi = calcChange(data, 'bdi')
   return <ExtLayout
-    title="물류" sub="BDI 발틱운임지수(일간, 영업일) · 아시아 해상 운임(일간)"
+    title="물류" sub="BDI 발틱운임지수(일간, 영업일) — 해상 운임 미연동"
     isLive={isLive} loading={loading}
     freqOptions={['day', 'week', 'month']} freq={freq} onFreqChange={setFreq}
     tickerItems={[
-      <TickerCard key="bdi" label="BDI 발틱운임지수"  value={bdi.value as number} unit="pt" changePct={bdi.pct} chartData={data} dataKey="bdi"
+      <TickerCard key="bdi" label="BDI 발틱운임지수" value={bdi.value as number} unit="pt" changePct={bdi.pct} chartData={data} dataKey="bdi"
         source={INDICATOR_META.BALTIC_DRY.source} freq={INDICATOR_META.BALTIC_DRY.freq} />,
-      <TickerCard key="frt" label="해상 운임 (아시아)" value={frt.value as number} unit="$"  changePct={frt.pct} chartData={data} dataKey="freight"
-        source={INDICATOR_META.BALTIC_DRY.source} freq={INDICATOR_META.BALTIC_DRY.freq} isMock />,
     ]}
     chartL={<ExtChartCard title="BDI 추이" data={data} lineKeys={['bdi']} colors={[T.blue]} />}
-    chartR={<ExtChartCard title="해상 운임 추이" data={data} lineKeys={['freight']} colors={[T.amber]} />}
-    tableData={data} tableKeys={['bdi', 'freight']}
-    tableLabels={['BDI', '해상 운임']} tableUnits={['pt', '$']}
+    tableData={data} tableKeys={['bdi']}
+    tableLabels={['BDI']} tableUnits={['pt']}
     filename="ext_supply.csv"
     indicatorType="supply"
   />
@@ -860,7 +856,6 @@ export function PageExtRaw() {
         source={INDICATOR_META.WTI_MONTHLY.source} freq={INDICATOR_META.WTI_MONTHLY.freq} />,
     ]}
     chartL={<ExtChartCard title="WTI 원유 추이" data={data} lineKeys={['wti']} colors={[T.amber]} />}
-    chartR={<ExtChartCard title="WTI 원유 추이 (동일)" data={data} lineKeys={['wti']} colors={[T.amber]} />}
     tableData={data} tableKeys={['wti']}
     tableLabels={['WTI']} tableUnits={['$/bbl']}
     filename="ext_raw.csv"
