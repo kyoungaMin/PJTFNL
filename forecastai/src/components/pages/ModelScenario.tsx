@@ -58,8 +58,11 @@ const TABS = [
 type TabId = typeof TABS[number]['id']
 
 const MODELS = [
-  { id: 'lgbm_q_v2', label: '주간 모델 (LightGBM)' },
-  { id: 'lgbm_q_monthly_v1', label: '월간 모델 (LightGBM)' },
+  { id: 'segment_best_v1', label: '구간별 최적 모델 (추천)' },
+  { id: 'lgbm_q_v3', label: '주간 LightGBM v3' },
+  { id: 'lgbm_q_monthly_v2', label: '월간 LightGBM v2' },
+  { id: 'svr_linear_v1', label: '주간 SVR (저수요 특화)' },
+  { id: 'ridge_monthly_v1', label: '월간 Ridge (중·고수요)' },
 ]
 
 type ProductInfo = { id: string; name: string; spec: string; currentStock: number; safeStock: number; productionCap: number; estimated?: boolean }
@@ -157,7 +160,7 @@ export default function PageModelScenario() {
   const [loading, setLoading] = useState(true)
 
   /* ── Selection state ── */
-  const [modelId, setModelId] = useState('lgbm_q_v2')
+  const [modelId, setModelId] = useState('segment_best_v1')
   const [selectedProduct, setSelectedProduct] = useState('')
   const [weeks, setWeeks] = useState(8)
 
@@ -183,6 +186,34 @@ export default function PageModelScenario() {
 
   /* ── Risk scenario ── */
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null)
+
+  /* ── ML risk_score + action_queue ── */
+  type RiskInfo = { score: number; grade: string; type: string; action: string; status: string }
+  type ActionItem = { id: number; riskTypeLabel: string; severityLabel: string; description: string; suggestedQty: number | null; status: string }
+  const [riskInfo, setRiskInfo] = useState<RiskInfo | null>(null)
+  const [actionItems, setActionItems] = useState<ActionItem[]>([])
+
+  /* ── Fetch risk + actions when product changes ── */
+  useEffect(() => {
+    if (!selectedProduct) return
+    // risk_score
+    fetch(`/api/risk?grade=&type=전체&eval_type=weekly`)
+      .then(r => r.json())
+      .then(data => {
+        const item = (data.items ?? []).find((it: any) => it.sku === selectedProduct)
+        if (item) setRiskInfo({ score: item.score, grade: item.grade, type: item.type, action: item.action, status: item.status })
+        else setRiskInfo(null)
+      })
+      .catch(() => setRiskInfo(null))
+    // action_queue
+    fetch(`/api/forecast-weekly/actions?sku=${encodeURIComponent(selectedProduct)}&status=pending,in_progress`)
+      .then(r => r.json())
+      .then(data => setActionItems((data.items ?? []).map((a: any) => ({
+        id: a.id, riskTypeLabel: a.riskTypeLabel, severityLabel: a.severityLabel,
+        description: a.description, suggestedQty: a.suggestedQty, status: a.status,
+      }))))
+      .catch(() => setActionItems([]))
+  }, [selectedProduct])
 
   /* ── Load product list ── */
   useEffect(() => {
@@ -237,8 +268,8 @@ export default function PageModelScenario() {
     if (!compProduct) return
     setCompLoading(true)
     Promise.all([
-      fetch(`/api/model-scenario?model=lgbm_q_v2&product=${encodeURIComponent(compProduct)}&weeks=8`).then(r => r.json()),
-      fetch(`/api/model-scenario?model=lgbm_q_monthly_v1&product=${encodeURIComponent(compProduct)}&weeks=8`).then(r => r.json()),
+      fetch(`/api/model-scenario?model=lgbm_q_v3&product=${encodeURIComponent(compProduct)}&weeks=8`).then(r => r.json()),
+      fetch(`/api/model-scenario?model=lgbm_q_monthly_v2&product=${encodeURIComponent(compProduct)}&weeks=8`).then(r => r.json()),
     ]).then(([weekly, monthly]) => {
       setWeeklyPreds(weekly.predictions ?? [])
       setMonthlyPreds(monthly.predictions ?? [])
@@ -276,7 +307,7 @@ export default function PageModelScenario() {
     <div>
       <PageHeader
         title="AI 시나리오 분석"
-        sub="학습된 ML 모델(LightGBM)의 예측값(P10/P50/P90)을 기반으로 What-If 시나리오를 분석합니다"
+        sub="구간별 최적 ML 모델(LightGBM·SVR·Ridge)의 예측값(P10/P50/P90)과 실제 리스크 등급을 기반으로 What-If 시나리오를 분석합니다"
       />
 
       {/* ── Tab bar ── */}
@@ -405,6 +436,13 @@ export default function PageModelScenario() {
                       <div style={{ fontSize: 12, color: T.text3, marginTop: 2 }}>{product.id} · {product.spec}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 16 }}>
+                      {riskInfo && (
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 10, color: T.text3 }}>ML 리스크</div>
+                          <div style={{ fontSize: 16, fontWeight: 800, fontFamily: mono, color: riskInfo.grade <= 'B' ? T.green : riskInfo.grade <= 'C' ? T.amber : T.red }}>{riskInfo.grade}</div>
+                          <div style={{ fontSize: 9, color: T.text3 }}>{riskInfo.score}점 · {riskInfo.type}</div>
+                        </div>
+                      )}
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 10, color: T.text3 }}>현재 재고{product.estimated ? ' (추정)' : ''}</div>
                         <div style={{ fontSize: 16, fontWeight: 800, color: T.text1, fontFamily: mono }}>{fmt(product.currentStock)}</div>
@@ -1055,6 +1093,54 @@ export default function PageModelScenario() {
                           </div>
                         )}
                       </div>
+
+                      {/* ML 파이프라인 리스크 + 액션큐 */}
+                      {(riskInfo || actionItems.length > 0) && (
+                        <div style={{ ...card, marginTop: 16, borderLeft: `3px solid ${T.purple}` }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: T.text1, marginBottom: 10 }}>ML 파이프라인 리스크 분석</div>
+
+                          {riskInfo && (
+                            <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                              <div style={{ padding: '10px 16px', borderRadius: 8, background: riskInfo.grade <= 'B' ? T.greenSoft : riskInfo.grade <= 'C' ? T.amberSoft : T.redSoft, textAlign: 'center' }}>
+                                <div style={{ fontSize: 10, color: T.text3 }}>리스크 등급</div>
+                                <div style={{ fontSize: 24, fontWeight: 900, fontFamily: mono, color: riskInfo.grade <= 'B' ? T.green : riskInfo.grade <= 'C' ? T.amber : T.red }}>{riskInfo.grade}</div>
+                                <div style={{ fontSize: 10, color: T.text3 }}>{riskInfo.score}점</div>
+                              </div>
+                              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
+                                <div style={{ fontSize: 12, color: T.text2 }}>주요 리스크: <b style={{ color: T.text1 }}>{riskInfo.type}</b></div>
+                                <div style={{ fontSize: 12, color: T.text2 }}>권고 조치: <b style={{ color: T.text1 }}>{riskInfo.action}</b></div>
+                                <div style={{ fontSize: 11, color: T.text3 }}>처리 상태: <span style={{ fontWeight: 700, color: riskInfo.status === '완료' ? T.green : riskInfo.status === '검토중' ? T.amber : T.red }}>{riskInfo.status}</span></div>
+                              </div>
+                            </div>
+                          )}
+
+                          {actionItems.length > 0 && (
+                            <>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 8 }}>AI 추천 액션 ({actionItems.length}건)</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {actionItems.map(a => (
+                                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: T.surface2, borderRadius: 6 }}>
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                      background: a.severityLabel === '긴급' ? T.redSoft : a.severityLabel === '높음' ? T.orangeSoft : T.amberSoft,
+                                      color: a.severityLabel === '긴급' ? T.red : a.severityLabel === '높음' ? T.orange : T.amber,
+                                    }}>{a.severityLabel}</span>
+                                    <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: T.blueSoft, color: T.blue }}>{a.riskTypeLabel}</span>
+                                    <span style={{ fontSize: 11, color: T.text1, flex: 1 }}>{a.description}</span>
+                                    {a.suggestedQty != null && (
+                                      <span style={{ fontSize: 10, fontWeight: 700, color: T.purple, fontFamily: mono }}>{fmt(a.suggestedQty)} EA</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
+
+                          {!riskInfo && actionItems.length === 0 && (
+                            <div style={{ fontSize: 12, color: T.text3, padding: 8 }}>이 제품에 대한 ML 리스크 데이터가 없습니다.</div>
+                          )}
+                        </div>
+                      )}
                     </>
                   )
                 })()}

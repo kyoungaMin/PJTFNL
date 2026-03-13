@@ -4,7 +4,7 @@ import { T, NAV_STRUCTURE, ROLE_LABEL, type Member } from '@/lib/data'
 import { Badge, Btn } from '@/components/ui'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
-export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { page:string, setPage:(p:string)=>void, collapsed:boolean, onToggle:()=>void, currentUser?: import('@/lib/data').Member|null }) {
+export function Sidebar({ page, setPage, collapsed, currentUser }: { page:string, setPage:(p:string)=>void, collapsed:boolean, currentUser?: import('@/lib/data').Member|null }) {
   const [openGroups, setOpenGroups] = useState({"재고 관리":true,"수요예측":true,"최적화":true,"외부 지표":true});
   const groups = Array.from(new Set(NAV_STRUCTURE.filter(n=>n.parent).map(n=>n.parent)));
   const grouped = {
@@ -33,7 +33,7 @@ export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { p
   };
 
   return (
-    <div style={{ width:collapsed?54:220, background:T.sidebarBg, borderRight:`1px solid ${T.sidebarBd}`, display:"flex", flexDirection:"column", transition:"width 0.22s ease", flexShrink:0, position:"relative" }}>
+    <div style={{ width:collapsed?54:220, background:T.sidebarBg, borderRight:`1px solid ${T.sidebarBd}`, display:"flex", flexDirection:"column", transition:"width 0.22s ease", flexShrink:0, position:"relative", zIndex:20 }}>
       {/* Logo */}
       <div style={{ padding:collapsed?"18px 0":"18px 18px", borderBottom:`1px solid ${T.sidebarBd}`, display:"flex", alignItems:"center", gap:10, justifyContent:collapsed?"center":"flex-start" }}>
         <div style={{ width:30, height:30, borderRadius:8, flexShrink:0, background:"linear-gradient(135deg,#3B82F6,#1D4ED8)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:800, color:"#fff" }}>F</div>
@@ -72,9 +72,6 @@ export function Sidebar({ page, setPage, collapsed, onToggle, currentUser }: { p
         </div>
       )}
 
-      <button onClick={onToggle} style={{ position:"absolute", top:20, right:-11, width:22, height:22, borderRadius:"50%", background:"#2D4470", border:`1px solid ${T.sidebarBd}`, color:T.sidebarTxt, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", zIndex:10 }}>
-        {collapsed?"›":"‹"}
-      </button>
     </div>
   );
 }
@@ -90,7 +87,46 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
   const [alertItems, setAlertItems] = useState<{type:string;message:string;time:string;page?:string}[]>([]);
   const [alertLoaded, setAlertLoaded] = useState(false);
 
+  // 비밀번호 변경 모달
+  const [pwOpen,    setPwOpen]    = useState(false);
+  const [pw1,       setPw1]       = useState('');
+  const [pw2,       setPw2]       = useState('');
+  const [pwMsg,     setPwMsg]     = useState('');
+  const [pwOk,      setPwOk]      = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+
+  const openPwModal = () => {
+    setPwOpen(true); setUserOpen(false);
+    setPw1(''); setPw2(''); setPwMsg(''); setPwOk(false);
+  };
+
+  const handlePwChange = async () => {
+    if (!pw1)             { setPwMsg('새 비밀번호를 입력해 주세요.'); return }
+    if (pw1.length < 6)   { setPwMsg('비밀번호는 최소 6자 이상이어야 합니다.'); return }
+    if (pw1 !== pw2)      { setPwMsg('비밀번호가 일치하지 않습니다.'); return }
+    setPwLoading(true); setPwMsg('');
+    const { error } = await supabaseBrowser.auth.updateUser({ password: pw1 })
+    if (error) {
+      const errMap: Record<string, string> = {
+        'Password should be at least 6 characters.': '비밀번호는 최소 6자 이상이어야 합니다.',
+        'New password should be different from the old password.': '기존 비밀번호와 다른 비밀번호를 입력해 주세요.',
+      }
+      setPwMsg(errMap[error.message] ?? `오류: ${error.message}`)
+    } else {
+      setPwOk(true);
+      setPwMsg('비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인해 주세요.')
+      // 3초 후 로그아웃 → 새 비밀번호로 로그인하도록 유도
+      setTimeout(async () => {
+        sessionStorage.removeItem('session_active')
+        await supabaseBrowser.auth.signOut()
+        window.location.href = '/'
+      }, 3000)
+    }
+    setPwLoading(false);
+  };
+
   const handleLogout = async () => {
+    sessionStorage.removeItem('session_active')
     await supabaseBrowser.auth.signOut()
     window.location.href = '/'
   };
@@ -117,6 +153,7 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
   };
 
   return (
+    <>
     <div style={{ height:58, background:"#FFFFFF", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"0 24px", flexShrink:0, position:"relative", zIndex:50 }}>
 
       <div style={{ display:"flex", alignItems:"center", gap:14 }}>
@@ -193,6 +230,7 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
                     ⚙️ 관리자 설정
                   </button>
                 )}
+                <button onClick={openPwModal} style={{ width:"100%", padding:"7px 0", background:T.surface2, border:`1px solid ${T.border}`, borderRadius:6, fontSize:11, color:T.text2, cursor:"pointer", fontWeight:600 }}>🔑 비밀번호 변경</button>
                 <button onClick={handleLogout} style={{ width:"100%", padding:"7px 0", background:T.redSoft, border:`1px solid ${T.redMid}`, borderRadius:6, fontSize:11, color:T.red, cursor:"pointer", fontWeight:600 }}>로그아웃</button>
               </div>
             </div>
@@ -200,5 +238,61 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
         </div>
       </div>
     </div>
+
+    {/* 비밀번호 변경 모달 — fixed이므로 헤더 div 밖에 위치 */}
+    {pwOpen && (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }}
+        onClick={() => setPwOpen(false)}>
+        <div onClick={e => e.stopPropagation()}
+          style={{ background:'#1E293B', border:'1px solid rgba(255,255,255,0.12)', borderRadius:16, padding:'28px 28px', width:360, boxShadow:'0 20px 48px rgba(0,0,0,0.5)', fontFamily:"'Pretendard','Noto Sans KR',sans-serif" }}>
+          <div style={{ fontSize:15, fontWeight:700, color:'#F1F5F9', marginBottom:6 }}>비밀번호 변경</div>
+          <div style={{ fontSize:12, color:'#64748B', marginBottom:20 }}>새로 사용할 비밀번호를 입력해 주세요.</div>
+
+          {!pwOk && (
+            <>
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'#94A3B8', marginBottom:7 }}>새 비밀번호</div>
+                <input type="password" value={pw1} onChange={e => setPw1(e.target.value)}
+                  placeholder="새 비밀번호 (6자 이상)"
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:9, padding:'11px 13px', fontSize:13, color:'#F1F5F9', outline:'none', boxSizing:'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom:16 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'#94A3B8', marginBottom:7 }}>비밀번호 확인</div>
+                <input type="password" value={pw2} onChange={e => setPw2(e.target.value)}
+                  placeholder="비밀번호 다시 입력"
+                  onKeyDown={e => { if (e.key === 'Enter') handlePwChange() }}
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:9, padding:'11px 13px', fontSize:13, color:'#F1F5F9', outline:'none', boxSizing:'border-box' }}
+                />
+              </div>
+            </>
+          )}
+
+          {pwMsg && (
+            <div style={{ marginBottom:16, padding:'9px 12px', borderRadius:7,
+              background: pwOk ? 'rgba(5,150,105,0.15)' : 'rgba(220,38,38,0.15)',
+              color:      pwOk ? '#6EE7B7' : '#FCA5A5',
+              border:     `1px solid ${pwOk ? 'rgba(5,150,105,0.3)' : 'rgba(220,38,38,0.3)'}`,
+              fontSize:12 }}>
+              {pwMsg}
+            </div>
+          )}
+
+          {!pwOk && (
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setPwOpen(false)}
+                style={{ flex:1, padding:'10px 0', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.10)', borderRadius:9, fontSize:13, color:'#94A3B8', cursor:'pointer' }}>
+                취소
+              </button>
+              <button onClick={handlePwChange} disabled={pwLoading}
+                style={{ flex:2, padding:'10px 0', background:'linear-gradient(135deg,#2563EB,#3B82F6)', border:'none', borderRadius:9, fontSize:13, fontWeight:700, color:'white', cursor:pwLoading?'not-allowed':'pointer', opacity:pwLoading?0.6:1 }}>
+                {pwLoading ? '변경 중…' : '비밀번호 변경'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+    </>
   );
 }

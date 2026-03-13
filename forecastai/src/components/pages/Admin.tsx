@@ -92,6 +92,13 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
   // 역할 인라인 편집
   const [editRole, setEditRole] = useState<Record<string, boolean>>({})
 
+  // 삭제 확인 모달
+  const [deleteTarget, setDeleteTarget] = useState<DbUser | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
+  // PW 초기화 메시지 (userId → 표시 메시지)
+  const [pwResetMsg, setPwResetMsg] = useState<Record<string, string>>({})
+
   const roleColors: Record<string, string> = {
     Admin: T.purple, Manager: T.blue, Analyst: T.green, Viewer: T.text3,
   }
@@ -133,6 +140,36 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
       setDbUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole.toLowerCase() } : u))
     }
     setEditRole(prev => ({ ...prev, [userId]: false }))
+  }
+
+  // ─── 사용자 삭제 ────────────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleteLoading(true)
+    const res = await fetch('/api/admin/delete-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: token, userId: deleteTarget.id }),
+    })
+    if (res.ok) {
+      setDbUsers(prev => prev.filter(u => u.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    }
+    setDeleteLoading(false)
+  }
+
+  // ─── 비밀번호 초기화 ─────────────────────────────────────────────────────────
+  const handleResetPassword = async (userId: string) => {
+    const res = await fetch('/api/admin/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: token, userId }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      setPwResetMsg(prev => ({ ...prev, [userId]: `임시 PW: ${data.tempPassword}` }))
+      setTimeout(() => setPwResetMsg(prev => { const n = { ...prev }; delete n[userId]; return n }), 10000)
+    }
   }
 
   // ─── 비활성화/활성화 ────────────────────────────────────────────────────────
@@ -307,12 +344,29 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
                 <span style={{ fontSize:12, color:T.text3 }}>{formatLastLogin(u.last_login_at)}</span>,
                 <StatusBadge status={u.is_active ? '활성' : '비활성'}/>,
                 u.id !== currentUser.id ? (
-                  <button
-                    onClick={() => handleToggleActive(u.id, u.is_active)}
-                    style={{ fontSize:11, color: u.is_active ? T.red : T.green, background:'none', border:'none', cursor:'pointer' }}
-                  >
-                    {u.is_active ? '비활성화' : '활성화'}
-                  </button>
+                  <div style={{ display:'flex', flexDirection:'column', gap:4, alignItems:'center' }}>
+                    <button
+                      onClick={() => handleToggleActive(u.id, u.is_active)}
+                      style={{ fontSize:11, color: u.is_active ? T.text3 : T.green, background:'none', border:'none', cursor:'pointer' }}
+                    >
+                      {u.is_active ? '비활성화' : '활성화'}
+                    </button>
+                    <button
+                      onClick={() => handleResetPassword(u.id)}
+                      style={{ fontSize:11, color: T.blue, background:'none', border:'none', cursor:'pointer' }}
+                    >
+                      PW초기화
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(u)}
+                      style={{ fontSize:11, color: T.red, background:'none', border:'none', cursor:'pointer', fontWeight:600 }}
+                    >
+                      삭제
+                    </button>
+                    {pwResetMsg[u.id] && (
+                      <span style={{ fontSize:10, color:T.green, textAlign:'center' }}>{pwResetMsg[u.id]}</span>
+                    )}
+                  </div>
                 ) : <span style={{ fontSize:11, color:T.text3 }}>—</span>,
               ]}
             })}
@@ -384,6 +438,26 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
               <Btn variant="secondary" onClick={() => setInviteOpen(false)} style={{ flex:1 }}>취소</Btn>
               <Btn onClick={handleInvite} style={{ flex:2 }} disabled={invLoading}>
                 {invLoading ? '생성 중…' : '계정 생성 (기본 비밀번호 1234)'}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 삭제 확인 모달 ── */}
+      {deleteTarget && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.45)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={() => setDeleteTarget(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:12, padding:28, width:380, boxShadow:'0 20px 48px rgba(15,23,42,0.18)' }}>
+            <div style={{ fontSize:15, fontWeight:700, color:T.text1, marginBottom:8 }}>계정 삭제</div>
+            <div style={{ fontSize:13, color:T.text2, marginBottom:6 }}>
+              <b>{deleteTarget.display_name ?? deleteTarget.email}</b> 님의 계정을 영구 삭제합니다.
+            </div>
+            <div style={{ fontSize:12, color:T.red, marginBottom:20 }}>이 작업은 되돌릴 수 없습니다.</div>
+            <div style={{ display:'flex', gap:8 }}>
+              <Btn variant="secondary" onClick={() => setDeleteTarget(null)} style={{ flex:1 }}>취소</Btn>
+              <Btn onClick={handleDelete} disabled={deleteLoading} style={{ flex:1, background:T.red, borderColor:T.red }}>
+                {deleteLoading ? '삭제 중…' : '삭제'}
               </Btn>
             </div>
           </div>

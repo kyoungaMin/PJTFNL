@@ -566,19 +566,19 @@ export function runSensitivity(sku: SimSku, baseParams: SimParams, period: numbe
 
 // ─── Auth / Members ───────────────────────────────────────────────────────────
 export const ALL_MEMBERS: Member[] = [
-  {id:'1',name:'김다솜',role:'Analyst',dept:'개발팀',email:'dasom@company.com',  grad:'linear-gradient(135deg,#3B82F6,#7C3AED)',initial:'다'},
-  {id:'2',name:'민경아',role:'Manager',dept:'개발팀',email:'kyounga@company.com',grad:'linear-gradient(135deg,#10B981,#059669)',initial:'경'},
-  {id:'3',name:'구지은',role:'Analyst',dept:'개발팀',email:'jieun@company.com',  grad:'linear-gradient(135deg,#06B6D4,#3B82F6)',initial:'지'},
-  {id:'4',name:'김성민',role:'Analyst',dept:'개발팀',email:'sungmin@company.com',grad:'linear-gradient(135deg,#F59E0B,#EF4444)',initial:'성'},
-  {id:'5',name:'관리자',role:'Admin',  dept:'IT팀',  email:'admin@company.com',  grad:'linear-gradient(135deg,#7C3AED,#EC4899)',initial:'관'},
+  {id:'1',name:'김다솜',role:'Analyst',dept:'개발팀',email:'rusia0567@naver.com',       grad:'linear-gradient(135deg,#3B82F6,#7C3AED)',initial:'다'},
+  {id:'2',name:'민경아',role:'Manager',dept:'개발팀',email:'sellingnowglobal@gmail.com',grad:'linear-gradient(135deg,#10B981,#059669)',initial:'경'},
+  {id:'3',name:'구지은',role:'Analyst',dept:'개발팀',email:'tiqls1@swu.ac.kr',          grad:'linear-gradient(135deg,#06B6D4,#3B82F6)',initial:'지'},
+  {id:'4',name:'김성민',role:'Analyst',dept:'개발팀',email:'boy02men@gmail.com',         grad:'linear-gradient(135deg,#F59E0B,#EF4444)',initial:'성'},
+  {id:'5',name:'관리자',role:'Admin',  dept:'IT팀',  email:'rusia0567@gmail.com',         grad:'linear-gradient(135deg,#7C3AED,#EC4899)',initial:'관'},
 ]
 
 export const LOGIN_ACCOUNTS = [
-  {email:'dasom@company.com',  password:'1234',member:ALL_MEMBERS[0]},
-  {email:'kyounga@company.com',password:'1234',member:ALL_MEMBERS[1]},
-  {email:'jieun@company.com',  password:'1234',member:ALL_MEMBERS[2]},
-  {email:'sungmin@company.com',password:'1234',member:ALL_MEMBERS[3]},
-  {email:'admin@company.com',  password:'1234',member:ALL_MEMBERS[4]},
+  {email:'rusia0567@naver.com',       password:'1234',member:ALL_MEMBERS[0]},
+  {email:'sellingnowglobal@gmail.com',password:'1234',member:ALL_MEMBERS[1]},
+  {email:'tiqls1@swu.ac.kr',          password:'1234',member:ALL_MEMBERS[2]},
+  {email:'boy02men@gmail.com',         password:'1234',member:ALL_MEMBERS[3]},
+  {email:'rusia0567@gmail.com',        password:'1234',member:ALL_MEMBERS[4]},
 ]
 
 export const ROLE_PERMISSIONS: Record<string, Record<string, boolean>> = {
@@ -595,11 +595,11 @@ export const ROLE_LABEL: Record<RoleType,string> = {
 export const NAV_STRUCTURE = [
   {id:'dashboard',       label:'대시보드',     dot:'#93C5FD'},
   {id:'inventory',       label:'재고 현황',    parent:'재고 관리', dot:'#93C5FD'},
-  {id:'risk',            label:'리스크 관리',  parent:'재고 관리', dot:'#FCA5A5',badge:40},
+  {id:'risk',            label:'리스크 관리',  parent:'재고 관리', dot:'#FCA5A5'},
   {id:'weekly-forecast', label:'주간 예측',    parent:'수요예측',  dot:'#93C5FD'},
   {id:'monthly-forecast',label:'월간 예측',    parent:'수요예측',  dot:'#93C5FD'},
   {id:'model-eval',      label:'모델 평가',    parent:'수요예측',  dot:'#93C5FD'},
-  {id:'action-queue',    label:'생산 권고',    parent:'최적화',    dot:'#93C5FD',badge:3},
+  {id:'action-queue',    label:'생산 권고',    parent:'최적화',    dot:'#93C5FD'},
   {id:'purchase',        label:'구매 권고',    parent:'최적화',    dot:'#93C5FD'},
   {id:'simulation',      label:'시나리오 분석',parent:'최적화',    dot:'#93C5FD'},
   {id:'model-scenario',  label:'AI 시나리오', parent:'최적화',    dot:'#93C5FD'},
