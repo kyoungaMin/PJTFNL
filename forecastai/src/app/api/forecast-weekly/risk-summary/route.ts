@@ -51,6 +51,7 @@ export async function GET(request: Request) {
         'total_risk, risk_grade, inventory_days, demand_p90, safety_stock'
       )
       .eq('product_id', productId)
+      .eq('eval_type', 'monthly') // 기본 Monthly (가장 최근 데이터 위주)
       .order('eval_date', { ascending: false })
       .limit(1)
       .single()
