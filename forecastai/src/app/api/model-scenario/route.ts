@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 
 // GET /api/model-scenario?model=lgbm_q_v3&product=ALL&weeks=8
 export async function GET(req: NextRequest) {
-  const modelId = req.nextUrl.searchParams.get('model') ?? 'lgbm_q_v3'
+  const modelId = req.nextUrl.searchParams.get('model') ?? 'segment_best_v1'
   const productId = req.nextUrl.searchParams.get('product') ?? ''
   const weeks = parseInt(req.nextUrl.searchParams.get('weeks') ?? '8')
 
@@ -160,7 +160,13 @@ export async function GET(req: NextRequest) {
         weekCount: predictions.length,
         dateRange,
         tables: usedTables,
-        modelDesc: modelId === 'lgbm_q_v3' ? 'LightGBM 주간 수요예측 모델 v3' : 'LightGBM 월간 수요예측 모델 v1',
+        modelDesc: ({
+          'segment_best_v1': '구간별 최적 모델 (저수요=SVR, 중·고수요=LightGBM/Ridge)',
+          'lgbm_q_v3': 'LightGBM 주간 수요예측 모델 v3',
+          'lgbm_q_monthly_v2': 'LightGBM 월간 수요예측 모델 v2',
+          'svr_linear_v1': 'SVR Linear 주간 모델 v1 (저수요 특화)',
+          'ridge_monthly_v1': 'Ridge 월간 모델 v1 (중·고수요)',
+        } as Record<string, string>)[modelId] ?? modelId,
         estimated: dataEstimated,
       },
     })
