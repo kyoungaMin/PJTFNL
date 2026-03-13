@@ -28,7 +28,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '권한 없음 (admin만 접근 가능)' }, { status: 403 })
   }
 
-  // 3. 같은 회사 사용자 조회 (company_id가 없으면 전체 조회)
+  // 3. Supabase Auth 이메일 목록 조회 (항상 최신 이메일 보장)
+  const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+  const authEmailMap = new Map<string, string>()
+  authUsers?.users?.forEach(u => { if (u.id && u.email) authEmailMap.set(u.id, u.email) })
+
+  // 4. 같은 회사 사용자 조회 (company_id가 없으면 전체 조회)
   let query = supabase
     .from('user_profile')
     .select('id, email, display_name, role, department, is_active, last_login_at, company_id, org_id, invited_by, created_at')
@@ -42,5 +47,11 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json(data ?? [])
+  // Auth 이메일로 email 컬럼 덮어쓰기 (user_profile.email이 오래됐을 수 있음)
+  const merged = (data ?? []).map(u => ({
+    ...u,
+    email: authEmailMap.get(u.id) ?? u.email ?? '',
+  }))
+
+  return NextResponse.json(merged)
 }

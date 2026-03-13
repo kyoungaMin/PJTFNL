@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 
 // ─── 인메모리 캐시 (서버 재시작 전까지 유지, 6시간마다 갱신) ────────────────
 // GPT 호출은 비용이 발생하므로 매 요청마다 호출하지 않고 캐싱
+// SYSTEM_BASE_DATE 변경 시 서버 재시작으로 캐시 자동 초기화됨
 let cache: { insights: InsightItem[]; generatedAt: number } | null = null
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000  // 6시간
 
@@ -13,9 +14,14 @@ interface InsightItem {
   text: string
 }
 
+// ─── 시스템 기준날짜 ────────────────────────────────────────────────────────
+// 실데이터 최신일(2026-02-28) 기준으로 모든 날짜 계산
+// → 실제 서비스 전환 시 이 상수를 제거하고 new Date()로 복원
+const SYSTEM_BASE_DATE = '2026-02-28'
+
 // ─── DB에서 실데이터 수집 ──────────────────────────────────────────────────────
 async function collectDashboardData() {
-  const now = new Date()
+  const now = new Date(SYSTEM_BASE_DATE + 'T00:00:00')
 
   // 1. 최근 3개월 수주량 (이번달 / 저번달 / 전전달)
   // ⚠️ daily_order 직접 조회 → limit=1000에 걸려 월 수주량 과소 계산
@@ -187,7 +193,7 @@ export async function GET() {
       return NextResponse.json({
         insights:    cache.insights,
         source:      'cache',
-        generatedAt: new Date(cache.generatedAt).toISOString(),
+        generatedAt: SYSTEM_BASE_DATE + 'T00:00:00',  // 시스템 기준날짜 표시
       })
     }
 
@@ -206,7 +212,7 @@ export async function GET() {
     return NextResponse.json({
       insights,
       source:      'gpt',
-      generatedAt: new Date(cache.generatedAt).toISOString(),
+      generatedAt: SYSTEM_BASE_DATE + 'T00:00:00',  // 시스템 기준날짜 표시
     })
   } catch (err: any) {
     console.error('[AI-Insights] 오류:', err.message)

@@ -417,7 +417,7 @@ function AIInsightPanel() {
         }
         {generatedAt && (
           <span style={{ color: T.text3 }}>
-            {new Date(generatedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 생성
+            {new Date(generatedAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })} 기준
           </span>
         )}
       </div>
