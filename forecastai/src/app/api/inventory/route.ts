@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 export const dynamic = 'force-dynamic'
 
 type StatusCode = 'all' | 'risk' | 'short' | 'normal' | 'excess'
+type CustomerAggregate = { qty: number; name: string; id: string }
 const INVENTORY_CACHE_TTL_MS = 30_000
 const inventoryResponseCache = new Map<string, { expiresAt: number; payload: any }>()
 const monthlyInventoryMapCache = new Map<string, { expiresAt: number; invByProduct: Record<string, number> }>()
@@ -225,6 +226,34 @@ function sortProductsByInventory(products: any[], invByProduct: Record<string, n
   )
 }
 
+function buildTopCustomerMap(rows: any[]) {
+  const custAcc: Record<string, Record<string, CustomerAggregate>> = {}
+
+  for (const row of rows) {
+    if (!custAcc[row.product_id]) custAcc[row.product_id] = {}
+    if (!custAcc[row.product_id][row.customer_id]) {
+      custAcc[row.product_id][row.customer_id] = {
+        qty: 0,
+        name: row.customer_name ?? '',
+        id: row.customer_id,
+      }
+    }
+
+    custAcc[row.product_id][row.customer_id].qty += Number(row.order_qty ?? 0)
+    if (!custAcc[row.product_id][row.customer_id].name && row.customer_name) {
+      custAcc[row.product_id][row.customer_id].name = row.customer_name
+    }
+  }
+
+  const custMap: Record<string, string> = {}
+  for (const [pid, cmap] of Object.entries(custAcc)) {
+    const top = Object.values(cmap).sort((a, b) => b.qty - a.qty)[0]
+    if (top) custMap[pid] = top.name || top.id
+  }
+
+  return custMap
+}
+
 export async function GET(req: Request) {
   try {
     const cacheKey = getInventoryCacheKey(req)
@@ -238,6 +267,7 @@ export async function GET(req: Request) {
     const search = searchParams.get('search') ?? ''
     const statusParam = (searchParams.get('status') as StatusCode | null) ?? 'all'
     const categoryParam = searchParams.get('category') ?? '전체'
+    const customerParam = searchParams.get('customer') ?? '전체'
     const page = parseInt(searchParams.get('page') ?? '1', 10)
     const respond = (payload: any) => {
       writeInventoryCache(cacheKey, payload)
@@ -274,6 +304,7 @@ export async function GET(req: Request) {
           totalCount: 0,
           baseTotalCount: 0,
           categoryOptions: ['전체'],
+          customerOptions: ['전체'],
           statusCounts: { all: 0, risk: 0, short: 0, normal: 0, excess: 0 },
           selectedMonth,
           source: 'database',
@@ -282,12 +313,11 @@ export async function GET(req: Request) {
 
       const baseProducts = await batchIn(
         'product_master',
-        'product_code,product_name,product_category,product_type',
+        'product_code,product_name,product_specification,product_category,product_type',
         'product_code',
         monthProductIds,
         q => {
           let qq = q
-          if (search) qq = qq.or(`product_code.ilike.%${search}%,product_name.ilike.%${search}%`)
           if (typeParam !== '전체') qq = qq.eq('product_type', typeParam)
           return qq
         }
@@ -309,6 +339,7 @@ export async function GET(req: Request) {
           totalCount: 0,
           baseTotalCount,
           categoryOptions,
+          customerOptions: ['전체'],
           statusCounts: { all: 0, risk: 0, short: 0, normal: 0, excess: 0 },
           selectedMonth,
           source: 'database',
@@ -344,6 +375,7 @@ export async function GET(req: Request) {
         return {
           sku: product.product_code,
           name: product.product_name ?? product.product_code,
+          spec: product.product_specification ?? '',
           category: product.product_category ?? '기타',
           productType: product.product_type ?? '기타',
           stock,
@@ -370,24 +402,6 @@ export async function GET(req: Request) {
           return priDiff !== 0 ? priDiff : b.stock - a.stock
         })
 
-      const totalCount = filteredMeta.length
-      const limit = 200
-      const offset = (page - 1) * limit
-      const pagedMeta = filteredMeta.slice(offset, offset + limit)
-      const productIds = pagedMeta.map(item => item.sku)
-
-      if (!productIds.length) {
-        return respond({
-          skuList: [],
-          totalCount,
-          baseTotalCount,
-          categoryOptions,
-          statusCounts,
-          selectedMonth,
-          source: 'database',
-        })
-      }
-
       const referenceDate = resolveReferenceDate(selectedMonth)
       const eightWeeksAgo = new Date(referenceDate)
       eightWeeksAgo.setDate(referenceDate.getDate() - 56)
@@ -397,6 +411,50 @@ export async function GET(req: Request) {
 
       const fourWeeksAgo = new Date(referenceDate)
       fourWeeksAgo.setDate(referenceDate.getDate() - 28)
+
+      const baseCustomerRows = await batchIn(
+        'weekly_customer_summary',
+        'product_id,customer_id,customer_name,order_qty',
+        'product_id',
+        baseProductIds,
+        q => q.gte('week_start', formatDate(fourWeeksAgo)).lte('week_start', formatDate(referenceDate))
+      )
+      const baseCustomerMap = buildTopCustomerMap(baseCustomerRows)
+      const customerOptions = ['전체', ...Array.from(new Set(
+        Object.values(baseCustomerMap).filter(Boolean)
+      )).sort()]
+
+      const normalizedSearch = search.trim().toLowerCase()
+      const customerScoped = customerParam !== '전체'
+        ? filteredMeta.filter(item => (baseCustomerMap[item.sku] ?? '-') === customerParam)
+        : filteredMeta
+
+      const searchScoped = normalizedSearch
+        ? customerScoped.filter(item =>
+            [item.sku, item.name].some(value =>
+              String(value ?? '').toLowerCase().includes(normalizedSearch)
+            )
+          )
+        : customerScoped
+
+      const totalCount = searchScoped.length
+      const limit = 200
+      const offset = (page - 1) * limit
+      const pagedMeta = searchScoped.slice(offset, offset + limit)
+      const productIds = pagedMeta.map(item => item.sku)
+
+      if (!productIds.length) {
+        return respond({
+          skuList: [],
+          totalCount,
+          baseTotalCount,
+          categoryOptions,
+          customerOptions,
+          statusCounts,
+          selectedMonth,
+          source: 'database',
+        })
+      }
 
       const wkPromise = batchIn(
         'weekly_product_summary',
@@ -414,18 +472,9 @@ export async function GET(req: Request) {
         q => q.gte('po_date', formatDate(sixMonthsAgo)).lte('po_date', formatDate(referenceDate)).not('unit_price', 'is', null)
       )
 
-      const custPromise = batchIn(
-        'weekly_customer_summary',
-        'product_id,customer_id,order_qty',
-        'product_id',
-        productIds,
-        q => q.gte('week_start', formatDate(fourWeeksAgo)).lte('week_start', formatDate(referenceDate))
-      )
-
-      const [wkRows, poRows, custRows] = await Promise.all([
+      const [wkRows, poRows] = await Promise.all([
         wkPromise,
         poPromise,
-        custPromise,
       ])
 
       const demandAcc: Record<string, { total: number; cnt: number }> = {}
@@ -442,31 +491,20 @@ export async function GET(req: Request) {
         costAcc[r.component_product_id].cnt++
       }
 
-      const custAcc: Record<string, Record<string, number>> = {}
-      for (const r of custRows) {
-        if (!custAcc[r.product_id]) custAcc[r.product_id] = {}
-        custAcc[r.product_id][r.customer_id] = (custAcc[r.product_id][r.customer_id] ?? 0) + Number(r.order_qty ?? 0)
-      }
-
-      const custMap: Record<string, string> = {}
-      for (const [pid, cmap] of Object.entries(custAcc)) {
-        const top = Object.entries(cmap).sort(([, a], [, b]) => b - a)[0]
-        if (top) custMap[pid] = top[0]
-      }
-
       const metaMap: Record<string, any> = {}
       for (const item of pagedMeta) metaMap[item.sku] = item
 
       const skuList = productIds.map(pid => ({
         sku: pid,
         name: metaMap[pid]?.name ?? pid,
+        spec: metaMap[pid]?.spec ?? '',
         category: metaMap[pid]?.category ?? '기타',
         productType: metaMap[pid]?.productType ?? '기타',
         stock: metaMap[pid]?.stock ?? 0,
         safeStock: metaMap[pid]?.safeStock ?? 0,
         unitCost: costAcc[pid] ? Math.round(costAcc[pid].total / costAcc[pid].cnt) : 0,
         weeklyDemand: demandAcc[pid] ? Math.round(demandAcc[pid].total / demandAcc[pid].cnt) : 0,
-        customer: custMap[pid] ?? '-',
+        customer: baseCustomerMap[pid] ?? '-',
         grade: metaMap[pid]?.grade ?? '-',
       }))
 
@@ -475,6 +513,7 @@ export async function GET(req: Request) {
         totalCount,
         baseTotalCount,
         categoryOptions,
+        customerOptions,
         statusCounts,
         selectedMonth,
         source: 'database',
