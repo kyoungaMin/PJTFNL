@@ -305,6 +305,42 @@ export default function PageActionQueue() {
               &quot;이번 주에 어떤 제품을 얼마나 생산해야 하는가&quot;를 권고하는 화면입니다.
             </p>
 
+            {/* ML 수요예측 반영 과정 */}
+            <div style={{ marginBottom:20 }}>
+              <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>머신러닝 수요예측은 어떻게 반영되나요?</h3>
+              <div style={{ fontSize:12, color:T.text2, lineHeight:1.8, background:T.surface2, borderRadius:10, padding:'14px 16px', border:`1px solid ${T.border}` }}>
+                <b>1단계. 과거 데이터 수집</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  최근 수주량, 생산량, 재고 변동, 환율, 반도체 시황 등 <b style={{ color:T.text1 }}>46가지 요인</b>을 자동으로 수집합니다.
+                </span><br/>
+                <b>2단계. AI 모델이 수요를 예측</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  3종의 머신러닝 모델(LightGBM · Ridge · SVR)이 각각 수요를 예측한 뒤,<br/>
+                  <span style={{ paddingLeft:16 }}>제품의 수요 규모(소량 · 중량 · 대량)에 따라 <b style={{ color:T.text1 }}>가장 정확한 모델을 자동 선택</b>합니다.</span>
+                </span><br/>
+                <b>3단계. 예측 결과를 세 가지 시나리오로 제공</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  · <b style={{ color:T.text1 }}>보수적 예측(하한)</b>: &quot;최소한 이 정도는 팔릴 것&quot; — 하위 10% 시나리오<br/>
+                  <span style={{ paddingLeft:16 }}>· <b style={{ color:T.text1 }}>기준 예측(중간값)</b>: &quot;가장 가능성 높은 수요&quot; — 생산 권고 수량의 기준</span><br/>
+                  <span style={{ paddingLeft:16 }}>· <b style={{ color:T.text1 }}>낙관적 예측(상한)</b>: &quot;최대 이 정도 팔릴 수 있음&quot; — 최대 생산 수량의 기준</span>
+                </span><br/>
+                <b>4단계. 리스크 평가와 결합</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  예측 수요에 현재 재고, 공급 리드타임, 미처리 수주를 종합하여<br/>
+                  <span style={{ paddingLeft:16 }}>결품 · 과잉 · 납기 · 마진 4가지 위험도를 산출하고 리스크등급(A~F)을 부여합니다.</span>
+                </span><br/>
+                <b>5단계. 최종 생산 권고 수량 산출</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  기준 예측 + 안전재고 − 현재 재고 = <b style={{ color:T.text1 }}>권고 생산 수량</b><br/>
+                  <span style={{ paddingLeft:16 }}>결품 위험이 높으면 낙관적 예측 기준으로 자동 상향됩니다.</span>
+                </span>
+              </div>
+              <p style={{ fontSize:11, color:T.text3, marginTop:6, lineHeight:1.6 }}>
+                즉, 화면에 표시되는 모든 수량은 AI가 과거 패턴 · 시장 상황 · 재고 현황을 종합 분석한 결과입니다.<br/>
+                담당자는 AI 권고를 참고하여 최종 생산 수량을 검토 · 승인하시면 됩니다.
+              </p>
+            </div>
+
             {/* 생산 최적화 알고리즘 */}
             <div style={{ marginBottom:20 }}>
               <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>AI 생산 최적화 알고리즘</h3>

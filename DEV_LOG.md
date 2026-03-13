@@ -117,6 +117,8 @@ DEV_LOG/
 | 2026-03-11 | kyoungaMin | risk_score eval_type 분리 | A안(날짜 규칙) / B안(eval_type 컬럼) | B안 (eval_type 컬럼) | 주/월 날짜 충돌 방지, UNIQUE 제약 명확 |
 | 2026-03-13 | kyoungaMin | 시나리오 기본 모델 | lgbm_q_v3 단일 / segment_best_v1 | segment_best_v1 | 구간별 최적 모델이 이미 선별되어 있으므로 기본으로 사용 |
 | 2026-03-13 | kyoungaMin | 개별 모델 비교 범위 | 주간/월간 2종만 / 5종 전체 | 5종 전체 | 사용자가 segment_best 외 개별 모델도 직접 비교 가능하도록 |
+| 2026-03-13 | kyoungaMin | 월간 모델 ID 기준 | monthly_v2 (데이터 없음) / monthly_v1 (24,482건) | monthly_v1 | 실제 forecast_result 데이터가 v1에만 존재 |
+| 2026-03-13 | kyoungaMin | 모델평가 기본 화면 | 전체 집계 / 최신 기간 자동 선택 | 최신 기간 자동 선택 | 기간별 추이를 먼저 보는 것이 실무적으로 유용 |
 
 ---
 

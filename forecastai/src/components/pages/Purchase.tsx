@@ -261,6 +261,41 @@ export default function PagePurchase() {
               &quot;어떤 부품을 얼마나, 언제 발주해야 하는가&quot;를 권고하는 화면입니다.
             </p>
 
+            {/* ML 수요예측 → 구매권고 반영 과정 */}
+            <div style={{ marginBottom:20 }}>
+              <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>머신러닝 수요예측은 구매 권고에 어떻게 반영되나요?</h3>
+              <div style={{ fontSize:12, color:T.text2, lineHeight:1.8, background:T.surface2, borderRadius:10, padding:'14px 16px', border:`1px solid ${T.border}` }}>
+                <b>1단계. AI가 완제품 수요를 예측</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  수주 이력, 재고, 환율, 반도체 시황 등 <b style={{ color:T.text1 }}>46가지 요인</b>을 학습한 머신러닝 모델이<br/>
+                  <span style={{ paddingLeft:16 }}>제품별로 향후 7일 · 14일 · 28일간 수요를 예측합니다.</span>
+                </span><br/>
+                <b>2단계. 예측 수요로 생산계획 수립</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  AI 예측 수요 + 안전재고 − 현재 재고 = <b style={{ color:T.text1 }}>이번 주 생산 수량</b><br/>
+                  <span style={{ paddingLeft:16 }}>이 생산 수량이 구매 권고의 출발점이 됩니다.</span>
+                </span><br/>
+                <b>3단계. BOM(부품표) 전개로 부품 수요 산출</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  완제품 1개를 만드는 데 필요한 부품 목록(BOM)을 펼쳐서<br/>
+                  <span style={{ paddingLeft:16 }}>생산 수량 × 부품별 소요량 = <b style={{ color:T.text1 }}>부품별 총소요량</b>을 계산합니다.</span>
+                </span><br/>
+                <b>4단계. 재고 · 미입고 발주 차감</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  총소요량 − 현재 부품 재고 − 이미 발주한 미입고 수량 = <b style={{ color:T.text1 }}>실제 발주 필요량</b>
+                </span><br/>
+                <b>5단계. 최적 발주 수량 · 공급사 결정</b><br/>
+                <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
+                  발주비용과 보관비용을 고려한 경제적 주문량(EOQ)을 산출하고,<br/>
+                  <span style={{ paddingLeft:16 }}>리드타임 · 단가 · 납기준수율을 종합하여 <b style={{ color:T.text1 }}>최적 공급사를 자동 추천</b>합니다.</span>
+                </span>
+              </div>
+              <p style={{ fontSize:11, color:T.text3, marginTop:6, lineHeight:1.6 }}>
+                즉, 구매 권고 수량은 &quot;AI 수요예측 → 생산계획 → BOM 전개 → 재고 차감 → 발주 최적화&quot; 순서로 산출됩니다.<br/>
+                담당자는 AI가 제시한 권고 수량 · 공급사 · 납기를 참고하여 최종 발주를 결정하시면 됩니다.
+              </p>
+            </div>
+
             {/* 발주 최적화 알고리즘 */}
             <div style={{ marginBottom:20 }}>
               <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>AI 발주 최적화 알고리즘</h3>
