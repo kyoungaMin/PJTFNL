@@ -61,7 +61,7 @@ function RangeBar({ value, min, max, color }: { value:number, min:number, max:nu
 }
 
 /* ────── Pie label ────── */
-function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, value }: any) {
+function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, value }: { cx: number; cy: number; midAngle: number; innerRadius: number; outerRadius: number; value: number }) {
   const RADIAN = Math.PI / 180
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5
   const x = cx + radius * Math.cos(-midAngle * RADIAN)
