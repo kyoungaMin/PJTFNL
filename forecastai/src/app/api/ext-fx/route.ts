@@ -89,13 +89,15 @@ export async function GET(request: Request) {
         .in('base_currency', ['USD', 'EUR', 'JPY', 'CNY'])
         .eq('quote_currency', 'KRW')
         .gte('rate_date', startDate)
-        .order('rate_date', { ascending: true }),
+        .order('rate_date', { ascending: true })
+        .limit(10000),
       supabase
         .from('economic_indicator')
         .select('indicator_code, date, value')
         .in('indicator_code', ['KR_BASE_RATE', 'US_FED_RATE'])
         .gte('date', startDate)
-        .order('date', { ascending: true }),
+        .order('date', { ascending: true })
+        .limit(10000),
     ])
 
     if (fxRows?.length || indRows?.length) {

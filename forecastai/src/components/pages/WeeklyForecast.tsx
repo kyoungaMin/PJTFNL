@@ -375,6 +375,131 @@ function MapeStatBar({ meta }: { meta: ForecastMeta }) {
 
 // ─── AI 조치 권고 패널 ────────────────────────────────────────────────────────
 
+// ─── AI 수요예측 분석 패널 ────────────────────────────────────────────────────
+
+interface AiAnalysisItem {
+  color: 'blue' | 'red' | 'amber' | 'green' | 'purple'
+  title: string
+  text: string
+}
+
+const AI_COLOR: Record<string, { text: string; bg: string; border: string }> = {
+  blue:   { text: T.blue,   bg: T.blueSoft,   border: T.blueMid },
+  red:    { text: T.red,    bg: T.redSoft,    border: T.redMid },
+  amber:  { text: T.amber,  bg: T.amberSoft,  border: T.amberMid },
+  green:  { text: T.green,  bg: T.greenSoft,  border: T.greenMid },
+  purple: { text: T.purple, bg: '#F5F3FF',    border: '#C4B5FD' },
+}
+
+function AiForecastPanel({ sku, model }: { sku: string; model: 'weekly' | 'monthly' }) {
+  const [open, setOpen] = useState(false)
+  const [items, setItems] = useState<AiAnalysisItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null)
+  const [source, setSource] = useState<string>('')
+
+  async function fetchAnalysis(refresh = false) {
+    setLoading(true)
+    try {
+      const url = `/api/ai-forecast-analysis?product_id=${sku}&model=${model}${refresh ? '&refresh=1' : ''}`
+      const res = await fetch(url)
+      const json = await res.json()
+      setItems(json.items ?? [])
+      setGeneratedAt(json.generatedAt ?? null)
+      setSource(json.source ?? '')
+    } catch {
+      setItems([{ color: 'amber', title: '오류', text: 'AI 분석을 불러오지 못했습니다.' }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleOpen() {
+    setOpen(true)
+    if (items.length === 0) fetchAnalysis()
+  }
+
+  // SKU 변경 시 결과 초기화
+  React.useEffect(() => {
+    setItems([])
+    setGeneratedAt(null)
+    setSource('')
+    setOpen(false)
+  }, [sku])
+
+  return (
+    <div style={{ ...card, marginTop: 16, border: `1.5px solid ${T.blueMid}` }}>
+      {/* 헤더 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 18 }}>🤖</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text1 }}>AI 수요예측 분석</div>
+            <div style={{ fontSize: 11, color: T.text3 }}>외부지표(환율·금리) 연계 AI 인사이트 · gpt-4o-mini</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {open && items.length > 0 && (
+            <Btn variant="ghost" onClick={() => fetchAnalysis(true)} style={{ fontSize: 11, padding: '4px 10px' }}>
+              새로고침
+            </Btn>
+          )}
+          <Btn
+            variant={open ? 'secondary' : 'primary'}
+            onClick={open ? () => setOpen(false) : handleOpen}
+            style={{ fontSize: 12, padding: '6px 14px' }}
+          >
+            {open ? '닫기' : 'AI 분석 시작'}
+          </Btn>
+        </div>
+      </div>
+
+      {/* 결과 */}
+      {open && (
+        <div style={{ marginTop: 16 }}>
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: T.text3 }}>
+              <div style={{ width: 18, height: 18, border: `2px solid ${T.blueMid}`, borderTopColor: T.blue, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              <span style={{ fontSize: 13 }}>GPT가 예측 데이터와 외부지표를 분석하는 중...</span>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+                {items.map((item, i) => {
+                  const style = AI_COLOR[item.color] ?? AI_COLOR.blue
+                  return (
+                    <div key={i} style={{
+                      background: style.bg,
+                      border: `1px solid ${style.border}`,
+                      borderRadius: 10,
+                      padding: '14px 16px',
+                    }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: style.text, marginBottom: 6 }}>
+                        {item.title}
+                      </div>
+                      <div style={{ fontSize: 13, color: T.text1, lineHeight: 1.6 }}>
+                        {item.text}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {generatedAt && (
+                <div style={{ marginTop: 10, fontSize: 10, color: T.text3 }}>
+                  생성 시각: {new Date(generatedAt).toLocaleString('ko-KR')}
+                  {source === 'cache' && ' · 캐시 (12시간 유효)'}
+                  {source === 'gpt' && ' · GPT 생성'}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ActionPanel({
   actions,
   actionsLoading,
@@ -545,6 +670,8 @@ export default function PageWeeklyForecast() {
   const [historyWeeks, setHistoryWeeks] = useState<4 | 8>(4)
   const [showActual, setShowActual] = useState(true)
   const [selectedDate, setSelectedDate] = useState('') // '' = 최신
+  const [startW, setStartW] = useState('')
+  const [endW, setEndW] = useState('')
 
   // DB SKU 로드 완료 시 첫 번째 SKU로 자동 설정
   useEffect(() => {
@@ -564,6 +691,15 @@ export default function PageWeeklyForecast() {
   const customers = useCustomers(sku)
   const risk = useRiskSummary(sku)
   const { data, loading, meta } = useForecastWeekly(sku, customerId, horizon, historyWeeks, selectedDate)
+
+  useEffect(() => {
+    if (data.length > 0) {
+      setStartW(data[0].w)
+      setEndW(data[data.length - 1].w)
+    }
+  }, [data])
+
+  const filteredData = data.filter(d => (!startW || d.w >= startW) && (!endW || d.w <= endW))
   const { actions, actionsLoading, patchStatus } = useActions(sku)
   const skuMeta = dbSkus.find(s => s.id === sku)
 
@@ -661,6 +797,24 @@ export default function PageWeeklyForecast() {
             onChange={v => setHistoryWeeks(Number(v) as 4 | 8)}
           />
         </div>
+
+        {data.length > 0 && (
+          <>
+            <div style={{ width: 1, height: 24, background: T.border }} />
+            <span style={{ fontSize: 11, color: T.text3, fontWeight: 600, whiteSpace: 'nowrap' }}>데이터 조회</span>
+            <Select
+              value={startW}
+              onChange={v => { setStartW(v); if (endW && v > endW) setEndW(v) }}
+              options={data.map(d => ({ value: d.w, label: d.w }))}
+            />
+            <span style={{ fontSize: 11, color: T.text3 }}>~</span>
+            <Select
+              value={endW}
+              onChange={v => { setEndW(v); if (startW && v < startW) setStartW(v) }}
+              options={[...data].reverse().map(d => ({ value: d.w, label: d.w }))}
+            />
+          </>
+        )}
 
         <div style={{ width: 1, height: 24, background: T.border }} />
 
@@ -786,10 +940,13 @@ export default function PageWeeklyForecast() {
 
       {/* ─── 수치 테이블 ─────────────────────────────────────────────────────── */}
       <div style={{ ...card, marginTop: 16 }}>
-        <div style={sectionTitle}>주차별 예측 수치</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={sectionTitle}>주차별 예측 수치</div>
+          <span style={{ fontSize: 11, color: T.text3 }}>{filteredData.length}건 / 전체 {data.length}건</span>
+        </div>
         <Table
           headers={['주차', 'P10 (EA)', 'P50 (EA)', 'P90 (EA)', '밴드폭', '실적 (EA)', '구분']}
-          rows={data.map(d => {
+          rows={filteredData.map(d => {
             const bw = (d.p10 != null && d.p90 != null && d.p50 > 0)
               ? Math.round((d.p90 - d.p10) / d.p50 * 100)
               : null
@@ -816,6 +973,9 @@ export default function PageWeeklyForecast() {
           })}
         />
       </div>
+
+      {/* ─── AI 수요예측 분석 패널 ──────────────────────────────────────────── */}
+      <AiForecastPanel sku={sku} model="weekly" />
 
       {/* ─── AI 조치 권고 패널 ────────────────────────────────────────────────── */}
       <ActionPanel

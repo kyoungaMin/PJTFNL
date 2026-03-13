@@ -665,6 +665,8 @@ export default function PageMonthlyForecast() {
   const [showSOX, setShowSOX] = useState(true)
   const [showActual, setShowActual] = useState(true)
   const [selectedDate, setSelectedDate] = useState('')
+  const [startM, setStartM] = useState('')
+  const [endM, setEndM] = useState('')
 
   // DB SKU 로드 완료 시 첫 번째 SKU로 자동 설정
   useEffect(() => {
@@ -686,8 +688,6 @@ export default function PageMonthlyForecast() {
   const risk           = useRiskSummary(sku)
   const { actions, actionsLoading, patchStatus } = useActions(sku)
 
-  const customerLabel = customers.find(c => c.id === customerId)?.name ?? customerId
-
   const { forecast, historyItems, customerData, evaluation, loading, meta } =
     useMonthlyData(sku, customerId || '전체 고객사', horizon, selectedDate)
 
@@ -698,6 +698,17 @@ export default function PageMonthlyForecast() {
     ...historyItems.map(h => ({ ...h, isForecast: false })),
     ...forecast.map(f => ({ ...f, isForecast: true })),
   ]
+
+  useEffect(() => {
+    if (chartData.length > 0) {
+      setStartM(chartData[0].m)
+      setEndM(chartData[chartData.length - 1].m)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyItems, forecast])
+
+  const filteredHistory = historyItems.filter(d => (!startM || d.m >= startM) && (!endM || d.m <= endM))
+  const filteredForecast = forecast.filter(d => (!startM || d.m >= startM) && (!endM || d.m <= endM))
 
   // 실적-예측 경계 레이블
   const boundaryLabel = historyItems.length > 0 ? historyItems[historyItems.length - 1].m : undefined
@@ -812,6 +823,24 @@ export default function PageMonthlyForecast() {
           <input type="checkbox" checked={showSOX} onChange={e => setShowSOX(e.target.checked)} style={{ accentColor: T.purple }} /> SOX
         </label>
 
+        {chartData.length > 0 && (
+          <>
+            <div style={{ width: 1, height: 24, background: T.border }} />
+            <span style={{ fontSize: 11, color: T.text3, fontWeight: 600, whiteSpace: 'nowrap' }}>데이터 조회</span>
+            <Select
+              value={startM}
+              onChange={v => { setStartM(v); if (endM && v > endM) setEndM(v) }}
+              options={chartData.map(d => ({ value: d.m, label: d.m }))}
+            />
+            <span style={{ fontSize: 11, color: T.text3 }}>~</span>
+            <Select
+              value={endM}
+              onChange={v => { setEndM(v); if (startM && v < startM) setStartM(v) }}
+              options={[...chartData].reverse().map(d => ({ value: d.m, label: d.m }))}
+            />
+          </>
+        )}
+
         {!loading && (
           meta.live
             ? <span style={{ fontSize: 11, fontWeight: 700, color: T.green, background: T.greenSoft, border: `1px solid ${T.greenMid}`, borderRadius: 6, padding: '3px 8px' }}>● LIVE</span>
@@ -907,10 +936,15 @@ export default function PageMonthlyForecast() {
 
         {/* 월별 예측 요약 — P10·P50·P90·밴드폭 통합 */}
         <div style={card}>
-          <div style={sectionTitle}>
-            월별 예측 요약
-            {customerId && (
-              <span style={{ fontSize: 11, color: T.blue, fontWeight: 400, marginLeft: 8 }}>— {customers.find(c => c.id === customerId)?.name}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={sectionTitle}>
+              월별 예측 요약
+              {customerId && (
+                <span style={{ fontSize: 11, color: T.blue, fontWeight: 400, marginLeft: 8 }}>— {customers.find(c => c.id === customerId)?.name}</span>
+              )}
+            </div>
+            {!customerId && chartData.length > 0 && (
+              <span style={{ fontSize: 11, color: T.text3 }}>{filteredHistory.length + filteredForecast.length}건 / 전체 {chartData.length}건</span>
             )}
           </div>
 
@@ -931,8 +965,8 @@ export default function PageMonthlyForecast() {
             <Table
               headers={['월', '구분', 'P50 (EA)', '밴드폭', '전월 대비']}
               rows={[
-                // 실적 행 (최근 3개월)
-                ...historyItems.slice(-3).map(d => ({
+                // 실적 행
+                ...filteredHistory.map(d => ({
                   cells: [
                     <span style={{ fontWeight: 600, color: T.text2 }}>{d.m}</span>,
                     <span style={{ fontSize: 11, color: T.orange, fontWeight: 600, background: T.orangeSoft, border: `1px solid ${T.orangeMid}`, borderRadius: 4, padding: '1px 6px' }}>실적</span>,
@@ -942,11 +976,11 @@ export default function PageMonthlyForecast() {
                   ]
                 })),
                 // 예측 행
-                ...forecast.map((d, i) => {
+                ...filteredForecast.map((d, i) => {
                   const bw = bandwidthPct(d)
                   const prevP50 = i === 0
-                    ? historyItems[historyItems.length - 1]?.actual
-                    : forecast[i - 1]?.p50
+                    ? filteredHistory[filteredHistory.length - 1]?.actual ?? historyItems[historyItems.length - 1]?.actual
+                    : filteredForecast[i - 1]?.p50
                   const diff = prevP50 != null && d.p50 != null ? d.p50 - prevP50 : null
                   const pct  = diff != null && prevP50 ? ((diff / prevP50) * 100).toFixed(1) : null
                   return {

@@ -131,6 +131,7 @@ export async function fetchSemiData(months = 12, freq: Freq = 'month') {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, vals]) => ({
           d: labelFor(key, freq),
+          _key: key,
           sox: vals['SOX'] ?? 0,
           dram: vals['DRAM_DDR4'] ?? 0,
           nand: vals['NAND_TLC'] ?? 0,
@@ -177,6 +178,7 @@ export async function fetchGlobalData(months = 12) {
       const allYms = Array.from(new Set([...Object.keys(ecoMap), ...Object.keys(tradeMap)])).sort()
       const series = allYms.map(ym => ({
         d: ymToLabel(ym),
+        _key: ym,
         ipi: ecoMap[ym]?.['INDPRO'] ?? 0,
         pmi: ecoMap[ym]?.['CN_PMI_MFG'] ?? 0,
         hs8541: tradeMap[ym] ? Math.round(tradeMap[ym] / 1_000_000) : 0,
@@ -224,6 +226,7 @@ export async function fetchFXData(months = 12, freq: Freq = 'month') {
       const rateMap = forwardFillToKeys(periodKeys, rateRows, ['KR_BASE_RATE', 'US_FED_RATE'])
       const series = periodKeys.map(pk => ({
         d: labelFor(pk, freq),
+        _key: pk,
         usd: fxMap[pk]?.['USD'] ?? 0,
         eur: fxMap[pk]?.['EUR'] ?? 0,
         jpy: fxMap[pk]?.['JPY'] ?? 0,
@@ -266,7 +269,7 @@ export async function fetchSupplyData(months = 12, freq: Freq = 'month') {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, vals]) => {
           const bdi = vals['BALTIC_DRY'] ?? 0
-          return { d: labelFor(key, freq), bdi, freight: bdi ? Math.round(bdi * 0.65) : 0 }
+          return { d: labelFor(key, freq), _key: key, bdi, freight: bdi ? Math.round(bdi * 0.65) : 0 }
         })
       if (series.filter(r => r.bdi).length >= 2) return series
     }
@@ -312,6 +315,7 @@ export async function fetchRawData(months = 12, freq: Freq = 'month') {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, vals]) => ({
           d: labelFor(key, freq),
+          _key: key,
           copper: vals['COPPER_LME'] ?? 0,
           wti: vals['WTI_MONTHLY'] ?? 0,
           gold: 0,

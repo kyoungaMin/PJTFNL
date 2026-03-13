@@ -3,8 +3,126 @@ import React, { useState, useEffect } from 'react'
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { T, card, EXT_SEMI_DATA, EXT_GLOBAL_DATA, EXT_FX_DATA, EXT_SUPPLY_DATA, EXT_RAW_DATA, exportToCsv } from '@/lib/data'
 import { fetchSemiData, fetchGlobalData, fetchFXData, fetchSupplyData, fetchRawData, INDICATOR_META } from '@/lib/externalData'
-import { Freq, defaultMonthsForFreq, periodOptionsForFreq } from '@/lib/freqUtils'
+import { Freq, periodOptionsForFreq, periodLabel } from '@/lib/freqUtils'
 import { PageHeader, Btn } from '@/components/ui'
+
+// ── AI 외부지표 분석 패널 ─────────────────────────────────────────────────────
+
+interface AiExtItem {
+  color: 'blue' | 'red' | 'amber' | 'green' | 'purple'
+  title: string
+  text: string
+}
+
+const AI_EXT_COLOR: Record<string, { text: string; bg: string; border: string }> = {
+  blue:   { text: T.blue,   bg: T.blueSoft,   border: T.blueMid },
+  red:    { text: T.red,    bg: T.redSoft,    border: T.redMid },
+  amber:  { text: T.amber,  bg: T.amberSoft,  border: T.amberMid },
+  green:  { text: T.green,  bg: T.greenSoft,  border: T.greenMid },
+  purple: { text: T.purple, bg: '#F5F3FF',    border: '#C4B5FD' },
+}
+
+function AiExtIndicatorPanel({
+  indicatorType,
+  latestData,
+}: {
+  indicatorType: string
+  latestData: Record<string, unknown>[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [items, setItems] = useState<AiExtItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null)
+  const [source, setSource] = useState('')
+
+  async function fetchAnalysis(refresh = false) {
+    setLoading(true)
+    try {
+      // 최신 2개 포인트를 직렬화해서 전달
+      const snapshot = latestData.slice(-2)
+      const params = new URLSearchParams({
+        type: indicatorType,
+        snapshot: JSON.stringify(snapshot),
+        ...(refresh ? { refresh: '1' } : {}),
+      })
+      const res = await fetch(`/api/ai-indicator-insight?${params}`)
+      const json = await res.json()
+      setItems(json.items ?? [])
+      setGeneratedAt(json.generatedAt ?? null)
+      setSource(json.source ?? '')
+    } catch {
+      setItems([{ color: 'amber', title: '오류', text: 'AI 분석을 불러오지 못했습니다.' }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleOpen() {
+    setOpen(true)
+    if (items.length === 0) fetchAnalysis()
+  }
+
+  return (
+    <div style={{ ...card, marginTop: 16, border: `1.5px solid ${T.blueMid}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 18 }}>🤖</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text1 }}>AI 수요 영향 분석</div>
+            <div style={{ fontSize: 11, color: T.text3 }}>현재 외부지표가 반도체 부품 수요에 미치는 영향 · gpt-4o-mini</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {open && items.length > 0 && (
+            <Btn variant="ghost" onClick={() => fetchAnalysis(true)} style={{ fontSize: 11, padding: '4px 10px' }}>
+              새로고침
+            </Btn>
+          )}
+          <Btn
+            variant={open ? 'secondary' : 'primary'}
+            onClick={open ? () => setOpen(false) : handleOpen}
+            style={{ fontSize: 12, padding: '6px 14px' }}
+          >
+            {open ? '닫기' : 'AI 수요 영향 분석'}
+          </Btn>
+        </div>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 16 }}>
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: T.text3 }}>
+              <div style={{ width: 18, height: 18, border: `2px solid ${T.blueMid}`, borderTopColor: T.blue, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              <span style={{ fontSize: 13 }}>GPT가 외부지표와 수요 영향을 분석하는 중...</span>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+                {items.map((item, i) => {
+                  const s = AI_EXT_COLOR[item.color] ?? AI_EXT_COLOR.blue
+                  return (
+                    <div key={i} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: s.text, marginBottom: 6 }}>{item.title}</div>
+                      <div style={{ fontSize: 13, color: T.text1, lineHeight: 1.6 }}>{item.text}</div>
+                    </div>
+                  )
+                })}
+              </div>
+              {generatedAt && (
+                <div style={{ marginTop: 10, fontSize: 10, color: T.text3 }}>
+                  생성 시각: {new Date(generatedAt).toLocaleString('ko-KR')}
+                  {source === 'cache' && ' · 캐시 (12시간 유효)'}
+                  {source === 'gpt' && ' · GPT 생성'}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── 데이터 훅 ─────────────────────────────────────────────────────────────────
 
@@ -127,6 +245,68 @@ function PeriodTable({ data, keys, labels, units }: {
   )
 }
 
+function DataListTable({
+  data, keys, labels, units, startIdx, endIdx, freq,
+}: {
+  data: Record<string, unknown>[]
+  keys: string[]
+  labels: string[]
+  units: string[]
+  startIdx: number
+  endIdx: number
+  freq?: Freq
+}) {
+  const slice = data.slice(startIdx, endIdx + 1)
+  const rows = [...slice].reverse()
+  return (
+    <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: T.surface2, borderBottom: `2px solid ${T.border}` }}>
+            <th style={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: T.text3, whiteSpace: 'nowrap', position: 'sticky', top: 0, background: T.surface2, zIndex: 1 }}>날짜</th>
+            {labels.map((l, i) => (
+              <th key={i} style={{ padding: '8px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: T.text3, whiteSpace: 'nowrap', position: 'sticky', top: 0, background: T.surface2, zIndex: 1 }}>
+                {l}{units[i] ? ` (${units[i]})` : ''}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => {
+            const prevRow = rows[ri + 1]
+            const isLatest = ri === 0
+            return (
+              <tr key={ri} style={{ borderBottom: `1px solid ${T.border}`, background: isLatest ? `${T.blue}18` : 'transparent' }}>
+                <td style={{ padding: '8px 14px', fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, color: isLatest ? T.blue : T.text2, fontWeight: isLatest ? 700 : 400, whiteSpace: 'nowrap' }}>
+                  {(row['_key'] && freq) ? periodLabel(row['_key'] as string, freq) : row['d'] as string}
+                  {isLatest ? ' ●' : ''}
+                </td>
+                {keys.map((k) => {
+                  const cur = (row[k] ?? 0) as number
+                  const prev = prevRow ? (prevRow[k] ?? 0) as number : null
+                  const pct = (prev !== null && prev !== 0) ? (cur - prev) / Math.abs(prev) * 100 : null
+                  return (
+                    <td key={k} style={{ padding: '8px 14px', textAlign: 'right' }}>
+                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontWeight: 600, color: T.text1, fontSize: 12 }}>
+                        {cur !== 0 ? (cur >= 1000 ? cur.toLocaleString() : cur.toFixed(2)) : '-'}
+                      </div>
+                      {pct !== null && cur !== 0 && (
+                        <div style={{ fontSize: 10, color: pct >= 0 ? T.green : T.red, fontWeight: 700, marginTop: 1 }}>
+                          {pct >= 0 ? '▲' : '▼'}{Math.abs(pct).toFixed(2)}%
+                        </div>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function ExtChartCard({ title, data, lineKeys, colors, height = 155, mockKeys }: {
   title: string; data: Record<string, unknown>[]; lineKeys: string[]; colors: string[]; height?: number; mockKeys?: string[];
 }) {
@@ -172,25 +352,6 @@ function DataBadge({ isLive }: { isLive: boolean }) {
   )
 }
 
-/** 기간 필터 버튼 (options: 월 단위 숫자 배열) */
-function PeriodFilter({ period, onChange, options = [3, 6, 12] }: {
-  period: number; onChange: (n: number) => void; options?: readonly number[]
-}) {
-  const label = (m: number) => m >= 24 ? `${m / 12}Y` : m === 12 ? '1Y' : `${m}M`
-  return (
-    <div style={{ display: 'flex', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 7, overflow: 'hidden' }}>
-      {options.map(m => (
-        <button key={m} onClick={() => onChange(m)} style={{
-          fontSize: 12, fontWeight: 600, padding: '6px 14px', border: 'none', cursor: 'pointer',
-          background: period === m ? T.blue : 'transparent',
-          color: period === m ? 'white' : T.text2,
-        }}>
-          {label(m)}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 /** 데이터 주기 필터 버튼 */
 function FreqFilter({ freq, onChange, options }: {
@@ -212,19 +373,72 @@ function FreqFilter({ freq, onChange, options }: {
   )
 }
 
-function ExtLayout({ title, sub, isLive, loading, period, onPeriodChange, periodOptions, tickerItems, chartL, chartR, tableData, tableKeys, tableLabels, tableUnits, filename, freqOptions, freq, onFreqChange }: {
+function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, tableData, tableKeys, tableLabels, tableUnits, filename, freqOptions, freq, onFreqChange, indicatorType }: {
   title: string; sub: string; isLive: boolean; loading: boolean;
-  period: number; onPeriodChange: (n: number) => void; periodOptions?: readonly number[];
   tickerItems: React.ReactNode; chartL: React.ReactNode; chartR: React.ReactNode;
   tableData: Record<string, unknown>[]; tableKeys: string[]; tableLabels: string[]; tableUnits: string[];
   filename: string;
   freqOptions?: Freq[]; freq?: Freq; onFreqChange?: (f: Freq) => void;
+  indicatorType?: string;
 }) {
+  const [startIdx, setStartIdx] = useState(0)
+  const [endIdx, setEndIdx] = useState(() => Math.max(0, tableData.length - 1))
+
+  useEffect(() => {
+    setStartIdx(0)
+    setEndIdx(Math.max(0, tableData.length - 1))
+  }, [tableData, freq])
+
   const handleCsv = () => exportToCsv(
     filename,
     ['날짜', ...tableLabels.map((l, i) => `${l}(${tableUnits[i] || '-'})`)],
     tableData.map(row => [row['d'] as string, ...tableKeys.map(k => row[k] as number ?? '')])
   )
+
+  const selectStyle = {
+    fontSize: 12, fontWeight: 700, color: T.text1, background: T.surface,
+    border: `1px solid ${T.border}`, borderRadius: 7, padding: '5px 10px',
+    cursor: 'pointer', outline: 'none', fontFamily: "'IBM Plex Mono',monospace",
+  } as const
+
+  const rowLabel = (row: Record<string, unknown>) => {
+    const dk = row['_key'] as string | undefined
+    return dk ? periodLabel(dk, freq ?? 'month') : row['d'] as string
+  }
+
+  const periodSelect = tableData.length > 0 ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 11, color: T.text3, fontWeight: 600 }}>시작</span>
+      <select
+        value={startIdx}
+        onChange={e => { const v = Number(e.target.value); setStartIdx(v); if (v > endIdx) setEndIdx(v) }}
+        style={selectStyle}
+      >
+        {tableData.map((row, idx) => (
+          <option key={idx} value={idx}>{rowLabel(row)}</option>
+        ))}
+      </select>
+      <span style={{ fontSize: 11, color: T.text3 }}>~</span>
+      <span style={{ fontSize: 11, color: T.text3, fontWeight: 600 }}>종료</span>
+      <select
+        value={endIdx}
+        onChange={e => { const v = Number(e.target.value); setEndIdx(v); if (v < startIdx) setStartIdx(v) }}
+        style={selectStyle}
+      >
+        {[...tableData].reverse().map((row, ri) => {
+          const idx = tableData.length - 1 - ri
+          return <option key={idx} value={idx}>{rowLabel(row)}</option>
+        })}
+      </select>
+      <button
+        onClick={() => { setStartIdx(0); setEndIdx(tableData.length - 1) }}
+        style={{ fontSize: 11, fontWeight: 600, color: T.blue, background: T.blueSoft, border: `1px solid ${T.blueMid}`, borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}
+      >
+        전체
+      </button>
+    </div>
+  ) : null
+
   return (
     <div>
       <PageHeader
@@ -236,7 +450,7 @@ function ExtLayout({ title, sub, isLive, loading, period, onPeriodChange, period
               <FreqFilter freq={freq} onChange={onFreqChange} options={freqOptions} />
             )}
             {freqOptions && <div style={{ width: 1, height: 24, background: T.border }} />}
-            <PeriodFilter period={period} onChange={onPeriodChange} options={periodOptions} />
+            {!loading && periodSelect}
             <Btn variant="secondary" onClick={handleCsv}>CSV 내보내기</Btn>
           </div>
         }
@@ -251,6 +465,26 @@ function ExtLayout({ title, sub, isLive, loading, period, onPeriodChange, period
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 14 }}>기간별 변동률</div>
         <PeriodTable data={tableData} keys={tableKeys} labels={tableLabels} units={tableUnits} />
       </div>
+      {!loading && tableData.length > 0 && (
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', marginTop: 16, boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 4 }}>데이터 내역</div>
+          <div style={{ fontSize: 10, color: T.text3, marginBottom: 12 }}>
+            {freq === 'day' ? '일간' : freq === 'week' ? '주간' : '월간'} 연동 · 조회 {endIdx - startIdx + 1}건 / 전체 {tableData.length}건
+          </div>
+          <DataListTable
+            data={tableData}
+            keys={tableKeys}
+            labels={tableLabels}
+            units={tableUnits}
+            startIdx={startIdx}
+            endIdx={endIdx}
+            freq={freq}
+          />
+        </div>
+      )}
+      {indicatorType && !loading && tableData.length > 0 && (
+        <AiExtIndicatorPanel indicatorType={indicatorType} latestData={tableData} />
+      )}
     </div>
   )
 }
@@ -260,21 +494,15 @@ function ExtLayout({ title, sub, isLive, loading, period, onPeriodChange, period
 // SOX=일간, DRAM/NAND=주간(매주 목)
 export function PageExtSemi() {
   const [freq, setFreq] = useState<Freq>('month')
-  const [period, setPeriod] = useState(12)
-
-  const handleFreqChange = (f: Freq) => {
-    setFreq(f)
-    setPeriod(defaultMonthsForFreq(f))
-  }
+  const period = Math.max(...(periodOptionsForFreq(freq) as unknown as number[]))
 
   const { data, loading } = useExtData(fetchSemiData, EXT_SEMI_DATA, period, freq)
   const isLive = data !== EXT_SEMI_DATA
   const sox = calcChange(data, 'sox'), dram = calcChange(data, 'dram'), nand = calcChange(data, 'nand')
   return <ExtLayout
     title="산업 지표" sub="SOX 지수(일간) · DRAM / NAND 현물가(주간, 매주 목) · 반도체 업황"
-    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod}
-    periodOptions={periodOptionsForFreq(freq)}
-    freqOptions={['week', 'month']} freq={freq} onFreqChange={handleFreqChange}
+    isLive={isLive} loading={loading}
+    freqOptions={['week', 'month']} freq={freq} onFreqChange={setFreq}
     tickerItems={[
       <TickerCard key="sox"  label="SOX 지수"   value={sox.value as number}  unit="pt"   changePct={sox.pct}  chartData={data} dataKey="sox"
         source={INDICATOR_META.SOX.source} freq={INDICATOR_META.SOX.freq} isMock={!isLive} />,
@@ -288,48 +516,45 @@ export function PageExtSemi() {
     tableData={data} tableKeys={['sox', 'dram', 'nand']}
     tableLabels={['SOX 지수', 'DRAM', 'NAND']} tableUnits={['pt', '$/Gb', '$/GB']}
     filename="ext_semi.csv"
+    indicatorType="semi"
   />
 }
 
 // IPI=월간(익월 중순), PMI=월간(익월 1영업일), HS8541=월간(익월 15일)
-const GLOBAL_PERIOD_OPTIONS = [6, 12, 24] as const
-
 export function PageExtGlobal() {
-  const [period, setPeriod] = useState(12)
   const fetchGlobalDataWrapped = (months: number, _freq: Freq) => fetchGlobalData(months)
-  const { data, loading } = useExtData(fetchGlobalDataWrapped, EXT_GLOBAL_DATA, period, 'month')
+  const { data, loading } = useExtData(fetchGlobalDataWrapped, EXT_GLOBAL_DATA, 24, 'month')
   const isLive = data !== EXT_GLOBAL_DATA
-  const ipi = calcChange(data, 'ipi'), pmi = calcChange(data, 'pmi'), hs = calcChange(data, 'hs8541')
+  const ipi = calcChange(data, 'ipi')
   return <ExtLayout
-    title="글로벌 수요" sub="산업생산지수 IPI(월간, 익월 중순) · PMI(월간, 익월 1영업일) · HS8541 수출입(월간, 익월 15일)"
-    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod} periodOptions={GLOBAL_PERIOD_OPTIONS}
+    title="글로벌 수요" sub="산업생산지수 IPI(월간, 익월 중순) — PMI·HS8541 미연동"
+    isLive={isLive} loading={loading}
     tickerItems={[
-      <TickerCard key="ipi" label="산업생산지수 (IPI)" value={ipi.value as number} unit=""   changePct={ipi.pct} chartData={data} dataKey="ipi"
+      <TickerCard key="ipi" label="산업생산지수 (IPI)" value={ipi.value as number} unit="" changePct={ipi.pct} chartData={data} dataKey="ipi"
         source={INDICATOR_META.INDPRO.source} freq={INDICATOR_META.INDPRO.freq} isMock={!isLive} />,
-      <TickerCard key="pmi" label="글로벌 PMI"         value={pmi.value as number} unit=""   changePct={pmi.pct} chartData={data} dataKey="pmi"
-        source={INDICATOR_META.CN_PMI_MFG.source} freq={INDICATOR_META.CN_PMI_MFG.freq} isMock />,
-      <TickerCard key="hs"  label="HS8541 수출"         value={hs.value as number}  unit="$M" changePct={hs.pct}  chartData={data} dataKey="hs8541"
-        source={INDICATOR_META.HS8541.source} freq={INDICATOR_META.HS8541.freq} isMock={!isLive} />,
     ]}
-    chartL={<ExtChartCard title="IPI · PMI 추이" data={data} lineKeys={['ipi', 'pmi']} colors={[T.blue, T.green]} />}
-    chartR={<ExtChartCard title="HS8541 수출 동향" data={data} lineKeys={['hs8541']} colors={[T.purple]} />}
-    tableData={data} tableKeys={['ipi', 'pmi', 'hs8541']}
-    tableLabels={['IPI', 'PMI', 'HS8541 수출']} tableUnits={['', '', '$M']}
+    chartL={<ExtChartCard title="IPI 추이" data={data} lineKeys={['ipi']} colors={[T.blue]} />}
+    chartR={<ExtChartCard title="IPI 추이 (동일)" data={data} lineKeys={['ipi']} colors={[T.blue]} />}
+    tableData={data} tableKeys={['ipi']}
+    tableLabels={['IPI']} tableUnits={['']}
     filename="ext_global.csv"
+    indicatorType="global"
   />
 }
 
 // 환율=일간(영업일), 기준금리=비정기(연 8회)
 export function PageExtFX() {
   const [freq, setFreq] = useState<Freq>('day')
-  const [period, setPeriod] = useState(3)
-
-  const handleFreqChange = (f: Freq) => {
-    setFreq(f)
-    setPeriod(defaultMonthsForFreq(f))
-  }
+  const period = Math.max(...(periodOptionsForFreq(freq) as unknown as number[]))
 
   const { data, loading } = useExtData(fetchFXData, EXT_FX_DATA, period, freq)
+
+  const [fxStartIdx, setFxStartIdx] = useState(0)
+  const [fxEndIdx, setFxEndIdx] = useState(() => Math.max(0, data.length - 1))
+
+  useEffect(() => { setFxStartIdx(0); setFxEndIdx(Math.max(0, data.length - 1)) }, [data])
+  useEffect(() => { setFxStartIdx(0); setFxEndIdx(Math.max(0, data.length - 1)) }, [freq])
+
   const isLive   = data !== EXT_FX_DATA
   const usd      = calcChange(data, 'usd')
   const eur      = calcChange(data, 'eur')
@@ -377,9 +602,41 @@ export function PageExtFX() {
         sub="USD/KRW · EUR/KRW · JPY/KRW · CNY/KRW(일간, 영업일) · 한국/미국 기준금리(비정기, 연 8회)"
         action={
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <FreqFilter freq={freq} onChange={handleFreqChange} options={['day', 'week', 'month']} />
+            <FreqFilter freq={freq} onChange={setFreq} options={['day', 'week', 'month']} />
             <div style={{ width: 1, height: 24, background: T.border }} />
-            <PeriodFilter period={period} onChange={setPeriod} options={periodOptionsForFreq(freq)} />
+            {!loading && data.length > 0 && (() => {
+              const selStyle = {
+                fontSize: 12, fontWeight: 700, color: T.text1, background: T.surface,
+                border: `1px solid ${T.border}`, borderRadius: 7, padding: '5px 10px',
+                cursor: 'pointer', outline: 'none', fontFamily: "'IBM Plex Mono',monospace",
+              } as const
+              const lbl = (row: Record<string, unknown>) => {
+                const dk = row['_key'] as string | undefined
+                return dk ? periodLabel(dk, freq) : row['d'] as string
+              }
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: T.text3, fontWeight: 600 }}>시작</span>
+                  <select value={fxStartIdx} onChange={e => { const v = Number(e.target.value); setFxStartIdx(v); if (v > fxEndIdx) setFxEndIdx(v) }} style={selStyle}>
+                    {data.map((row, idx) => <option key={idx} value={idx}>{lbl(row)}</option>)}
+                  </select>
+                  <span style={{ fontSize: 11, color: T.text3 }}>~</span>
+                  <span style={{ fontSize: 11, color: T.text3, fontWeight: 600 }}>종료</span>
+                  <select value={fxEndIdx} onChange={e => { const v = Number(e.target.value); setFxEndIdx(v); if (v < fxStartIdx) setFxStartIdx(v) }} style={selStyle}>
+                    {[...data].reverse().map((row, ri) => {
+                      const idx = data.length - 1 - ri
+                      return <option key={idx} value={idx}>{lbl(row)}</option>
+                    })}
+                  </select>
+                  <button
+                    onClick={() => { setFxStartIdx(0); setFxEndIdx(data.length - 1) }}
+                    style={{ fontSize: 11, fontWeight: 600, color: T.blue, background: T.blueSoft, border: `1px solid ${T.blueMid}`, borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}
+                  >
+                    전체
+                  </button>
+                </div>
+              )
+            })()}
             <Btn variant="secondary" onClick={() => exportToCsv(
               'ext_fx.csv',
               ['날짜', 'USD/KRW(원)', 'EUR/KRW(원)', 'JPY/KRW(원)', 'CNY/KRW(원)', '한국금리(%)', '미국금리(%)'],
@@ -531,6 +788,30 @@ export function PageExtFX() {
         </div>
 
       </div>
+
+      {/* 데이터 내역 */}
+      {!loading && data.length > 0 && (
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', marginBottom: 16, boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 4 }}>데이터 내역</div>
+          <div style={{ fontSize: 10, color: T.text3, marginBottom: 12 }}>
+            {freq === 'day' ? '일간' : freq === 'week' ? '주간' : '월간'} 연동 · 조회 {fxEndIdx - fxStartIdx + 1}건 / 전체 {data.length}건
+          </div>
+          <DataListTable
+            data={data}
+            keys={['usd', 'eur', 'jpy', 'cny', 'rate', 'us_rate']}
+            labels={['USD/KRW', 'EUR/KRW', 'JPY/KRW', 'CNY/KRW', '한국금리', '미국금리']}
+            units={['원', '원', '원', '원', '%', '%']}
+            startIdx={fxStartIdx}
+            endIdx={fxEndIdx}
+            freq={freq}
+          />
+        </div>
+      )}
+
+      {/* AI 수요 영향 분석 */}
+      {!loading && data.length > 0 && (
+        <AiExtIndicatorPanel indicatorType="fx" latestData={data} />
+      )}
     </div>
   )
 }
@@ -538,21 +819,15 @@ export function PageExtFX() {
 // BDI=일간(영업일), 해상운임=일간
 export function PageExtSupply() {
   const [freq, setFreq] = useState<Freq>('month')
-  const [period, setPeriod] = useState(6)
-
-  const handleFreqChange = (f: Freq) => {
-    setFreq(f)
-    setPeriod(defaultMonthsForFreq(f))
-  }
+  const period = Math.max(...(periodOptionsForFreq(freq) as unknown as number[]))
 
   const { data, loading } = useExtData(fetchSupplyData, EXT_SUPPLY_DATA, period, freq)
   const isLive = data !== EXT_SUPPLY_DATA
   const bdi = calcChange(data, 'bdi'), frt = calcChange(data, 'freight')
   return <ExtLayout
     title="물류" sub="BDI 발틱운임지수(일간, 영업일) · 아시아 해상 운임(일간)"
-    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod}
-    periodOptions={periodOptionsForFreq(freq)}
-    freqOptions={['day', 'week', 'month']} freq={freq} onFreqChange={handleFreqChange}
+    isLive={isLive} loading={loading}
+    freqOptions={['day', 'week', 'month']} freq={freq} onFreqChange={setFreq}
     tickerItems={[
       <TickerCard key="bdi" label="BDI 발틱운임지수"  value={bdi.value as number} unit="pt" changePct={bdi.pct} chartData={data} dataKey="bdi"
         source={INDICATOR_META.BALTIC_DRY.source} freq={INDICATOR_META.BALTIC_DRY.freq} />,
@@ -564,39 +839,31 @@ export function PageExtSupply() {
     tableData={data} tableKeys={['bdi', 'freight']}
     tableLabels={['BDI', '해상 운임']} tableUnits={['pt', '$']}
     filename="ext_supply.csv"
+    indicatorType="supply"
   />
 }
 
 // WTI=일간(거래일), 구리 LME=일간(거래일), 금=일간
 export function PageExtRaw() {
   const [freq, setFreq] = useState<Freq>('month')
-  const [period, setPeriod] = useState(6)
-
-  const handleFreqChange = (f: Freq) => {
-    setFreq(f)
-    setPeriod(defaultMonthsForFreq(f))
-  }
+  const period = Math.max(...(periodOptionsForFreq(freq) as unknown as number[]))
 
   const { data, loading } = useExtData(fetchRawData, EXT_RAW_DATA, period, freq)
   const isLive = data !== EXT_RAW_DATA
-  const cu = calcChange(data, 'copper'), wti = calcChange(data, 'wti'), gold = calcChange(data, 'gold')
+  const wti = calcChange(data, 'wti')
   return <ExtLayout
-    title="원자재" sub="구리 LME(일간, 거래일) · WTI 원유(일간, 거래일) · 금 COMEX(일간)"
-    isLive={isLive} loading={loading} period={period} onPeriodChange={setPeriod}
-    periodOptions={periodOptionsForFreq(freq)}
-    freqOptions={['day', 'week', 'month']} freq={freq} onFreqChange={handleFreqChange}
+    title="원자재" sub="WTI 원유(일간, 거래일) — 구리·금 미연동"
+    isLive={isLive} loading={loading}
+    freqOptions={['day', 'week', 'month']} freq={freq} onFreqChange={setFreq}
     tickerItems={[
-      <TickerCard key="cu"   label="구리 (LME)" value={cu.value as number}   unit="$/t"   changePct={cu.pct}   chartData={data} dataKey="copper"
-        source={INDICATOR_META.COPPER_LME.source} freq={INDICATOR_META.COPPER_LME.freq} />,
-      <TickerCard key="wti"  label="WTI 원유"   value={wti.value as number}  unit="$/bbl" changePct={wti.pct}  chartData={data} dataKey="wti"
+      <TickerCard key="wti" label="WTI 원유" value={wti.value as number} unit="$/bbl" changePct={wti.pct} chartData={data} dataKey="wti"
         source={INDICATOR_META.WTI_MONTHLY.source} freq={INDICATOR_META.WTI_MONTHLY.freq} />,
-      <TickerCard key="gold" label="금 (COMEX)" value={gold.value as number} unit="$/oz"  changePct={gold.pct} chartData={data} dataKey="gold"
-        source="COMEX" freq="일간" isMock />,
     ]}
-    chartL={<ExtChartCard title="구리 가격 추이" data={data} lineKeys={['copper']} colors={[T.orange]} />}
-    chartR={<ExtChartCard title="WTI · 금 추이" data={data} lineKeys={['wti', 'gold']} colors={[T.amber, T.green]} mockKeys={['gold']} />}
-    tableData={data} tableKeys={['copper', 'wti', 'gold']}
-    tableLabels={['구리', 'WTI', '금']} tableUnits={['$/t', '$/bbl', '$/oz']}
+    chartL={<ExtChartCard title="WTI 원유 추이" data={data} lineKeys={['wti']} colors={[T.amber]} />}
+    chartR={<ExtChartCard title="WTI 원유 추이 (동일)" data={data} lineKeys={['wti']} colors={[T.amber]} />}
+    tableData={data} tableKeys={['wti']}
+    tableLabels={['WTI']} tableUnits={['$/bbl']}
     filename="ext_raw.csv"
+    indicatorType="raw"
   />
 }
