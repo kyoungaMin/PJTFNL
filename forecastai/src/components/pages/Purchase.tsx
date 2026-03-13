@@ -72,6 +72,7 @@ export default function PagePurchase() {
   const [note, setNote]         = useState('')
   const [adjQty, setAdjQty]     = useState<number | null>(null)
   const [showGuide, setShowGuide] = useState(false)
+  const [scenarioContext, setScenarioContext] = useState<{ productId: string; productName: string; riskGrade: string | null; shortageWeeks: number; modelId: string } | null>(null)
 
   /* ── fetch data ── */
   const loadData = useCallback(async (week?: string) => {
@@ -110,6 +111,17 @@ export default function PagePurchase() {
   }, [])
 
   useEffect(() => {
+    // 시나리오 분석에서 넘어온 제품 컨텍스트 확인
+    try {
+      const scRaw = sessionStorage.getItem('scenarioContext')
+      if (scRaw) {
+        const sc = JSON.parse(scRaw)
+        setScenarioContext(sc)
+        setSearch(sc.productId ?? '')
+        sessionStorage.removeItem('scenarioContext')
+      }
+    } catch {}
+
     try {
       const raw = sessionStorage.getItem('dashRefWeek')
       if (raw) {
@@ -456,6 +468,25 @@ export default function PagePurchase() {
               borderRadius:6, padding:'5px 10px', cursor:'pointer' }}>최신</button>
         </div>
       }/>
+
+      {/* ── 시나리오 컨텍스트 배너 ── */}
+      {scenarioContext && (
+        <div style={{ ...card, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:12,
+          background:T.orangeSoft, border:`1px solid ${T.orangeMid}` }}>
+          <span style={{ fontSize:20 }}>🔗</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:T.orange, marginBottom:2 }}>시나리오 분석에서 연계됨</div>
+            <div style={{ fontSize:11, color:T.text2 }}>
+              제품 <b style={{ color:T.text1 }}>{scenarioContext.productId}</b> ({scenarioContext.productName})
+              {scenarioContext.riskGrade && <> · 리스크 등급 <b style={{ color: scenarioContext.riskGrade >= 'D' ? T.red : scenarioContext.riskGrade >= 'C' ? T.amber : T.green }}>{scenarioContext.riskGrade}</b></>}
+              {scenarioContext.shortageWeeks > 0 && <> · <span style={{ color:T.red, fontWeight:600 }}>결품 {scenarioContext.shortageWeeks}주 예상</span></>}
+              {scenarioContext.modelId && <> · 모델: {scenarioContext.modelId}</>}
+            </div>
+          </div>
+          <button onClick={() => { setScenarioContext(null); setSearch('') }}
+            style={{ fontSize:11, color:T.text3, background:'none', border:'none', cursor:'pointer', padding:4 }}>✕</button>
+        </div>
+      )}
 
       {/* ── KPI Cards ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>

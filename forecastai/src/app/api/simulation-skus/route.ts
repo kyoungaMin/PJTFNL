@@ -174,10 +174,20 @@ export async function GET() {
       return ratioA - ratioB
     })
 
+    // 8) 사용 중인 예측 모델 확인 (segment_best_v1 우선)
+    const { data: modelCheck } = await supabase
+      .from('forecast_result')
+      .select('model_id')
+      .eq('model_id', 'segment_best_v1')
+      .limit(1)
+    const forecastModel = modelCheck && modelCheck.length > 0
+      ? 'segment_best_v1' : 'lgbm_q_v3'
+
     return NextResponse.json({
       skus,
       customers,
       planDate,
+      forecastModel,
       source: 'database',
     })
   } catch (err: any) {

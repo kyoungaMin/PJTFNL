@@ -17,13 +17,13 @@ export async function GET() {
   const profileMap = new Map((profiles ?? []).map(p => [p.id, p]))
 
   // 3) Auth 이메일 기준으로 합치기 (user_profile에 있는 활성 계정만)
-  const accounts = authData.users
-    .filter(u => u.email && profileMap.has(u.id))
-    .map(u => {
+  const accounts = (authData.users as any[])
+    .filter((u: any) => u.email && profileMap.has(u.id))
+    .map((u: any) => {
       const p = profileMap.get(u.id)!
       return {
-        email: u.email!,                                          // Auth 실제 이메일
-        name:  p.display_name ?? u.email!.split('@')[0],
+        email: u.email as string,                                 // Auth 실제 이메일
+        name:  p.display_name ?? (u.email as string).split('@')[0],
         role:  p.role ?? 'viewer',
       }
     })

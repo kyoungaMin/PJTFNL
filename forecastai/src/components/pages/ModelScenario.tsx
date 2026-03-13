@@ -152,7 +152,7 @@ function runModelScenario(
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
-export default function PageModelScenario() {
+export default function PageModelScenario({ setPage }: { setPage?: (p: string) => void }) {
   const [activeTab, setActiveTab] = useState<TabId>('prediction')
 
   /* ── Product list ── */
@@ -1139,6 +1139,37 @@ export default function PageModelScenario() {
                           {!riskInfo && actionItems.length === 0 && (
                             <div style={{ fontSize: 12, color: T.text3, padding: 8 }}>이 제품에 대한 ML 리스크 데이터가 없습니다.</div>
                           )}
+                        </div>
+                      )}
+
+                      {/* 구매 최적화 연계 */}
+                      {setPage && product && (
+                        <div style={{ ...card, marginTop: 16, borderLeft: `3px solid ${T.orange}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: T.text1, marginBottom: 4 }}>구매 최적화 연계</div>
+                            <div style={{ fontSize: 12, color: T.text2 }}>
+                              이 제품({product.id})의 BOM 기반 부품 발주 권고를 확인합니다.
+                              {riskResult && riskResult.shortageWeeks > 0 && (
+                                <span style={{ color: T.red, fontWeight: 600 }}> (결품 {riskResult.shortageWeeks}주 예상 — 긴급 발주 검토 필요)</span>
+                              )}
+                            </div>
+                          </div>
+                          <button onClick={() => {
+                            sessionStorage.setItem('scenarioContext', JSON.stringify({
+                              productId: product.id,
+                              productName: product.name,
+                              riskGrade: riskInfo?.grade ?? null,
+                              shortageWeeks: riskResult?.shortageWeeks ?? 0,
+                              modelId,
+                            }))
+                            setPage('purchase')
+                          }} style={{
+                            padding: '10px 20px', fontSize: 12, fontWeight: 700, borderRadius: 8,
+                            background: T.orange, color: 'white', border: 'none', cursor: 'pointer',
+                            whiteSpace: 'nowrap', flexShrink: 0,
+                          }}>
+                            구매 권고 확인 →
+                          </button>
                         </div>
                       )}
                     </>

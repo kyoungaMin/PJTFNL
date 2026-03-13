@@ -77,6 +77,7 @@ export default function PageSimulation() {
   const [customerList, setCustomerList] = useState<CustomerItem[]>([])
   const [dataSource, setDataSource] = useState<'loading'|'database'|'mock'>('loading')
   const [planDate, setPlanDate] = useState<string|null>(null)
+  const [forecastModel, setForecastModel] = useState<string|null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -89,6 +90,7 @@ export default function PageSimulation() {
           setSelectedSku(data.skus[0])
           setDataSource('database')
           setPlanDate(data.planDate ?? null)
+          setForecastModel(data.forecastModel ?? null)
           if (data.customers?.length > 0) setCustomerList(data.customers)
         } else {
           setSkuList(SIM_SKUS)
@@ -220,7 +222,7 @@ export default function PageSimulation() {
             background:dataSource==='database'?T.greenSoft:dataSource==='loading'?T.surface2:T.amberSoft,
             color:dataSource==='database'?T.green:dataSource==='loading'?T.text3:T.amber,
             border:`1px solid ${dataSource==='database'?T.greenMid:dataSource==='loading'?T.border:T.amberMid}`}}>
-            {dataSource==='database'?`DB 실데이터 · ${planDate} · ${skuList.length}개 SKU`
+            {dataSource==='database'?`DB 실데이터 · ${planDate} · ${skuList.length}개 SKU${forecastModel ? ` · ${forecastModel}` : ''}`
               :dataSource==='loading'?'불러오는 중...':`Mock 데이터 · ${skuList.length}개 SKU`}
           </span>
         </span>}
@@ -379,7 +381,7 @@ export default function PageSimulation() {
                     background:dataSource==='database'?T.greenSoft:T.amberSoft,
                     color:dataSource==='database'?T.green:T.amber,
                     border:`1px solid ${dataSource==='database'?T.greenMid:T.amberMid}`}}>
-                    {dataSource==='database'?'DB 실데이터':'Mock'}{planDate?` · ${planDate}`:''}
+                    {dataSource==='database'?'DB 실데이터':'Mock'}{planDate?` · ${planDate}`:''}{forecastModel?` · ${forecastModel}`:''}
                   </span>
                 </div>
                 {([

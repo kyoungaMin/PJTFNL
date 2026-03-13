@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   // 3. Supabase Auth 이메일 목록 조회 (항상 최신 이메일 보장)
   const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 })
   const authEmailMap = new Map<string, string>()
-  authUsers?.users?.forEach(u => { if (u.id && u.email) authEmailMap.set(u.id, u.email) })
+  ;(authUsers?.users as any[])?.forEach((u: any) => { if (u.id && u.email) authEmailMap.set(u.id, u.email) })
 
   // 4. 같은 회사 사용자 조회 (company_id가 없으면 전체 조회)
   let query = supabase

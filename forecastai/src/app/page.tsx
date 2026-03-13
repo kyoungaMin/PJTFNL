@@ -107,7 +107,7 @@ export default function Home() {
     'action-queue':     <PageActionQueue />,
     purchase:           <PagePurchase />,
     simulation:         <PageSimulation />,
-    'model-scenario':   <PageModelScenario />,
+    'model-scenario':   <PageModelScenario setPage={setPage} />,
     'model-eval':       <PageModelEvaluation />,
     'ext-semi':         <PageExtSemi />,
     'ext-global':       <PageExtGlobal />,
