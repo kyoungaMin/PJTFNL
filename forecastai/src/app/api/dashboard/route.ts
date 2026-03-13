@@ -3,9 +3,14 @@ import { supabase } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+// ─── 시스템 기준날짜 ────────────────────────────────────────────────────────
+// 실데이터 최신일(2026-02-28) 기준으로 모든 날짜 계산
+// → 실제 서비스 전환 시 이 상수를 제거하고 new Date()로 복원
+const SYSTEM_BASE_DATE = '2026-02-28'
+
 export async function GET() {
   try {
-    const now = new Date()
+    const now = new Date(SYSTEM_BASE_DATE + 'T00:00:00')
 
     // ─── 날짜 유틸 (타임존 안전 처리) ────────────────────────────────────────
     // Date 객체 → 'YYYY-MM-DD' (로컬 날짜 기준)

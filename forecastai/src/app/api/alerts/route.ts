@@ -10,6 +10,9 @@ export interface AlertItem {
   page?: string
 }
 
+// ─── 시스템 기준날짜 ────────────────────────────────────────────────────────
+const SYSTEM_BASE_DATE = '2026-02-28'
+
 export async function GET() {
   try {
     const alerts: AlertItem[] = []
@@ -74,7 +77,7 @@ export async function GET() {
       .in('status', ['R', 'P'])
 
     if ((pendingPO ?? 0) > 0) {
-      const today = new Date().toISOString().slice(5, 10)
+      const today = SYSTEM_BASE_DATE.slice(5, 10)
       alerts.push({
         type: 'warn',
         message: `미처리 구매 발주 ${pendingPO}건 — 입고 확인 필요`,
