@@ -26,6 +26,7 @@ import s5_risk_score
 import s6_action_queue
 import s3m_feature_store_monthly
 import s4m_forecast_monthly
+import s4s_segment_selector
 import s7_production_plan
 import s8_purchase_optimization
 
@@ -46,6 +47,7 @@ STEPS = {
 NAMED_STEPS = {
     "3m": ("피처 엔지니어링(월간)", s3m_feature_store_monthly),
     "4m": ("수요예측 모델(월간)", s4m_forecast_monthly),
+    "4s": ("구간별 모델 선택", s4s_segment_selector),
 }
 
 
