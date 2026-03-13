@@ -32,21 +32,25 @@ function startOfMonths(months = 12): string {
 
 /** 지표 메타 정보 (소스 · 연동 주기) — README 3.2절 기준 */
 export const INDICATOR_META: Record<string, { source: string; freq: string }> = {
-  SOX:         { source: 'Yahoo Finance',        freq: '일간' },
-  DRAM_DDR4:   { source: 'DRAMeXchange',         freq: '주간' },
-  NAND_TLC:    { source: 'TrendForce',            freq: '주간' },
-  INDPRO:      { source: 'FRED',                 freq: '월간' },
-  CN_PMI_MFG:  { source: 'Caixin / S&P Global',  freq: '월간' },
-  BALTIC_DRY:  { source: 'Baltic Exchange',      freq: '일간' },
-  COPPER_LME:  { source: 'LME',                  freq: '일간' },
-  WTI_MONTHLY: { source: 'EIA / NYMEX',          freq: '일간' },
-  KR_BASE_RATE:{ source: '한국은행 (ECOS)',        freq: '비정기' },
-  US_FED_RATE: { source: 'FRED',                 freq: '비정기' },
-  USD:         { source: '한국은행',               freq: '일간' },
-  EUR:         { source: '한국은행',               freq: '일간' },
-  JPY:         { source: '한국은행',               freq: '일간' },
-  CNY:         { source: '한국은행',               freq: '일간' },
-  HS8541:      { source: '관세청 UNIPASS',         freq: '월간' },
+  SOX:          { source: 'Yahoo Finance',        freq: '일간' },
+  DRAM_DDR4:    { source: 'DRAMeXchange',         freq: '주간' },
+  NAND_TLC:     { source: 'TrendForce',            freq: '주간' },
+  SILICON_WAFER:{ source: '업계 조사',              freq: '월간' },
+  INDPRO:       { source: 'FRED',                 freq: '월간' },
+  IPMAN:        { source: 'FRED',                 freq: '월간' },
+  CN_PMI_MFG:   { source: 'Caixin / S&P Global',  freq: '월간' },
+  BALTIC_DRY:   { source: 'Baltic Exchange',      freq: '일간' },
+  COPPER_LME:   { source: 'LME',                  freq: '일간' },
+  WTI_MONTHLY:  { source: 'EIA / NYMEX',          freq: '일간' },
+  KR_BASE_RATE: { source: '한국은행 (ECOS)',        freq: '비정기' },
+  KR_IPI_MFG:   { source: '한국은행 (ECOS)',        freq: '월간' },
+  KR_BSI_MFG:   { source: '한국은행 (ECOS)',        freq: '월간' },
+  US_FED_RATE:  { source: 'FRED',                 freq: '비정기' },
+  USD:          { source: '한국은행',               freq: '일간' },
+  EUR:          { source: '한국은행',               freq: '일간' },
+  JPY:          { source: '한국은행',               freq: '일간' },
+  CNY:          { source: '한국은행',               freq: '일간' },
+  HS8541:       { source: '관세청 UNIPASS',         freq: '월간' },
 }
 
 /** 'YYYY-MM-DD' → '1월', '12월' */
@@ -116,7 +120,7 @@ export async function fetchSemiData(months = 12, freq: Freq = 'month') {
     const { data, error } = await supabase
       .from('economic_indicator')
       .select('date, indicator_code, value')
-      .in('indicator_code', ['SOX', 'DRAM_DDR4', 'NAND_TLC'])
+      .in('indicator_code', ['SOX', 'DRAM_DDR4', 'NAND_TLC', 'SILICON_WAFER'])
       .gte('date', startOfMonths(months))
       .order('date', { ascending: true })
 
@@ -135,6 +139,7 @@ export async function fetchSemiData(months = 12, freq: Freq = 'month') {
           sox: vals['SOX'] ?? 0,
           dram: vals['DRAM_DDR4'] ?? 0,
           nand: vals['NAND_TLC'] ?? 0,
+          silicon_wafer: vals['SILICON_WAFER'] ?? 0,
         }))
       if (series.filter(r => r.sox || r.dram || r.nand).length >= 2) return series
     }
@@ -157,7 +162,7 @@ export async function fetchGlobalData(months = 12) {
       supabase
         .from('economic_indicator')
         .select('date, indicator_code, value')
-        .in('indicator_code', ['INDPRO', 'CN_PMI_MFG'])
+        .in('indicator_code', ['INDPRO', 'CN_PMI_MFG', 'IPMAN'])
         .gte('date', startOfMonths(months))
         .order('date', { ascending: true }),
       supabase
@@ -180,10 +185,11 @@ export async function fetchGlobalData(months = 12) {
         d: ymToLabel(ym),
         _key: ym,
         ipi: ecoMap[ym]?.['INDPRO'] ?? 0,
+        ipman: ecoMap[ym]?.['IPMAN'] ?? 0,
         pmi: ecoMap[ym]?.['CN_PMI_MFG'] ?? 0,
         hs8541: tradeMap[ym] ? Math.round(tradeMap[ym] / 1_000_000) : 0,
       }))
-      if (series.filter(r => r.ipi || r.pmi || r.hs8541).length >= 2) return series
+      if (series.filter(r => r.ipi || r.ipman || r.pmi || r.hs8541).length >= 2) return series
     }
   }
 
@@ -210,7 +216,7 @@ export async function fetchFXData(months = 12, freq: Freq = 'month') {
       supabase
         .from('economic_indicator')
         .select('date, indicator_code, value')
-        .in('indicator_code', ['KR_BASE_RATE', 'US_FED_RATE'])
+        .in('indicator_code', ['KR_BASE_RATE', 'US_FED_RATE', 'KR_IPI_MFG', 'KR_BSI_MFG'])
         .gte('date', startOfMonths(months))
         .order('date', { ascending: true }),
     ])
@@ -223,7 +229,7 @@ export async function fetchFXData(months = 12, freq: Freq = 'month') {
         indicator_code: r.indicator_code as string,
         value: Number(r.value),
       }))
-      const rateMap = forwardFillToKeys(periodKeys, rateRows, ['KR_BASE_RATE', 'US_FED_RATE'])
+      const rateMap = forwardFillToKeys(periodKeys, rateRows, ['KR_BASE_RATE', 'US_FED_RATE', 'KR_IPI_MFG', 'KR_BSI_MFG'])
       const series = periodKeys.map(pk => ({
         d: labelFor(pk, freq),
         _key: pk,
@@ -233,6 +239,8 @@ export async function fetchFXData(months = 12, freq: Freq = 'month') {
         cny: fxMap[pk]?.['CNY'] ?? 0,
         rate: rateMap[pk]?.['KR_BASE_RATE'] ?? 0,
         us_rate: rateMap[pk]?.['US_FED_RATE'] ?? 0,
+        kr_ipi: rateMap[pk]?.['KR_IPI_MFG'] ?? 0,
+        kr_bsi: rateMap[pk]?.['KR_BSI_MFG'] ?? 0,
       }))
       if (series.filter(r => r.usd || r.eur).length >= 2) return series
     }

@@ -268,22 +268,22 @@ export const INV_TREND = [
 
 // ─── External Indicators ─────────────────────────────────────────────────────
 export const EXT_SEMI_DATA = [
-  {d:'1월',sox:4210,dram:3.20,nand:4.10},{d:'2월',sox:4380,dram:3.45,nand:4.30},{d:'3월',sox:4520,dram:3.60,nand:4.55},
-  {d:'4월',sox:4180,dram:3.30,nand:4.20},{d:'5월',sox:4650,dram:3.75,nand:4.70},{d:'6월',sox:4820,dram:3.90,nand:4.85},
-  {d:'7월',sox:4720,dram:3.82,nand:4.78},{d:'8월',sox:4950,dram:4.05,nand:5.10},{d:'9월',sox:5100,dram:4.20,nand:5.25},
-  {d:'10월',sox:5230,dram:4.35,nand:5.40},{d:'11월',sox:5180,dram:4.28,nand:5.32},{d:'12월',sox:5380,dram:4.50,nand:5.60},
+  {d:'1월',sox:4210,dram:3.20,nand:4.10,silicon_wafer:5.80},{d:'2월',sox:4380,dram:3.45,nand:4.30,silicon_wafer:5.82},{d:'3월',sox:4520,dram:3.60,nand:4.55,silicon_wafer:5.85},
+  {d:'4월',sox:4180,dram:3.30,nand:4.20,silicon_wafer:5.83},{d:'5월',sox:4650,dram:3.75,nand:4.70,silicon_wafer:5.87},{d:'6월',sox:4820,dram:3.90,nand:4.85,silicon_wafer:5.89},
+  {d:'7월',sox:4720,dram:3.82,nand:4.78,silicon_wafer:5.88},{d:'8월',sox:4950,dram:4.05,nand:5.10,silicon_wafer:5.91},{d:'9월',sox:5100,dram:4.20,nand:5.25,silicon_wafer:5.92},
+  {d:'10월',sox:5230,dram:4.35,nand:5.40,silicon_wafer:5.93},{d:'11월',sox:5180,dram:4.28,nand:5.32,silicon_wafer:5.91},{d:'12월',sox:5380,dram:4.50,nand:5.60,silicon_wafer:5.95},
 ]
 export const EXT_GLOBAL_DATA = [
-  {d:'1월',ipi:98.2,pmi:49.8,hs8541:1820},{d:'2월',ipi:98.8,pmi:50.2,hs8541:1950},{d:'3월',ipi:99.5,pmi:51.0,hs8541:2180},
-  {d:'4월',ipi:98.1,pmi:49.5,hs8541:1740},{d:'5월',ipi:100.2,pmi:51.8,hs8541:2250},{d:'6월',ipi:101.0,pmi:52.3,hs8541:2380},
-  {d:'7월',ipi:100.5,pmi:51.9,hs8541:2290},{d:'8월',ipi:101.8,pmi:52.8,hs8541:2450},{d:'9월',ipi:102.3,pmi:53.1,hs8541:2580},
-  {d:'10월',ipi:102.8,pmi:53.5,hs8541:2640},{d:'11월',ipi:103.2,pmi:53.9,hs8541:2710},{d:'12월',ipi:104.0,pmi:54.2,hs8541:2820},
+  {d:'1월',ipi:98.2,ipman:97.1,pmi:49.8,hs8541:1820},{d:'2월',ipi:98.8,ipman:97.5,pmi:50.2,hs8541:1950},{d:'3월',ipi:99.5,ipman:98.2,pmi:51.0,hs8541:2180},
+  {d:'4월',ipi:98.1,ipman:97.0,pmi:49.5,hs8541:1740},{d:'5월',ipi:100.2,ipman:99.1,pmi:51.8,hs8541:2250},{d:'6월',ipi:101.0,ipman:99.8,pmi:52.3,hs8541:2380},
+  {d:'7월',ipi:100.5,ipman:99.4,pmi:51.9,hs8541:2290},{d:'8월',ipi:101.8,ipman:100.6,pmi:52.8,hs8541:2450},{d:'9월',ipi:102.3,ipman:101.2,pmi:53.1,hs8541:2580},
+  {d:'10월',ipi:102.8,ipman:101.7,pmi:53.5,hs8541:2640},{d:'11월',ipi:103.2,ipman:102.1,pmi:53.9,hs8541:2710},{d:'12월',ipi:104.0,ipman:102.8,pmi:54.2,hs8541:2820},
 ]
 export const EXT_FX_DATA = [
-  {d:'1월',usd:1285,eur:1410,jpy:9.12,cny:180.5,rate:3.50,us_rate:5.33},{d:'2월',usd:1310,eur:1435,jpy:9.25,cny:182.1,rate:3.50,us_rate:5.33},{d:'3월',usd:1335,eur:1458,jpy:9.38,cny:184.8,rate:3.50,us_rate:5.33},
-  {d:'4월',usd:1358,eur:1482,jpy:9.45,cny:187.2,rate:3.75,us_rate:5.33},{d:'5월',usd:1342,eur:1465,jpy:9.35,cny:185.6,rate:3.75,us_rate:5.33},{d:'6월',usd:1325,eur:1448,jpy:9.22,cny:183.9,rate:3.50,us_rate:5.33},
-  {d:'7월',usd:1310,eur:1432,jpy:9.15,cny:182.3,rate:3.50,us_rate:5.33},{d:'8월',usd:1328,eur:1451,jpy:9.28,cny:184.1,rate:3.25,us_rate:5.33},{d:'9월',usd:1315,eur:1440,jpy:9.20,cny:183.2,rate:3.25,us_rate:5.25},
-  {d:'10월',usd:1340,eur:1462,jpy:9.32,cny:185.4,rate:3.00,us_rate:5.08},{d:'11월',usd:1355,eur:1478,jpy:9.40,cny:186.8,rate:3.00,us_rate:4.83},{d:'12월',usd:1342,eur:1465,jpy:9.35,cny:185.5,rate:3.00,us_rate:4.58},
+  {d:'1월',usd:1285,eur:1410,jpy:9.12,cny:180.5,rate:3.50,us_rate:5.33,kr_ipi:112.1,kr_bsi:70},{d:'2월',usd:1310,eur:1435,jpy:9.25,cny:182.1,rate:3.50,us_rate:5.33,kr_ipi:112.5,kr_bsi:71},{d:'3월',usd:1335,eur:1458,jpy:9.38,cny:184.8,rate:3.50,us_rate:5.33,kr_ipi:113.0,kr_bsi:72},
+  {d:'4월',usd:1358,eur:1482,jpy:9.45,cny:187.2,rate:3.75,us_rate:5.33,kr_ipi:112.8,kr_bsi:71},{d:'5월',usd:1342,eur:1465,jpy:9.35,cny:185.6,rate:3.75,us_rate:5.33,kr_ipi:113.5,kr_bsi:73},{d:'6월',usd:1325,eur:1448,jpy:9.22,cny:183.9,rate:3.50,us_rate:5.33,kr_ipi:114.0,kr_bsi:74},
+  {d:'7월',usd:1310,eur:1432,jpy:9.15,cny:182.3,rate:3.50,us_rate:5.33,kr_ipi:113.8,kr_bsi:73},{d:'8월',usd:1328,eur:1451,jpy:9.28,cny:184.1,rate:3.25,us_rate:5.33,kr_ipi:114.2,kr_bsi:74},{d:'9월',usd:1315,eur:1440,jpy:9.20,cny:183.2,rate:3.25,us_rate:5.25,kr_ipi:114.5,kr_bsi:75},
+  {d:'10월',usd:1340,eur:1462,jpy:9.32,cny:185.4,rate:3.00,us_rate:5.08,kr_ipi:114.8,kr_bsi:74},{d:'11월',usd:1355,eur:1478,jpy:9.40,cny:186.8,rate:3.00,us_rate:4.83,kr_ipi:114.6,kr_bsi:73},{d:'12월',usd:1342,eur:1465,jpy:9.35,cny:185.5,rate:3.00,us_rate:4.58,kr_ipi:114.9,kr_bsi:75},
 ]
 export const EXT_SUPPLY_DATA = [
   {d:'1월',bdi:1820,freight:1250},{d:'2월',bdi:1950,freight:1320},{d:'3월',bdi:2100,freight:1410},
