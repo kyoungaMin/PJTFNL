@@ -46,13 +46,13 @@ export async function GET(request: Request) {
         .from('forecast_result')
         .select('forecast_date')
         .eq('product_id', productId)
-        .eq('model_id', 'lgbm_q_monthly_v1')
+        .eq('model_id', 'lgbm_q_monthly_v2')
         .order('forecast_date', { ascending: false })
         .limit(1)
         .single()
 
       if (latestErr || !latestRow) {
-        return NextResponse.json({ items: [], historyItems: [], source: 'no_forecast', model: 'lgbm_q_monthly_v1' })
+        return NextResponse.json({ items: [], historyItems: [], source: 'no_forecast', model: 'lgbm_q_monthly_v2' })
       }
       forecastDate = latestRow.forecast_date
     }
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
       .from('forecast_result')
       .select('horizon_days, p10, p50, p90')
       .eq('product_id', productId)
-      .eq('model_id', 'lgbm_q_monthly_v1')
+      .eq('model_id', 'lgbm_q_monthly_v2')
       .eq('forecast_date', forecastDate)
       .in('horizon_days', [30, 90, 180])
       .order('horizon_days', { ascending: true })
@@ -135,7 +135,7 @@ export async function GET(request: Request) {
         .from('model_evaluation')
         .select('r2_score, mae')
         .eq('product_id', productId)
-        .eq('model_id', 'lgbm_q_monthly_v1')
+        .eq('model_id', 'lgbm_q_monthly_v2')
         .order('eval_date', { ascending: false })
         .limit(1)
         .single()
@@ -157,7 +157,7 @@ export async function GET(request: Request) {
       items,
       historyItems,
       forecastDate,
-      model: 'lgbm_q_monthly_v1',
+      model: 'lgbm_q_monthly_v2',
       source: 'database',
       customerItems,
       evaluation,

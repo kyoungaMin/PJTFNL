@@ -91,6 +91,7 @@ export async function GET(request: Request) {
       .in('indicator_code', ['SOX', 'DRAM_DDR4', 'NAND_TLC'])
       .gte('date', start)
       .order('date', { ascending: true })
+      .limit(10000)
 
     if (!error && data?.length) {
       const rows = data.map(r => ({

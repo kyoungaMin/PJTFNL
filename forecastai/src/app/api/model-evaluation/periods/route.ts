@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 // GET /api/model-evaluation/periods?type=weekly|monthly
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? 'weekly'
-  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
+  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v3'
 
   try {
     const { data, error } = await supabase

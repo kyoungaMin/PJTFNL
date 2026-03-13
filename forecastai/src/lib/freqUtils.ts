@@ -95,6 +95,38 @@ export function defaultMonthsForFreq(freq: Freq): number {
   return 12
 }
 
+/** 원본 날짜 키(YYYY-MM-DD 또는 YYYY-MM)를 연도 포함 풀 레이블로 변환 */
+export function periodLabel(dateKey: string, freq: Freq): string {
+  if (!dateKey || dateKey.length < 7) return dateKey
+  const y = dateKey.slice(0, 4)
+  if (freq === 'month') {
+    // dateKey = 'YYYY-MM'
+    const m = parseInt(dateKey.slice(5, 7), 10)
+    return `${y}년 ${m}월`
+  }
+  if (freq === 'week') {
+    // dateKey = 'YYYY-MM-DD' (해당 주 월요일)
+    if (dateKey.length < 10) return dateKey
+    const start = new Date(dateKey + 'T00:00:00')
+    const end   = new Date(start.getTime() + 6 * 86400000)
+    const fmt = (d: Date) => `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}`
+    return `${y}/${fmt(start)} ~ ${fmt(end)}`
+  }
+  // day: 'YYYY-MM-DD'
+  const m   = parseInt(dateKey.slice(5, 7), 10)
+  const day = parseInt(dateKey.slice(8, 10), 10)
+  const d   = new Date(dateKey + 'T00:00:00')
+  const dn  = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()]
+  return `${y}/${m}/${day}(${dn})`
+}
+
+// 연동 주기별 기본 조회 건수 (일간 30건, 주간 52건, 월간 12건)
+export function defaultCountForFreq(freq: Freq): number {
+  if (freq === 'day') return 30
+  if (freq === 'week') return 52
+  return 12 // month
+}
+
 // period options 반환
 export function periodOptionsForFreq(freq: Freq): readonly number[] {
   if (freq === 'day') return [1, 3, 6] as const

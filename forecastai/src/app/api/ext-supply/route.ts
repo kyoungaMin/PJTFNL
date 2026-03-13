@@ -111,6 +111,7 @@ export async function GET(request: Request) {
       .eq('indicator_code', 'BALTIC_DRY')
       .gte('date', start)
       .order('date', { ascending: true })
+      .limit(10000)
 
     if (!error && data?.length) {
       const rows = data.map(r => ({
