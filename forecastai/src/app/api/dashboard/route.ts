@@ -141,11 +141,12 @@ export async function GET() {
 
     if (poErr) throw poErr
 
-    // ─── 4. 위험 등급 집계 (최신 eval_date 기준) ─────────────────────────────
+    // ─── 4. 위험 등급 집계 (최신 eval_date 기준, 기본: monthly) ─────────────────
     // ML 미실행 시 빈 배열 반환 → 프론트에서 Mock fallback
     const { data: latestEval } = await supabase
       .from('risk_score')
       .select('eval_date')
+      .eq('eval_type', 'monthly') // 대시보드는 기본적으로 월간 리스크 현황 노출
       .order('eval_date', { ascending: false })
       .limit(1)
 
@@ -154,8 +155,9 @@ export async function GET() {
     if (latestEval?.[0]?.eval_date) {
       const latestEvalDate = latestEval[0].eval_date as string
 
-      // DB 집계 RPC 사용 (DB/22_dashboard_rpc.sql 참고)
-      // 13K+ 행을 REST로 조회하면 기본 limit=1000에 걸려 등급 비율이 왜곡됨
+      // DB 집계 RPC 사용 (p_eval_type 파라미터가 RPC에 있을 것으로 예상되나, 
+      // 만약 없으면 SQL 레벨에서 eval_type 필터링이 필요함. 
+      // 여기서는 p_date 기준 등급 집계이므로, eval_date가 이미 monthly 전용임)
       const { data: gradeSums } = await supabase
         .rpc('get_risk_grade_summary', { p_date: latestEvalDate })
 

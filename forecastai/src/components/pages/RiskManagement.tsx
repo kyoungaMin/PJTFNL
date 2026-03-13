@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { T, card, RISK_ITEMS } from '@/lib/data'
+import { T, card } from '@/lib/data'
 import { StatusBadge, GradeBadge, RiskTypeBadge, ScoreBar,
   PageHeader, Btn, FilterBar, Select, SearchInput, Table, Badge } from '@/components/ui'
 
@@ -21,9 +21,16 @@ function SourceBadge({ source }: { source: string }) {
 }
 
 export default function PageRiskManagement() {
-  const [riskItems, setRiskItems] = useState<RiskItem[]>([])
-  const [dataSource, setDataSource] = useState<string>('loading')
-  const [evalDate,   setEvalDate]   = useState<string>('')
+  const [riskItems,     setRiskItems]     = useState<RiskItem[]>([])
+  const [dataSource,    setDataSource]    = useState<string>('loading')
+  const [evalDate,      setEvalDate]      = useState<string>('')
+  const [gradeSummary,  setGradeSummary]  = useState<Record<string, number>>({})
+  const [totalCount,    setTotalCount]    = useState<number>(0)
+  const [hasMore,       setHasMore]       = useState<boolean>(false)
+  const [page,          setPage]          = useState<number>(1)
+  const [loadingMore,   setLoadingMore]   = useState<boolean>(false)
+
+  const [periodType, setPeriodType] = useState<'weekly' | 'monthly'>('monthly')
   const [search,  setSearch]  = useState('')
   const [gradeF,  setGradeF]  = useState('전체')
   const [typeF,   setTypeF]   = useState('전체') // 마진, 납기, 결품 등 위기상황
@@ -35,55 +42,118 @@ export default function PageRiskManagement() {
 
   // 사용자가 선택한 필터 상태
   const [selCategory, setSelCategory] = useState<string>('전체')
-  const [dateFrom,    setDateFrom]    = useState<string>('')  // YYYY-MM-DD
-  const [dateTo,      setDateTo]      = useState<string>('')  // YYYY-MM-DD
+  const [selDate,     setSelDate]     = useState<string>('')
 
-  /* ── 초기 필터 정보 로드 ── */
+  // ─── 날짜 표시 형식 변환 유틸 ───────────────────────────────────────────────
+  const getWeekOfMonth = (date: Date) => {
+    const day = date.getDate();
+    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    return Math.ceil((day + firstDay) / 7);
+  };
+
+  const formatDateDisplay = (dateStr: string, type: 'weekly' | 'monthly') => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    
+    if (type === 'monthly') {
+      return `${year}년 ${String(month).padStart(2, '0')}월`;
+    } else {
+      const shortYear = String(year).slice(2);
+      const week = getWeekOfMonth(d);
+      return `${shortYear}년 ${String(month).padStart(2, '0')}월 ${week}주차`;
+    }
+  };
+
+  // Select 컴포넌트용 옵션 생성
+  const dateOptions: { value: string, label: string }[] = [];
+  const seenLabels = new Set();
+  availDates.forEach(d => {
+    const label = formatDateDisplay(d, periodType);
+    if (!seenLabels.has(label)) {
+      dateOptions.push({ value: d, label });
+      seenLabels.add(label);
+    }
+  });
+
+  /* ── 초기 필터 정보 로드 (periodType 변경 시 재로드) ── */
   useEffect(() => {
-    fetch('/api/risk/filters')
+    fetch(`/api/risk/filters?type=${periodType}`)
       .then(r => r.json())
       .then(d => {
         if (d.categories) setAvailCategories(d.categories)
         if (d.dates && d.dates.length > 0) {
           setAvailDates(d.dates)
-          // 최초 로드: From = 가장 오래된 날짜, To = 최신 날짜
-          setDateTo(d.dates[0])
-          setDateFrom(d.dates[d.dates.length - 1])
+          setSelDate(d.dates[0]) // 기본: 최신 날짜
+        } else {
+          setAvailDates([])
+          setSelDate('')
         }
       })
       .catch(e => console.error('Filter load error', e))
-  }, [])
+  }, [periodType])
 
-  /* ── 데이터 로드 ── */
+  /* ── 데이터 로드 (필터 변경 시 1페이지부터) ── */
   useEffect(() => {
-    // dateFrom / dateTo 아직 확정 전이면 대기
-    if (!dateFrom || !dateTo) return
-
+    // 날짜가 없어도 'loading' 상태로 초기화하여 빈 화면 방지
     setDataSource('loading')
     setRiskItems([])
+    setGradeSummary({})
+    setTotalCount(0)
+    setHasMore(false)
+    setPage(1)
+    
+    if (selDate) {
+      loadPage(1, selDate, selCategory, periodType, false)
+    } else if (availDates.length === 0 && dataSource !== 'loading') {
+       // 필터 로드 완료 후에도 날짜가 없으면 empty 처리
+       setDataSource('empty')
+    }
+  }, [selDate, selCategory, periodType])
 
+  /* ── 페이지 추가 로드 ── */
+  useEffect(() => {
+    if (page === 1) return // 최초 로드는 위 effect에서 처리
+    setLoadingMore(true)
+    loadPage(page, selDate, selCategory, periodType, true)
+  }, [page])
+
+  function loadPage(p: number, date: string, category: string, pType: string, append: boolean) {
     const query = new URLSearchParams()
-    query.set('dateFrom', dateFrom)
-    query.set('dateTo',   dateTo)
-    if (selCategory !== '전체') query.set('type', selCategory)
+    query.set('date', date)
+    query.set('page', String(p))
+    query.set('eval_type', pType)
+    if (category !== '전체') query.set('type', category)
 
     fetch(`/api/risk?${query.toString()}`)
       .then(r => r.json())
       .then(data => {
-        if (data.source === 'database' && data.items?.length > 0) {
-          setRiskItems(data.items)
+        if (data.source === 'database') {
+          setRiskItems(prev => append ? [...prev, ...(data.items ?? [])] : (data.items ?? []))
           setEvalDate(data.evalDate ?? '')
           setDataSource('database')
+          setGradeSummary(data.gradeSummary ?? {})
+          setTotalCount(data.totalCount ?? 0)
+          setHasMore(data.hasMore ?? false)
         } else if (data.source === 'empty') {
-          setRiskItems([])
-          setEvalDate(data.evalDate ?? dateTo ?? '')
+          if (!append) {
+            setRiskItems([])
+            setEvalDate(data.evalDate ?? date ?? '')
+            setGradeSummary({})
+            setTotalCount(0)
+            setHasMore(false)
+          }
           setDataSource('empty')
         } else {
           setDataSource(data.source === 'error' ? 'error' : 'mock')
         }
       })
       .catch(() => setDataSource('error'))
-  }, [dateFrom, dateTo, selCategory])
+      .finally(() => setLoadingMore(false))
+  }
 
   const filtered = riskItems.filter(r => {
     const matchSearch = r.sku.includes(search) || r.name.includes(search)
@@ -92,9 +162,6 @@ export default function PageRiskManagement() {
     return matchSearch && matchGrade && matchType
   })
 
-  const gradeCounts = Object.fromEntries(
-    ['A','B','C','D','E','F'].map(g => [g, riskItems.filter(r => r.grade === g).length])
-  )
   const gradeColors: Record<string, string> = {
     A: '#10B981', B: '#84CC16', C: '#F59E0B', D: '#F97316', E: '#EF4444', F: '#7C3AED',
   }
@@ -110,8 +177,7 @@ export default function PageRiskManagement() {
             {evalDate && <span style={{ fontSize: 10, color: T.text3 }}>기준일: {evalDate}</span>}
             <Btn variant="secondary" onClick={() => {
                const query = new URLSearchParams();
-               if (dateFrom) query.set('dateFrom', dateFrom);
-               if (dateTo)   query.set('dateTo',   dateTo);
+               if (selDate) query.set('date', selDate);
                if (selCategory !== '전체') query.set('type', selCategory);
                window.open(`/risk-report?${query.toString()}`, '_blank', 'width=840,height=1188');
             }}>📄 리스크 보고서</Btn>
@@ -119,7 +185,7 @@ export default function PageRiskManagement() {
         }
       />
 
-      {/* Grade scoreboard */}
+      {/* Grade scoreboard — gradeSummary 기반 (전체 데이터 집계) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10, marginBottom: 20 }}>
         {['A','B','C','D','E','F'].map(g => (
           <div key={g} onClick={() => setGradeF(gradeF === g ? '전체' : g)} style={{
@@ -129,7 +195,7 @@ export default function PageRiskManagement() {
             transition: 'all 0.15s',
           }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: gradeColors[g], fontFamily: "'IBM Plex Mono',monospace" }}>
-              {dataSource === 'loading' ? '—' : gradeCounts[g]}
+              {dataSource === 'loading' ? '—' : (gradeSummary[g] ?? 0)}
             </div>
             <div style={{ fontSize: 11, color: T.text3, marginTop: 3 }}>Grade {g}</div>
           </div>
@@ -137,31 +203,35 @@ export default function PageRiskManagement() {
       </div>
 
       <FilterBar>
-        {/* 기간 (From ~ To) */}
+        {/* 주간/월간 전환 */}
+        <div style={{ display: 'flex', background: T.surface2, borderRadius: 8, padding: 3, gap: 2, marginRight: 10 }}>
+          <button 
+            onClick={() => setPeriodType('monthly')}
+            style={{ 
+              padding: '6px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: periodType === 'monthly' ? T.surface : 'transparent',
+              color: periodType === 'monthly' ? T.text1 : T.text3,
+              boxShadow: periodType === 'monthly' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+              transition: 'all 0.2s'
+            }}>월간</button>
+          <button 
+            onClick={() => setPeriodType('weekly')}
+            style={{ 
+              padding: '6px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: periodType === 'weekly' ? T.surface : 'transparent',
+              color: periodType === 'weekly' ? T.text1 : T.text3,
+              boxShadow: periodType === 'weekly' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+              transition: 'all 0.2s'
+            }}>주간</button>
+        </div>
+
+        {/* 기준일 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>기간</span>
-          <input
-            type="date"
-            value={dateFrom}
-            min={availDates.length > 0 ? availDates[availDates.length - 1] : undefined}
-            max={dateTo || undefined}
-            onChange={e => setDateFrom(e.target.value)}
-            style={{
-              padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
-              background: T.surface, color: T.text1, fontSize: 13, outline: 'none', cursor: 'pointer'
-            }}
-          />
-          <span style={{ fontSize: 12, color: T.text3 }}>~</span>
-          <input
-            type="date"
-            value={dateTo}
-            min={dateFrom || undefined}
-            max={availDates.length > 0 ? availDates[0] : undefined}
-            onChange={e => setDateTo(e.target.value)}
-            style={{
-              padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
-              background: T.surface, color: T.text1, fontSize: 13, outline: 'none', cursor: 'pointer'
-            }}
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>기준일</span>
+          <Select
+            value={selDate}
+            onChange={setSelDate}
+            options={dateOptions.length > 0 ? dateOptions : [{ value: selDate, label: formatDateDisplay(selDate, periodType) }]}
           />
         </div>
 
@@ -188,12 +258,13 @@ export default function PageRiskManagement() {
 
         <Btn variant="secondary" onClick={() => {
           setSearch(''); setGradeF('전체'); setTypeF('전체'); setSelCategory('전체');
-          if (availDates.length > 0) {
-            setDateTo(availDates[0])
-            setDateFrom(availDates[availDates.length - 1])
-          }
+          if (availDates.length > 0) setSelDate(availDates[0])
         }}>초기화</Btn>
-        <span style={{ fontSize: 11, color: T.text3, marginLeft: 'auto' }}>총 {filtered.length}건</span>
+        <span style={{ fontSize: 11, color: T.text3, marginLeft: 'auto' }}>
+          {riskItems.length > 0 && totalCount > 0
+            ? `${riskItems.length.toLocaleString()} / ${totalCount.toLocaleString()}건 로드`
+            : `총 ${filtered.length}건`}
+        </span>
       </FilterBar>
 
       {filtered.some(r => ['E','F'].includes(r.grade)) && (
@@ -211,21 +282,36 @@ export default function PageRiskManagement() {
           해당 조건(날짜 및 분류)에 해당하는 리스크 데이터가 없습니다.
         </div>
       ) : (
-        <div style={card}>
-          <Table
-            headers={['SKU 코드','품목명','위험 점수','등급','위험 유형','권고 액션','상태']}
-            onRowClick={(row: { _raw: RiskItem }) => setDrawer(row._raw)}
-            rows={filtered.map(r => ({ _raw: r, cells: [
-              <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, fontWeight: 600, color: T.text2 }}>{r.sku}</span>,
-              <span style={{ fontWeight: 600, color: T.text1 }}>{r.name}</span>,
-              <ScoreBar score={r.score}/>,
-              <GradeBadge grade={r.grade}/>,
-              <RiskTypeBadge type={r.type}/>,
-              <span style={{ fontSize: 12, color: T.text2 }}>{r.action}</span>,
-              <StatusBadge status={r.status}/>,
-            ]}))}
-          />
-        </div>
+        <>
+          <div style={card}>
+            <Table
+              headers={['SKU 코드','품목명','위험 점수','등급','위험 유형','권고 액션','상태']}
+              onRowClick={(row: { _raw: RiskItem }) => setDrawer(row._raw)}
+              rows={filtered.map(r => ({ _raw: r, cells: [
+                <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, fontWeight: 600, color: T.text2 }}>{r.sku}</span>,
+                <span style={{ fontWeight: 600, color: T.text1 }}>{r.name}</span>,
+                <ScoreBar score={r.score}/>,
+                <GradeBadge grade={r.grade}/>,
+                <RiskTypeBadge type={r.type}/>,
+                <span style={{ fontSize: 12, color: T.text2 }}>{r.action}</span>,
+                <StatusBadge status={r.status}/>,
+              ]}))}
+            />
+          </div>
+
+          {/* 더 보기 버튼 */}
+          {hasMore && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+              <Btn
+                variant="secondary"
+                onClick={() => setPage(p => p + 1)}
+                disabled={loadingMore}
+              >
+                {loadingMore ? '불러오는 중…' : `더 보기 (${riskItems.length.toLocaleString()} / ${totalCount.toLocaleString()}건)`}
+              </Btn>
+            </div>
+          )}
+        </>
       )}
 
       {/* Drawer */}

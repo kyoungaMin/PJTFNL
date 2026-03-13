@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+const PAGE_SIZE = 200
+
 /* ─── 배치 .in() 헬퍼 ─── */
 const IN_BATCH = 400
 async function batchIn(table: string, select: string, col: string, ids: string[], extra?: (q: any) => any): Promise<any[]> {
@@ -56,35 +58,36 @@ const STATUS_LABEL: Record<string, string> = {
 
 /* ═══════════════════════════════════════════════════════════════════
    GET /api/risk
-   risk_score 최신 eval_date 기준으로 리스크 현황 목록을 반환합니다.
+   쿼리 파라미터:
+     date      - 기준일 (없으면 최신 eval_date 자동 탐색)
+     type      - 제품 유형 필터 (제품, 반제품, 부재료 등)
+     page      - 페이지 번호 (기본 1, PAGE_SIZE=200)
 ═══════════════════════════════════════════════════════════════════ */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const dateFromParam = searchParams.get('dateFrom')
-    const dateToParam   = searchParams.get('dateTo')
-    const dateParam     = searchParams.get('date')   // 하위 호환
-    const typeParam     = searchParams.get('type')   // 제품, 반제품, 부재료 등
+    const dateParam = searchParams.get('date')
+    const typeParam = searchParams.get('type')
+    const evalType  = searchParams.get('eval_type') || 'monthly' // 주간/월간 구분
+    const page      = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+    const offset    = (page - 1) * PAGE_SIZE
 
-    // ── 1. eval_date 범위 결정 ─────────────────────────────────────────────
-    const isRange = !!(dateFromParam && dateToParam)
+    // ── 1. eval_date 결정 ──────────────────────────────────────────────────
     let evalDate: string | undefined = dateParam ?? undefined
-    let dateFrom = dateFromParam ?? undefined
-    let dateTo   = dateToParam   ?? undefined
 
-    if (!isRange && !evalDate) {
-      // 최신 날짜 자동 탐색
+    if (!evalDate) {
       const { data: snapRows, error: snapErr } = await supabase
         .from('risk_score')
         .select('eval_date')
+        .eq('eval_type', evalType)
         .order('eval_date', { ascending: false })
         .limit(1)
       if (snapErr) throw snapErr
       evalDate = snapRows?.[0]?.eval_date as string | undefined
     }
 
-    if (!isRange && !evalDate) {
-      return NextResponse.json({ items: [], evalDate: null, source: 'empty' })
+    if (!evalDate) {
+      return NextResponse.json({ items: [], evalDate: null, gradeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
     }
 
     // ── 2. 제품유형 필터: product_master에서 대상 product_code 목록 선추출 ─
@@ -97,77 +100,90 @@ export async function GET(request: Request) {
       if (typeErr) throw typeErr
       validProductIds = typeRows.map((r: any) => r.product_code)
       if (validProductIds.length === 0) {
-        return NextResponse.json({ items: [], evalDate: evalDate ?? dateTo, source: 'empty' })
+        return NextResponse.json({ items: [], evalDate, gradeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
       }
     }
 
-    // ── 3. risk_score 조회 ─────────────────────────────────────────────────
+    // ── 3. 등급별 건수 집계 (전체 데이터 기준) ────────────────────────────
+    const GRADES = ['A', 'B', 'C', 'D', 'E', 'F']
+    let gradeSummary: Record<string, number> = {}
+    let totalCount = 0
+
+    if (validProductIds) {
+      const gradeRows = await batchIn(
+        'risk_score', 'risk_grade', 'product_id', validProductIds,
+        (q) => q.eq('eval_date', evalDate).eq('eval_type', evalType)
+      )
+      for (const r of gradeRows) {
+        const g = String(r.risk_grade ?? '')
+        if (g) gradeSummary[g] = (gradeSummary[g] ?? 0) + 1
+      }
+      totalCount = gradeRows.length
+    } else {
+      const countResults = await Promise.all(
+        GRADES.map(g =>
+          supabase
+            .from('risk_score')
+            .select('*', { count: 'exact', head: true })
+            .eq('eval_date', evalDate!)
+            .eq('eval_type', evalType)
+            .eq('risk_grade', g)
+        )
+      )
+      for (let i = 0; i < GRADES.length; i++) {
+        const cnt = countResults[i].count ?? 0
+        gradeSummary[GRADES[i]] = cnt
+        totalCount += cnt
+      }
+    }
+
+    // ── 4. risk_score 목록 조회 (페이지네이션) ──────────────────────────────
     const RISK_SELECT = 'product_id,eval_date,total_risk,risk_grade,stockout_risk,excess_risk,delivery_risk,margin_risk,safety_stock,inventory_days'
 
     let risks: any[] = []
 
-    const applyDateFilter = (q: any) =>
-      isRange
-        ? q.gte('eval_date', dateFrom).lte('eval_date', dateTo)
-        : q.eq('eval_date', evalDate)
-
     if (validProductIds) {
-      const rawRisks = await batchIn('risk_score', RISK_SELECT, 'product_id', validProductIds,
-        (q) => applyDateFilter(q).order('eval_date', { ascending: false }).order('total_risk', { ascending: false }))
-      risks = rawRisks
+      const allRisks = await batchIn(
+        'risk_score', RISK_SELECT, 'product_id', validProductIds,
+        (q) => q.eq('eval_date', evalDate).eq('eval_type', evalType).order('total_risk', { ascending: false })
+      )
+      allRisks.sort((a, b) => b.total_risk - a.total_risk)
+      risks = allRisks.slice(offset, offset + PAGE_SIZE)
     } else {
-      let q = supabase.from('risk_score').select(RISK_SELECT)
-      q = applyDateFilter(q).order('eval_date', { ascending: false }).order('total_risk', { ascending: false })
-      // 범위 조회 시 product × date 중복 있으므로 여유있게 가져옴
-      q = isRange ? q.limit(5000) : q.limit(200)
-      const { data, error: bErr } = await q
-      if (bErr) throw bErr
+      const { data, error: rErr } = await supabase
+        .from('risk_score')
+        .select(RISK_SELECT)
+        .eq('eval_date', evalDate)
+        .eq('eval_type', evalType)
+        .order('total_risk', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1)
+      if (rErr) throw rErr
       if (data) risks = data
     }
 
-    // ── 4. 범위 조회: product_id별 최신 eval_date 1건만 유지 ──────────────
-    if (isRange && risks.length > 0) {
-      const seen = new Map<string, any>()
-      // eval_date desc 정렬 이미 됨 → 처음 나오는 것이 최신
-      for (const r of risks) {
-        if (!seen.has(r.product_id)) seen.set(r.product_id, r)
-      }
-      risks = Array.from(seen.values()).sort((a, b) => b.total_risk - a.total_risk).slice(0, 200)
-      // 응답에 쓸 evalDate = 범위 내 가장 최신 날짜
-      evalDate = risks[0]?.eval_date ?? dateTo
-    }
+    const hasMore = offset + risks.length < totalCount
 
-    if (!risks || risks.length === 0) {
-      return NextResponse.json({ items: [], evalDate, source: 'empty' })
+    if (risks.length === 0) {
+      return NextResponse.json({ items: [], evalDate, gradeSummary, totalCount, hasMore: false, source: page === 1 ? 'empty' : 'database' })
     }
 
     const productIds = risks.map(r => r.product_id)
     const now = new Date()
-
-    // 3. 병렬 조회
     const fourWeeksAgo = new Date(now)
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28)
 
+    // ── 5. 병렬 보조 데이터 조회 ──────────────────────────────────────────
     const [products, latestInvSnap, leadTimes, actionRows, custRows] = await Promise.all([
-      // product_master: name, category
       batchIn('product_master', 'product_code,product_name,product_category', 'product_code', productIds),
-
-      // inventory: 최신 snapshot_date 1건
       supabase.from('inventory').select('snapshot_date').order('snapshot_date', { ascending: false }).limit(1),
-
-      // product_lead_time: 최신 avg_lead_days
       batchIn('product_lead_time', 'product_id,avg_lead_days,calc_date', 'product_id', productIds),
-
-      // action_queue: 최신 액션 (per product)
       batchIn('action_queue', 'product_id,action_type,description,status,created_at', 'product_id', productIds,
         q => q.order('created_at', { ascending: false })),
-
-      // weekly_customer_summary: 최근 4주 주요 고객사
       batchIn('weekly_customer_summary', 'product_id,customer_id,order_qty', 'product_id', productIds,
         q => q.gte('week_start', fourWeeksAgo.toISOString().slice(0, 10))),
     ])
 
-    // 4. 최신 inventory snapshot 기준 재고 조회
+    // ── 6. 최신 재고 스냅샷 조회 ──────────────────────────────────────────
     const latestSnap = latestInvSnap.data?.[0]?.snapshot_date as string | undefined
     let invMap: Record<string, number> = {}
     if (latestSnap) {
@@ -178,7 +194,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 5. 맵 구축
+    // ── 7. 맵 구축 ────────────────────────────────────────────────────────
     const productMap: Record<string, any> = {}
     for (const p of (products ?? [])) productMap[p.product_code] = p
 
@@ -189,13 +205,11 @@ export async function GET(request: Request) {
       }
     }
 
-    // action_queue: product_id별 최신 1건
     const actionMap: Record<string, any> = {}
     for (const a of (actionRows ?? [])) {
       if (!actionMap[a.product_id]) actionMap[a.product_id] = a
     }
 
-    // 고객사 집계: product_id → 가장 많이 주문한 customer_id
     const custAccum: Record<string, Record<string, number>> = {}
     for (const r of (custRows ?? [])) {
       if (!custAccum[r.product_id]) custAccum[r.product_id] = {}
@@ -208,16 +222,16 @@ export async function GET(request: Request) {
       if (top) custMap[pid] = top[0]
     }
 
-    // 6. 아이템 조합
+    // ── 8. 아이템 조합 ────────────────────────────────────────────────────
     const items = risks.map((r, idx) => {
-      const prod = productMap[r.product_id] ?? {}
-      const lt   = ltMap[r.product_id] ?? {}
-      const aq   = actionMap[r.product_id]
+      const prod  = productMap[r.product_id] ?? {}
+      const lt    = ltMap[r.product_id] ?? {}
+      const aq    = actionMap[r.product_id]
       const rType = dominantType(r)
       const grade = r.risk_grade ?? '-'
 
       return {
-        id:        idx + 1,
+        id:        offset + idx + 1,
         sku:       r.product_id,
         name:      prod.product_name ?? r.product_id,
         score:     Math.round(Number(r.total_risk ?? 0)),
@@ -232,9 +246,9 @@ export async function GET(request: Request) {
       }
     })
 
-    return NextResponse.json({ items, evalDate, source: 'database' })
+    return NextResponse.json({ items, evalDate, gradeSummary, totalCount, hasMore, source: 'database' })
   } catch (err: any) {
     console.error('[API] risk error:', err)
-    return NextResponse.json({ items: [], source: 'error', error: err.message }, { status: 500 })
+    return NextResponse.json({ items: [], gradeSummary: {}, totalCount: 0, hasMore: false, source: 'error', error: err.message }, { status: 500 })
   }
 }

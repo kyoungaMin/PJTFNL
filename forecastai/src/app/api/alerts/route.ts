@@ -40,10 +40,11 @@ export async function GET() {
       })
     }
 
-    // ─── 2. risk_score E·F 등급 건수 (최신 eval_date 기준) ────────────────
+    // ─── 2. risk_score E·F 등급 건수 (최신 eval_date 기준, 기본: monthly) ───
     const { data: latestEval } = await supabase
       .from('risk_score')
       .select('eval_date')
+      .eq('eval_type', 'monthly')
       .order('eval_date', { ascending: false })
       .limit(1)
 
