@@ -6,6 +6,10 @@ export const dynamic = 'force-dynamic'
 type StatusCode = 'all' | 'risk' | 'short' | 'normal' | 'excess'
 const INVENTORY_CACHE_TTL_MS = 30_000
 const inventoryResponseCache = new Map<string, { expiresAt: number; payload: any }>()
+const monthlyInventoryMapCache = new Map<string, { expiresAt: number; invByProduct: Record<string, number> }>()
+const monthlyInventoryMapPending = new Map<string, Promise<Record<string, number>>>()
+let availableMonthsCache: { expiresAt: number; months: string[] } | null = null
+let availableMonthsPending: Promise<string[]> | null = null
 
 async function fetchAll(
   table: string,
@@ -57,20 +61,28 @@ function monthLabel(ym: string): string {
   return `${ym.slice(2, 4)}.${ym.slice(4, 6)}`
 }
 
-function stockStatusCode(stock: number, safeStock: number): StatusCode {
-  const ratio = safeStock > 0 ? stock / safeStock : 2
-  if (ratio < 0.5) return 'risk'
-  if (ratio < 1.0) return 'short'
-  if (ratio > 3.0) return 'excess'
-  return 'normal'
-}
-
 function stockStatusPriority(code: StatusCode): number {
   if (code === 'risk') return 0
   if (code === 'short') return 1
   if (code === 'normal') return 2
   if (code === 'excess') return 3
   return 4
+}
+
+function classifyInventoryStatus(stock: number, safeStock: number, grade: string): StatusCode {
+  if (grade === 'E' || grade === 'F') return 'risk'
+  if (grade === 'D') return 'short'
+
+  if (safeStock > 0) {
+    if (stock < safeStock * 0.5) return 'risk'
+    if (stock < safeStock) return 'short'
+    if (stock > safeStock * 3.0) return 'excess'
+    return 'normal'
+  }
+
+  if (stock <= 0) return 'risk'
+  if (stock <= 3) return 'short'
+  return 'normal'
 }
 
 function getInventoryCacheKey(req: Request) {
@@ -95,16 +107,116 @@ function writeInventoryCache(key: string, payload: any) {
   })
 }
 
+function resolveReferenceDate(referenceMonth: string) {
+  if (/^\d{6}$/.test(referenceMonth)) {
+    const year = Number(referenceMonth.slice(0, 4))
+    const month = Number(referenceMonth.slice(4, 6))
+    return new Date(year, month, 0)
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(referenceMonth)) {
+    const [year, month, day] = referenceMonth.split('-').map(Number)
+    return new Date(year, month - 1, day)
+  }
+
+  return new Date(referenceMonth)
+}
+
+function formatDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 async function resolveMonthlyRiskDate(referenceMonth: string) {
+  // referenceMonth is YYYYMM (e.g. '202602')
+  // risk_score.eval_date is YYYY-MM-DD (e.g. '2026-02-01')
+  // We need to compare them. Converting YYYYMM to YYYY-MM-DD (last day of month is safer for lte)
+  const comparableDate = formatDate(resolveReferenceDate(referenceMonth))
+
   const { data } = await supabase
     .from('risk_score')
     .select('eval_date')
     .eq('eval_type', 'monthly')
-    .lte('eval_date', referenceMonth)
+    .lte('eval_date', comparableDate)
     .order('eval_date', { ascending: false })
     .limit(1)
 
   return data?.[0]?.eval_date as string | undefined
+}
+
+async function getAvailableMonths() {
+  if (availableMonthsCache && availableMonthsCache.expiresAt >= Date.now()) {
+    return availableMonthsCache.months
+  }
+  if (availableMonthsPending) return availableMonthsPending
+
+  availableMonthsPending = (async () => {
+    const months: string[] = []
+    let cursor: string | null = null
+
+    for (let i = 0; i < 24; i++) {
+      let q = supabase
+        .from('inventory')
+        .select('snapshot_date')
+        .order('snapshot_date', { ascending: false })
+        .limit(1)
+      if (cursor) q = q.lt('snapshot_date', cursor)
+
+      const { data } = await q
+      if (!data?.length) break
+
+      months.push(String(data[0].snapshot_date))
+      cursor = String(data[0].snapshot_date)
+    }
+
+    availableMonthsCache = {
+      expiresAt: Date.now() + INVENTORY_CACHE_TTL_MS,
+      months,
+    }
+
+    return months
+  })()
+
+  try {
+    return await availableMonthsPending
+  } finally {
+    availableMonthsPending = null
+  }
+}
+
+async function getMonthlyInventoryMap(snapshotDate: string) {
+  const cached = monthlyInventoryMapCache.get(snapshotDate)
+  if (cached && cached.expiresAt >= Date.now()) {
+    return cached.invByProduct
+  }
+  const pending = monthlyInventoryMapPending.get(snapshotDate)
+  if (pending) return pending
+
+  const promise = (async () => {
+    const rows = await fetchAll(
+      'inventory',
+      'product_id,inventory_qty',
+      q => q.eq('snapshot_date', snapshotDate)
+    )
+
+    const invByProduct: Record<string, number> = {}
+    for (const row of rows) {
+      invByProduct[row.product_id] = (invByProduct[row.product_id] ?? 0) + Number(row.inventory_qty ?? 0)
+    }
+
+    monthlyInventoryMapCache.set(snapshotDate, {
+      expiresAt: Date.now() + INVENTORY_CACHE_TTL_MS,
+      invByProduct,
+    })
+
+    return invByProduct
+  })()
+
+  monthlyInventoryMapPending.set(snapshotDate, promise)
+  try {
+    return await promise
+  } finally {
+    monthlyInventoryMapPending.delete(snapshotDate)
+  }
 }
 
 function sortProductsByInventory(products: any[], invByProduct: Record<string, number>) {
@@ -127,30 +239,12 @@ export async function GET(req: Request) {
     const statusParam = (searchParams.get('status') as StatusCode | null) ?? 'all'
     const categoryParam = searchParams.get('category') ?? '전체'
     const page = parseInt(searchParams.get('page') ?? '1', 10)
-    const now = new Date()
     const respond = (payload: any) => {
       writeInventoryCache(cacheKey, payload)
       return NextResponse.json(payload)
     }
 
-    const availableMonths: string[] = []
-    let cursor: string | null = null
-
-    for (let i = 0; i < 24; i++) {
-      let q = supabase
-        .from('inventory')
-        .select('snapshot_date')
-        .order('snapshot_date', { ascending: false })
-        .limit(1)
-
-      if (cursor) q = q.lt('snapshot_date', cursor)
-
-      const { data } = await q
-      if (!data?.length) break
-
-      availableMonths.push(String(data[0].snapshot_date))
-      cursor = String(data[0].snapshot_date)
-    }
+    const availableMonths = await getAvailableMonths()
 
     if (!availableMonths.length) {
       return respond({
@@ -171,16 +265,7 @@ export async function GET(req: Request) {
       : availableMonths[0]
 
     if (mode === 'list') {
-      const invRows = await fetchAll(
-        'inventory',
-        'product_id,inventory_qty',
-        q => q.eq('snapshot_date', selectedMonth)
-      )
-
-      const invByProduct: Record<string, number> = {}
-      for (const r of invRows) {
-        invByProduct[r.product_id] = (invByProduct[r.product_id] ?? 0) + Number(r.inventory_qty ?? 0)
-      }
+      const invByProduct = await getMonthlyInventoryMap(selectedMonth)
 
       const monthProductIds = Object.keys(invByProduct)
       if (!monthProductIds.length) {
@@ -209,8 +294,6 @@ export async function GET(req: Request) {
       )
 
       const sortedBaseProducts = sortProductsByInventory(baseProducts, invByProduct)
-      const baseProductMap: Record<string, any> = {}
-      for (const p of sortedBaseProducts) baseProductMap[p.product_code] = p
 
       const baseProductIds = sortedBaseProducts.map((p: any) => p.product_code)
       const baseTotalCount = baseProductIds.length
@@ -241,7 +324,7 @@ export async function GET(req: Request) {
           'product_id,safety_stock,risk_grade',
           'product_id',
           baseProductIds,
-          q => q.eq('eval_date', latestRiskDate)
+          q => q.eq('eval_date', latestRiskDate).eq('eval_type', 'monthly')
         )
 
         for (const r of riskRows) {
@@ -254,8 +337,9 @@ export async function GET(req: Request) {
 
       const baseMeta = sortedBaseProducts.map((product: any) => {
         const stock = Math.round(invByProduct[product.product_code] ?? 0)
-        const safeStock = Math.round(riskMap[product.product_code]?.safetyStock ?? stock * 0.4)
-        const statusCode = stockStatusCode(stock, safeStock)
+        const safeStock = Math.round(riskMap[product.product_code]?.safetyStock ?? 0)
+        const grade = riskMap[product.product_code]?.grade ?? '-'
+        const statusCode = classifyInventoryStatus(stock, safeStock, grade)
 
         return {
           sku: product.product_code,
@@ -304,21 +388,22 @@ export async function GET(req: Request) {
         })
       }
 
-      const eightWeeksAgo = new Date(now)
-      eightWeeksAgo.setDate(now.getDate() - 56)
+      const referenceDate = resolveReferenceDate(selectedMonth)
+      const eightWeeksAgo = new Date(referenceDate)
+      eightWeeksAgo.setDate(referenceDate.getDate() - 56)
 
-      const sixMonthsAgo = new Date(now)
-      sixMonthsAgo.setMonth(now.getMonth() - 6)
+      const sixMonthsAgo = new Date(referenceDate)
+      sixMonthsAgo.setMonth(referenceDate.getMonth() - 6)
 
-      const fourWeeksAgo = new Date(now)
-      fourWeeksAgo.setDate(now.getDate() - 28)
+      const fourWeeksAgo = new Date(referenceDate)
+      fourWeeksAgo.setDate(referenceDate.getDate() - 28)
 
       const wkPromise = batchIn(
         'weekly_product_summary',
         'product_id,order_qty',
         'product_id',
         productIds,
-        q => q.gte('week_start', eightWeeksAgo.toISOString().slice(0, 10))
+        q => q.gte('week_start', formatDate(eightWeeksAgo)).lte('week_start', formatDate(referenceDate))
       )
 
       const poPromise = batchIn(
@@ -326,7 +411,7 @@ export async function GET(req: Request) {
         'component_product_id,unit_price',
         'component_product_id',
         productIds,
-        q => q.gte('po_date', sixMonthsAgo.toISOString().slice(0, 10)).not('unit_price', 'is', null)
+        q => q.gte('po_date', formatDate(sixMonthsAgo)).lte('po_date', formatDate(referenceDate)).not('unit_price', 'is', null)
       )
 
       const custPromise = batchIn(
@@ -334,7 +419,7 @@ export async function GET(req: Request) {
         'product_id,customer_id,order_qty',
         'product_id',
         productIds,
-        q => q.gte('week_start', fourWeeksAgo.toISOString().slice(0, 10))
+        q => q.gte('week_start', formatDate(fourWeeksAgo)).lte('week_start', formatDate(referenceDate))
       )
 
       const [wkRows, poRows, custRows] = await Promise.all([
@@ -398,21 +483,15 @@ export async function GET(req: Request) {
 
     const selectedMonthIndex = Math.max(0, availableMonths.indexOf(selectedMonth))
     const trendMonths = availableMonths.slice(selectedMonthIndex, selectedMonthIndex + 12).reverse()
-    const [invRows, trendInvRows] = await Promise.all([
-      fetchAll('inventory', 'product_id,inventory_qty', q => q.eq('snapshot_date', selectedMonth)),
-      fetchAll('inventory', 'product_id,snapshot_date,inventory_qty', q => q.in('snapshot_date', trendMonths)),
+    const [invByProduct, trendInventoryMaps] = await Promise.all([
+      getMonthlyInventoryMap(selectedMonth),
+      Promise.all(trendMonths.map(month => getMonthlyInventoryMap(month))),
     ])
 
-    const invByProduct: Record<string, number> = {}
-    for (const r of invRows) {
-      invByProduct[r.product_id] = (invByProduct[r.product_id] ?? 0) + Number(r.inventory_qty ?? 0)
-    }
-
     const selectedMonthIds = Object.keys(invByProduct)
-    const allProductIds = Array.from(new Set([
-      ...selectedMonthIds,
-      ...trendInvRows.map((r: any) => r.product_id),
-    ]))
+    const allProductIds = Array.from(new Set(
+      trendInventoryMaps.flatMap(invMap => Object.keys(invMap))
+    ))
 
     const productsPromise = batchIn(
       'product_master',
@@ -423,22 +502,25 @@ export async function GET(req: Request) {
 
     const riskPromise = resolveMonthlyRiskDate(selectedMonth)
       .then(async (latestRiskDate) => {
-        const safetyMap: Record<string, number> = {}
-
+        const safetyMap: Record<string, { safetyStock: number; grade: string }> = {}
+        
         if (latestRiskDate && selectedMonthIds.length > 0) {
           const riskRows = await batchIn(
             'risk_score',
-            'product_id,safety_stock',
+            'product_id,safety_stock,risk_grade',
             'product_id',
             selectedMonthIds,
-            q => q.eq('eval_date', latestRiskDate)
+            q => q.eq('eval_date', latestRiskDate).eq('eval_type', 'monthly')
           )
-
+          
           for (const r of riskRows) {
-            safetyMap[r.product_id] = Number(r.safety_stock ?? 0)
+            safetyMap[r.product_id] = {
+              safetyStock: Number(r.safety_stock ?? 0),
+              grade: r.risk_grade ?? '-'
+            }
           }
         }
-
+        
         return safetyMap
       })
 
@@ -448,13 +530,15 @@ export async function GET(req: Request) {
     for (const p of allProducts) productMap[p.product_code] = p
 
     const trendMap: Record<string, Record<string, number>> = {}
-    for (const r of trendInvRows) {
-      const month = String(r.snapshot_date)
-      const productType = productMap[r.product_id]?.product_type ?? '기타'
-
+    trendMonths.forEach((month, index) => {
+      const monthInventory = trendInventoryMaps[index] ?? {}
       if (!trendMap[month]) trendMap[month] = {}
-      trendMap[month][productType] = (trendMap[month][productType] ?? 0) + Number(r.inventory_qty ?? 0)
-    }
+
+      for (const [pid, qty] of Object.entries(monthInventory)) {
+        const productType = productMap[pid]?.product_type ?? '기타'
+        trendMap[month][productType] = (trendMap[month][productType] ?? 0) + Number(qty ?? 0)
+      }
+    })
 
     const trend = trendMonths.map(month => ({
       month,
@@ -490,15 +574,18 @@ export async function GET(req: Request) {
         categoryStats[productCategory] = (categoryStats[productCategory] ?? 0) + qty
       }
 
-      const safeStock = safetyMap[pid] ?? 0
-      if (safeStock > 0) {
-        if (qty < safeStock * 0.5) {
-          typeStats[productType].riskCount++
-          totalRisk++
-        } else if (qty < safeStock) {
-          typeStats[productType].shortCount++
-          totalShort++
-        }
+      const riskInfo = safetyMap[pid]
+      const safeStock = riskInfo?.safetyStock ?? 0
+      const grade = riskInfo?.grade ?? '-'
+
+      const statusCode = classifyInventoryStatus(Number(qty ?? 0), safeStock, grade)
+
+      if (statusCode === 'risk') {
+        typeStats[productType].riskCount++
+        totalRisk++
+      } else if (statusCode === 'short') {
+        typeStats[productType].shortCount++
+        totalShort++
       }
     }
 
@@ -509,8 +596,9 @@ export async function GET(req: Request) {
       shortCount: totalShort,
     }
 
-    const eightWeeksAgo = new Date(now)
-    eightWeeksAgo.setDate(now.getDate() - 56)
+    const referenceDate = resolveReferenceDate(selectedMonth)
+    const eightWeeksAgo = new Date(referenceDate)
+    eightWeeksAgo.setDate(referenceDate.getDate() - 56)
 
     const filteredIds = typeParam !== '전체'
       ? selectedMonthIds.filter(pid => productMap[pid]?.product_type === typeParam)
@@ -523,7 +611,7 @@ export async function GET(req: Request) {
         'product_id,order_qty',
         'product_id',
         filteredIds,
-        q => q.gte('week_start', eightWeeksAgo.toISOString().slice(0, 10))
+        q => q.gte('week_start', formatDate(eightWeeksAgo)).lte('week_start', formatDate(referenceDate))
       )
 
       const demandByPid: Record<string, { total: number; cnt: number }> = {}

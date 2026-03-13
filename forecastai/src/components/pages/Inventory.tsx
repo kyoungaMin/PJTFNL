@@ -78,11 +78,22 @@ function catColor(category: string): string {
   return CAT_PALETTE[Math.abs(hash) % CAT_PALETTE.length]
 }
 
-function stockStatus(stock: number, safeStock: number) {
-  const ratio = safeStock > 0 ? stock / safeStock : 2
-  if (ratio < 0.5) return { code: 'risk' as StatusCode, label: '위험', color: T.red, bg: T.redSoft, pri: 0 }
-  if (ratio < 1.0) return { code: 'short' as StatusCode, label: '부족', color: T.amber, bg: T.amberSoft, pri: 1 }
-  if (ratio > 3.0) return { code: 'excess' as StatusCode, label: '과잉', color: T.purple, bg: T.purpleSoft, pri: 3 }
+function stockStatus(stock: number, safeStock: number, grade = '-') {
+  if (grade === 'E' || grade === 'F') {
+    return { code: 'risk' as StatusCode, label: '위험', color: T.red, bg: T.redSoft, pri: 0 }
+  }
+  if (grade === 'D') {
+    return { code: 'short' as StatusCode, label: '부족', color: T.amber, bg: T.amberSoft, pri: 1 }
+  }
+  if (safeStock > 0) {
+    const ratio = stock / safeStock
+    if (ratio < 0.5) return { code: 'risk' as StatusCode, label: '위험', color: T.red, bg: T.redSoft, pri: 0 }
+    if (ratio < 1.0) return { code: 'short' as StatusCode, label: '부족', color: T.amber, bg: T.amberSoft, pri: 1 }
+    if (ratio > 3.0) return { code: 'excess' as StatusCode, label: '과잉', color: T.purple, bg: T.purpleSoft, pri: 3 }
+    return { code: 'normal' as StatusCode, label: '정상', color: T.green, bg: T.greenSoft, pri: 2 }
+  }
+  if (stock <= 0) return { code: 'risk' as StatusCode, label: '위험', color: T.red, bg: T.redSoft, pri: 0 }
+  if (stock <= 3) return { code: 'short' as StatusCode, label: '부족', color: T.amber, bg: T.amberSoft, pri: 1 }
   return { code: 'normal' as StatusCode, label: '정상', color: T.green, bg: T.greenSoft, pri: 2 }
 }
 
@@ -158,7 +169,7 @@ function MonthPicker({
           color: T.text1,
         }}
       >
-        월 {value ? fmtMonth(value) : '선택'}
+        {value ? fmtMonth(value) : '선택'}
         <span style={{ fontSize: 9, color: T.text3 }}>▼</span>
       </button>
 
@@ -596,7 +607,7 @@ export default function PageInventory() {
                 </thead>
                 <tbody>
                   {skuList.map(item => {
-                    const status = stockStatus(item.stock, item.safeStock)
+                    const status = stockStatus(item.stock, item.safeStock, item.grade)
                     const coverage = item.weeklyDemand > 0 ? Math.round((item.stock / item.weeklyDemand) * 7) : 0
                     const stockValue = item.stock * item.unitCost
                     const typeStyle = getTypeStyle(item.productType)
