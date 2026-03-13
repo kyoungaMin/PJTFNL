@@ -14,7 +14,7 @@ import {
   YAxis,
 } from 'recharts'
 import { T, card } from '@/lib/data'
-import { SearchInput, Select } from '@/components/ui'
+import { Btn, SearchInput, Select } from '@/components/ui'
 
 const TYPE_COLORS: Record<string, string> = {
   완제품: '#2563EB',
@@ -43,6 +43,7 @@ type StatusCounts = Record<StatusCode, number>
 type SkuItem = {
   sku: string
   name: string
+  spec: string
   category: string
   productType: string
   stock: number
@@ -272,11 +273,13 @@ export default function PageInventory() {
   const [totalCount, setTotalCount] = useState(0)
   const [baseTotalCount, setBaseTotalCount] = useState(0)
   const [categoryOptions, setCategoryOptions] = useState<string[]>(['전체'])
+  const [customerOptions, setCustomerOptions] = useState<string[]>(['전체'])
   const [listLoading, setListLoading] = useState(false)
   const [moreLoading, setMoreLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [statusF, setStatusF] = useState<StatusCode>('all')
   const [catFilter, setCatFilter] = useState('전체')
+  const [customerFilter, setCustomerFilter] = useState('전체')
   const [statusCounts, setStatusCounts] = useState<StatusCounts>({ all: 0, risk: 0, short: 0, normal: 0, excess: 0 })
   const [hoverSku, setHoverSku] = useState<string | null>(null)
   const dashboardRequestRef = useRef(0)
@@ -317,6 +320,7 @@ export default function PageInventory() {
     page = 1,
     status: StatusCode = 'all',
     category = '전체',
+    customer = '전체',
   ) => {
     const requestId = ++listRequestRef.current
     if (page === 1) setListLoading(true)
@@ -328,6 +332,7 @@ export default function PageInventory() {
     if (query) params.set('search', query)
     if (status !== 'all') params.set('status', status)
     if (category !== '전체') params.set('category', category)
+    if (customer !== '전체') params.set('customer', customer)
 
     fetch(`/api/inventory?${params}`)
       .then(r => r.json())
@@ -341,6 +346,7 @@ export default function PageInventory() {
         setTotalCount(data.totalCount ?? 0)
         setBaseTotalCount(data.baseTotalCount ?? 0)
         setCategoryOptions(data.categoryOptions ?? ['전체'])
+        setCustomerOptions(data.customerOptions ?? ['전체'])
         setStatusCounts(data.statusCounts ?? { all: 0, risk: 0, short: 0, normal: 0, excess: 0 })
         setApiPage(page)
       })
@@ -359,13 +365,14 @@ export default function PageInventory() {
 
   useEffect(() => {
     if (selectedMonth) {
-      loadSkuList(selectedMonth, typeFilter, search, 1, statusF, catFilter)
+      loadSkuList(selectedMonth, typeFilter, search, 1, statusF, catFilter, customerFilter)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth])
 
   const handleMonthChange = (month: string) => {
     setCatFilter('전체')
+    setCustomerFilter('전체')
     setStatusF('all')
     setSelectedMonth(month)
     loadDashboard(month, typeFilter)
@@ -374,24 +381,30 @@ export default function PageInventory() {
   const handleTypeChange = (type: string) => {
     setTypeFilter(type)
     setCatFilter('전체')
+    setCustomerFilter('전체')
     setStatusF('all')
     loadDashboard(selectedMonth, type)
-    loadSkuList(selectedMonth, type, search, 1, 'all', '전체')
+    loadSkuList(selectedMonth, type, search, 1, 'all', '전체', '전체')
   }
 
   const handleStatusChange = (status: string) => {
     const next = status as StatusCode
     setStatusF(next)
-    loadSkuList(selectedMonth, typeFilter, search, 1, next, catFilter)
+    loadSkuList(selectedMonth, typeFilter, search, 1, next, catFilter, customerFilter)
   }
 
   const handleCategoryChange = (category: string) => {
     setCatFilter(category)
-    loadSkuList(selectedMonth, typeFilter, search, 1, statusF, category)
+    loadSkuList(selectedMonth, typeFilter, search, 1, statusF, category, customerFilter)
+  }
+
+  const handleCustomerChange = (customer: string) => {
+    setCustomerFilter(customer)
+    loadSkuList(selectedMonth, typeFilter, search, 1, statusF, catFilter, customer)
   }
 
   const handleSearchSubmit = () => {
-    loadSkuList(selectedMonth, typeFilter, search, 1, statusF, catFilter)
+    loadSkuList(selectedMonth, typeFilter, search, 1, statusF, catFilter, customerFilter)
   }
 
   const trendLines = useMemo(() => {
@@ -555,29 +568,105 @@ export default function PageInventory() {
       </div>
 
       <div style={card}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-          <Select value={typeFilter} onChange={handleTypeChange} options={productTypes}/>
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <SearchInput
-              value={search}
-              onChange={(value: string) => setSearch(value)}
-              placeholder="SKU 코드 또는 품목명 검색…"
-              // @ts-ignore
-              onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && handleSearchSubmit()}
-            />
+        <div
+          style={{
+            overflowX: 'auto',
+            marginBottom: 16,
+            padding: '10px 12px',
+            borderRadius: 14,
+            border: `1px solid ${T.border}`,
+            background: `linear-gradient(180deg, ${T.surface2} 0%, ${T.surface} 100%)`,
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+          }}
+        >
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 14,
+              minWidth: 'max-content',
+            }}
+          >
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text2, whiteSpace: 'nowrap' }}>유형</span>
+              <Select
+                value={typeFilter}
+                onChange={handleTypeChange}
+                options={productTypes}
+                style={{ minWidth: 104, height: 38, borderRadius: 10, padding: '8px 30px 8px 12px', fontSize: 13, fontWeight: 600 }}
+              />
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text2, whiteSpace: 'nowrap' }}>검색</span>
+              <SearchInput
+                value={search}
+                onChange={(value: string) => setSearch(value)}
+                placeholder="SKU / 품목명 검색"
+                // @ts-ignore
+                onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && handleSearchSubmit()}
+                style={{ minWidth: 260, height: 38, borderRadius: 10, padding: '8px 12px' }}
+                inputStyle={{ width: 220, fontSize: 13 }}
+              />
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text2, whiteSpace: 'nowrap' }}>카테고리</span>
+              <Select
+                value={catFilter}
+                onChange={handleCategoryChange}
+                options={categoryOptions}
+                style={{ minWidth: 120, height: 38, borderRadius: 10, padding: '8px 30px 8px 12px', fontSize: 13, fontWeight: 600 }}
+              />
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text2, whiteSpace: 'nowrap' }}>상태</span>
+              <Select
+                value={statusF}
+                onChange={handleStatusChange}
+                options={[
+                  { value: 'all', label: `전체 (${statusCounts.all})` },
+                  { value: 'risk', label: `위험 (${statusCounts.risk})` },
+                  { value: 'short', label: `부족 (${statusCounts.short})` },
+                  { value: 'normal', label: `정상 (${statusCounts.normal})` },
+                  { value: 'excess', label: `과잉 (${statusCounts.excess})` },
+                ]}
+                style={{ minWidth: 132, height: 38, borderRadius: 10, padding: '8px 30px 8px 12px', fontSize: 13, fontWeight: 600 }}
+              />
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text2, whiteSpace: 'nowrap' }}>고객</span>
+              <Select
+                value={customerFilter}
+                onChange={handleCustomerChange}
+                options={customerOptions}
+                style={{ minWidth: 150, height: 38, borderRadius: 10, padding: '8px 30px 8px 12px', fontSize: 13, fontWeight: 600 }}
+              />
+            </div>
+            <Btn
+              variant="secondary"
+              onClick={() => {
+                setSearch('')
+                setCatFilter('전체')
+                setCustomerFilter('전체')
+                setStatusF('all')
+                loadSkuList(selectedMonth, typeFilter, '', 1, 'all', '전체', '전체')
+              }}
+              style={{ height: 38, padding: '0 14px', borderRadius: 10, fontSize: 12, flexShrink: 0 }}
+            >
+              초기화
+            </Btn>
+            <span
+              style={{
+                marginLeft: 2,
+                paddingLeft: 14,
+                borderLeft: `1px solid ${T.border}`,
+                fontSize: 12,
+                color: T.text3,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {`${skuList.length.toLocaleString()} / ${totalCount.toLocaleString()}건 로드`}
+            </span>
           </div>
-          <Select value={catFilter} onChange={handleCategoryChange} options={categoryOptions}/>
-          <Select
-            value={statusF}
-            onChange={handleStatusChange}
-            options={[
-              { value: 'all', label: `전체 (${statusCounts.all})` },
-              { value: 'risk', label: `위험 (${statusCounts.risk})` },
-              { value: 'short', label: `부족 (${statusCounts.short})` },
-              { value: 'normal', label: `정상 (${statusCounts.normal})` },
-              { value: 'excess', label: `과잉 (${statusCounts.excess})` },
-            ]}
-          />
         </div>
 
         {listLoading ? (
@@ -585,19 +674,30 @@ export default function PageInventory() {
         ) : (
           <>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <table style={{ width: '100%', minWidth: 1160, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
                 <thead>
                   <tr style={{ background: T.surface2, borderBottom: `2px solid ${T.border}` }}>
-                    {['SKU 코드', '품목명', '유형', '카테고리', '재고 (EA)', '안전재고', '커버리지', '재고 금액', '고객', '상태'].map(header => (
+                    {['SKU 코드', '품목명/규격', '유형', '카테고리', '재고 (EA)', '안전재고', '커버리지', '재고 금액', '고객', '상태'].map(header => (
                       <th
                         key={header}
                         style={{
-                          padding: '10px 14px',
-                          textAlign: header === '품목명' ? 'left' : 'center',
-                          fontSize: 11,
+                          padding: '11px 10px',
+                          textAlign: header === '품목명/규격' || header === '고객' ? 'left' : 'center',
+                          fontSize: 10,
                           fontWeight: 700,
                           color: T.text3,
                           whiteSpace: 'nowrap',
+                          width:
+                            header === 'SKU 코드' ? 128 :
+                            header === '품목명/규격' ? 300 :
+                            header === '유형' ? 84 :
+                            header === '카테고리' ? 110 :
+                            header === '재고 (EA)' ? 108 :
+                            header === '안전재고' ? 102 :
+                            header === '커버리지' ? 82 :
+                            header === '재고 금액' ? 98 :
+                            header === '고객' ? 170 :
+                            68,
                         }}
                       >
                         {header}
@@ -623,34 +723,41 @@ export default function PageInventory() {
                           transition: 'background 0.1s',
                         }}
                       >
-                        <td style={{ padding: '10px 14px', textAlign: 'center', fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, fontWeight: 600, color: T.text3 }}>{item.sku}</td>
-                        <td style={{ padding: '10px 14px', fontWeight: 600, color: T.text1 }}>{item.name}</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                        <td style={{ padding: '11px 10px', textAlign: 'center', fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, fontWeight: 600, color: T.text3, wordBreak: 'break-all', lineHeight: 1.45 }}>{item.sku}</td>
+                        <td style={{ padding: '14px 10px', color: T.text1 }}>
+                          <div style={{ fontWeight: 600, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                            {item.name}
+                          </div>
+                          <div style={{ marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word', fontSize: 10, color: T.text3 }}>
+                            {item.spec || '-'}
+                          </div>
+                        </td>
+                        <td style={{ padding: '11px 10px', textAlign: 'center' }}>
                           <span style={{ fontSize: 10, fontWeight: 700, color: typeStyle.color, background: typeStyle.bg, borderRadius: 4, padding: '2px 7px' }}>{item.productType}</span>
                         </td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                        <td style={{ padding: '11px 10px', textAlign: 'center' }}>
                           <span style={{ fontSize: 10, fontWeight: 600, color: catColor(item.category), background: `${catColor(item.category)}18`, borderRadius: 4, padding: '2px 7px' }}>
                             {item.category}
                           </span>
                         </td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                        <td style={{ padding: '11px 10px', textAlign: 'center' }}>
                           <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, color: T.text1 }}>{item.stock.toLocaleString()}</div>
-                          <div style={{ height: 3, background: T.surface2, borderRadius: 2, width: 60, margin: '4px auto 0' }}>
+                          <div style={{ height: 3, background: T.surface2, borderRadius: 2, width: 52, margin: '4px auto 0' }}>
                             <div style={{ height: '100%', width: `${Math.min(100, (item.stock / maxStock) * 100)}%`, background: status.color, borderRadius: 2 }}/>
                           </div>
                         </td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center', fontFamily: "'IBM Plex Mono',monospace", color: T.text2 }}>{item.safeStock.toLocaleString()}</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                        <td style={{ padding: '11px 10px', textAlign: 'center', fontFamily: "'IBM Plex Mono',monospace", color: T.text2 }}>{item.safeStock.toLocaleString()}</td>
+                        <td style={{ padding: '11px 10px', textAlign: 'center' }}>
                           <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, color: coverage < 14 ? T.red : coverage < 21 ? T.amber : T.green }}>
                             {coverage > 0 ? `${coverage}일` : '-'}
                           </span>
                         </td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center', fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, color: T.text2 }}>
+                        <td style={{ padding: '11px 10px', textAlign: 'center', fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: T.text2 }}>
                           {item.unitCost > 0 ? `₩${(stockValue / 1000).toFixed(0)}K` : '-'}
                         </td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 11, color: T.text3 }}>{item.customer}</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: status.color, background: status.bg, borderRadius: 5, padding: '3px 8px' }}>{status.label}</span>
+                        <td style={{ padding: '11px 10px', textAlign: 'left', fontSize: 10, color: T.text3, lineHeight: 1.45, wordBreak: 'break-word' }}>{item.customer || '-'}</td>
+                        <td style={{ padding: '11px 10px', textAlign: 'center' }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: status.color, background: status.bg, borderRadius: 5, padding: '3px 6px' }}>{status.label}</span>
                         </td>
                       </tr>
                     )

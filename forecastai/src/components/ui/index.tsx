@@ -94,25 +94,26 @@ function FilterBar({ children }) {
   return <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, flexWrap:"wrap" }}>{children}</div>;
 }
 
-function Select({ label=undefined, value, onChange, options }: any) {
+function Select({ label=undefined, value, onChange, options, style }: any) {
   return (
     <select value={value} onChange={e=>onChange(e.target.value)} style={{
       fontSize:12, color:T.text1, background:T.surface, border:`1px solid ${T.border}`,
       borderRadius:7, padding:"6px 28px 6px 10px", cursor:"pointer", outline:"none",
       appearance:"none", backgroundImage:`url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394A3B8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
       backgroundRepeat:"no-repeat", backgroundPosition:"right 8px center",
+      ...style,
     }}>
       {options.map(o => <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>)}
     </select>
   );
 }
 
-function SearchInput({ value, onChange, placeholder="검색..." }) {
+function SearchInput({ value, onChange, placeholder="검색...", onKeyDown, style, inputStyle }: any) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:7, background:T.surface, border:`1px solid ${T.border}`, borderRadius:7, padding:"6px 12px" }}>
+    <div style={{ display:"flex", alignItems:"center", gap:7, background:T.surface, border:`1px solid ${T.border}`, borderRadius:7, padding:"6px 12px", ...style }}>
       <span style={{ fontSize:12 }}>🔍</span>
-      <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
-        style={{ border:"none", outline:"none", fontSize:12, color:T.text1, background:"transparent", width:160 }}/>
+      <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onKeyDown={onKeyDown}
+        style={{ border:"none", outline:"none", fontSize:12, color:T.text1, background:"transparent", width:160, ...inputStyle }}/>
     </div>
   );
 }
