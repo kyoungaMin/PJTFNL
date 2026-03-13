@@ -42,19 +42,18 @@ export async function GET(request: Request) {
     if (forecastDateParam) {
       forecastDate = forecastDateParam
     } else {
-      const { data: latestRow, error: latestErr } = await supabase
+      const { data: latestRows, error: latestErr } = await supabase
         .from('forecast_result')
         .select('forecast_date')
         .eq('product_id', productId)
-        .eq('model_id', 'lgbm_q_monthly_v2')
+        .eq('model_id', 'lgbm_q_monthly_v1')
         .order('forecast_date', { ascending: false })
         .limit(1)
-        .single()
 
-      if (latestErr || !latestRow) {
-        return NextResponse.json({ items: [], historyItems: [], source: 'no_forecast', model: 'lgbm_q_monthly_v2' })
+      if (latestErr || !latestRows?.length) {
+        return NextResponse.json({ items: [], historyItems: [], source: 'no_forecast', model: 'lgbm_q_monthly_v1' })
       }
-      forecastDate = latestRow.forecast_date
+      forecastDate = latestRows[0].forecast_date
     }
 
     // ── 2) 예측 데이터 조회 (horizon 30/90/180일) ───────────────────────────
@@ -62,7 +61,7 @@ export async function GET(request: Request) {
       .from('forecast_result')
       .select('horizon_days, p10, p50, p90')
       .eq('product_id', productId)
-      .eq('model_id', 'lgbm_q_monthly_v2')
+      .eq('model_id', 'lgbm_q_monthly_v1')
       .eq('forecast_date', forecastDate)
       .in('horizon_days', [30, 90, 180])
       .order('horizon_days', { ascending: true })
@@ -133,16 +132,16 @@ export async function GET(request: Request) {
     try {
       const { data: evalRow } = await supabase
         .from('model_evaluation')
-        .select('r2_score, mae')
+        .select('mape, mae, coverage_rate')
         .eq('product_id', productId)
-        .eq('model_id', 'lgbm_q_monthly_v2')
+        .eq('model_id', 'ridge_monthly_v1')
         .order('eval_date', { ascending: false })
         .limit(1)
         .single()
 
       if (evalRow) {
         evaluation = {
-          r2: Number(evalRow.r2_score ?? 0),
+          r2: evalRow.mape ? Math.round((1 - evalRow.mape / 100) * 10000) / 10000 : 0,
           mae: Number(evalRow.mae ?? 0),
         }
       }
@@ -157,7 +156,7 @@ export async function GET(request: Request) {
       items,
       historyItems,
       forecastDate,
-      model: 'lgbm_q_monthly_v2',
+      model: 'lgbm_q_monthly_v1',
       source: 'database',
       customerItems,
       evaluation,

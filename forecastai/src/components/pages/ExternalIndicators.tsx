@@ -225,14 +225,14 @@ function PeriodTable({ data, keys, labels, units }: {
         </thead>
         <tbody>
           {keys.map((k, i) => {
-            const cur = last[k] as number, p1 = prev1[k] as number
-            const p4 = prev4[k] as number, p12 = prev12[k] as number
+            const cur = (last[k] ?? 0) as number, p1 = (prev1[k] ?? 0) as number
+            const p4 = (prev4[k] ?? 0) as number, p12 = (prev12[k] ?? 0) as number
             return (
               <tr key={k} style={{ borderBottom: `1px solid ${T.border}` }}>
                 <td style={{ padding: '10px 14px', fontWeight: 600, color: T.text1 }}>
                   {labels[i]}<span style={{ fontSize: 10, color: T.text3, marginLeft: 5, fontWeight: 400 }}>{units[i]}</span>
                 </td>
-                <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, color: T.text1 }}>{cur.toLocaleString()}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, color: T.text1 }}>{cur ? cur.toLocaleString() : '─'}</td>
                 <td style={{ padding: '10px 14px', textAlign: 'right' }}><Chg v={p1 ? ((cur - p1) / p1 * 100).toFixed(2) : '0'} /></td>
                 <td style={{ padding: '10px 14px', textAlign: 'right' }}><Chg v={p4 ? ((cur - p4) / p4 * 100).toFixed(2) : '0'} /></td>
                 <td style={{ padding: '10px 14px', textAlign: 'right' }}><Chg v={p12 ? ((cur - p12) / p12 * 100).toFixed(2) : '0'} /></td>
@@ -491,7 +491,7 @@ function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, t
 
 // ── 페이지 컴포넌트 ───────────────────────────────────────────────────────────
 
-// SOX=일간, DRAM/NAND=주간(매주 목)
+// SOX=일간, DRAM/NAND=주간(매주 목), SILICON_WAFER=월간
 export function PageExtSemi() {
   const [freq, setFreq] = useState<Freq>('month')
   const period = Math.max(...(periodOptionsForFreq(freq) as unknown as number[]))
@@ -499,8 +499,9 @@ export function PageExtSemi() {
   const { data, loading } = useExtData(fetchSemiData, EXT_SEMI_DATA, period, freq)
   const isLive = data !== EXT_SEMI_DATA
   const sox = calcChange(data, 'sox'), dram = calcChange(data, 'dram'), nand = calcChange(data, 'nand')
+  const silicon = calcChange(data, 'silicon_wafer')
   return <ExtLayout
-    title="산업 지표" sub="SOX 지수(일간) · DRAM / NAND 현물가(주간, 매주 목) · 반도체 업황"
+    title="산업 지표" sub="SOX 지수(일간) · DRAM / NAND 현물가(주간) · 실리콘웨이퍼(월간)"
     isLive={isLive} loading={loading}
     freqOptions={['week', 'month']} freq={freq} onFreqChange={setFreq}
     tickerItems={[
@@ -510,32 +511,44 @@ export function PageExtSemi() {
         source={INDICATOR_META.DRAM_DDR4.source} freq={INDICATOR_META.DRAM_DDR4.freq} isMock={!isLive} />,
       <TickerCard key="nand" label="NAND 현물가" value={nand.value as number} unit="$/GB" changePct={nand.pct} chartData={data} dataKey="nand"
         source={INDICATOR_META.NAND_TLC.source} freq={INDICATOR_META.NAND_TLC.freq} isMock={!isLive} />,
+      <TickerCard key="silicon" label="실리콘웨이퍼" value={silicon.value as number} unit="$/inch²" changePct={silicon.pct} chartData={data} dataKey="silicon_wafer"
+        source={INDICATOR_META.SILICON_WAFER.source} freq={INDICATOR_META.SILICON_WAFER.freq} isMock={!isLive} />,
     ]}
     chartL={<ExtChartCard title="SOX 지수 추이" data={data} lineKeys={['sox']} colors={[T.blue]} />}
-    chartR={<ExtChartCard title="DRAM / NAND 현물가" data={data} lineKeys={['dram', 'nand']} colors={[T.purple, '#0D9488']} />}
-    tableData={data} tableKeys={['sox', 'dram', 'nand']}
-    tableLabels={['SOX 지수', 'DRAM', 'NAND']} tableUnits={['pt', '$/Gb', '$/GB']}
+    chartR={<ExtChartCard title="DRAM / NAND / 실리콘웨이퍼" data={data} lineKeys={['dram', 'nand', 'silicon_wafer']} colors={[T.purple, '#0D9488', T.amber]} />}
+    tableData={data} tableKeys={['sox', 'dram', 'nand', 'silicon_wafer']}
+    tableLabels={['SOX 지수', 'DRAM', 'NAND', '실리콘웨이퍼']} tableUnits={['pt', '$/Gb', '$/GB', '$/inch²']}
     filename="ext_semi.csv"
     indicatorType="semi"
   />
 }
 
-// IPI=월간(익월 중순), PMI=월간(익월 1영업일), HS8541=월간(익월 15일)
+// IPI=월간(익월 중순), IPMAN=월간, PMI=월간(익월 1영업일), HS8541=월간(익월 15일)
 export function PageExtGlobal() {
   const fetchGlobalDataWrapped = (months: number, _freq: Freq) => fetchGlobalData(months)
   const { data, loading } = useExtData(fetchGlobalDataWrapped, EXT_GLOBAL_DATA, 24, 'month')
   const isLive = data !== EXT_GLOBAL_DATA
   const ipi = calcChange(data, 'ipi')
+  const ipman = calcChange(data, 'ipman')
+  const pmi = calcChange(data, 'pmi')
+  const hs8541 = calcChange(data, 'hs8541')
   return <ExtLayout
-    title="글로벌 수요" sub="산업생산지수 IPI(월간, 익월 중순) — PMI·HS8541 미연동"
+    title="글로벌 수요" sub="미국 산업/제조업생산지수(월간) · 중국 PMI(월간) · HS8541 수출(월간)"
     isLive={isLive} loading={loading}
     tickerItems={[
-      <TickerCard key="ipi" label="산업생산지수 (IPI)" value={ipi.value as number} unit="" changePct={ipi.pct} chartData={data} dataKey="ipi"
+      <TickerCard key="ipi" label="미국 산업생산 (IPI)" value={ipi.value as number} unit="" changePct={ipi.pct} chartData={data} dataKey="ipi"
         source={INDICATOR_META.INDPRO.source} freq={INDICATOR_META.INDPRO.freq} isMock={!isLive} />,
+      <TickerCard key="ipman" label="미국 제조업생산" value={ipman.value as number} unit="" changePct={ipman.pct} chartData={data} dataKey="ipman"
+        source={INDICATOR_META.IPMAN.source} freq={INDICATOR_META.IPMAN.freq} isMock={!isLive} />,
+      <TickerCard key="pmi" label="중국 제조업 PMI" value={pmi.value as number} unit="" changePct={pmi.pct} chartData={data} dataKey="pmi"
+        source={INDICATOR_META.CN_PMI_MFG.source} freq={INDICATOR_META.CN_PMI_MFG.freq} isMock={!isLive} />,
+      <TickerCard key="hs8541" label="반도체 수출 (HS8541)" value={hs8541.value as number} unit="$M" changePct={hs8541.pct} chartData={data} dataKey="hs8541"
+        source={INDICATOR_META.HS8541.source} freq={INDICATOR_META.HS8541.freq} isMock={!isLive} />,
     ]}
-    chartL={<ExtChartCard title="IPI 추이" data={data} lineKeys={['ipi']} colors={[T.blue]} />}
-    tableData={data} tableKeys={['ipi']}
-    tableLabels={['IPI']} tableUnits={['']}
+    chartL={<ExtChartCard title="미국 산업/제조업생산지수" data={data} lineKeys={['ipi', 'ipman']} colors={[T.blue, T.purple]} />}
+    chartR={<ExtChartCard title="중국 PMI · HS8541 수출" data={data} lineKeys={['pmi', 'hs8541']} colors={[T.red, T.green]} />}
+    tableData={data} tableKeys={['ipi', 'ipman', 'pmi', 'hs8541']}
+    tableLabels={['IPI', '제조업생산', '중국PMI', 'HS8541수출']} tableUnits={['', '', '', '$M']}
     filename="ext_global.csv"
     indicatorType="global"
   />
@@ -561,6 +574,8 @@ export function PageExtFX() {
   const cny      = calcChange(data, 'cny')
   const krRate   = calcChange(data, 'rate')
   const usRate   = calcChange(data, 'us_rate')
+  const krIpi    = calcChange(data, 'kr_ipi')
+  const krBsi    = calcChange(data, 'kr_bsi')
 
   const latestUsd    = usd.value as number
   const latestJpy    = jpy.value as number
@@ -638,8 +653,8 @@ export function PageExtFX() {
             })()}
             <Btn variant="secondary" onClick={() => exportToCsv(
               'ext_fx.csv',
-              ['날짜', 'USD/KRW(원)', 'EUR/KRW(원)', 'JPY/KRW(원)', 'CNY/KRW(원)', '한국금리(%)', '미국금리(%)'],
-              data.map(row => [row['d'] as string, row['usd'] as number, row['eur'] as number, row['jpy'] as number, row['cny'] as number, row['rate'] as number, row['us_rate'] as number])
+              ['날짜', 'USD/KRW(원)', 'EUR/KRW(원)', 'JPY/KRW(원)', 'CNY/KRW(원)', '한국금리(%)', '미국금리(%)', '제조업생산지수', '경기전망BSI'],
+              data.map(row => [row['d'] as string, row['usd'] as number, row['eur'] as number, row['jpy'] as number, row['cny'] as number, row['rate'] as number, row['us_rate'] as number, row['kr_ipi'] as number, row['kr_bsi'] as number])
             )}>CSV 내보내기</Btn>
           </div>
         }
@@ -660,6 +675,10 @@ export function PageExtFX() {
             source={INDICATOR_META.KR_BASE_RATE.source} freq={INDICATOR_META.KR_BASE_RATE.freq} />
           <TickerCard label="미국 기준금리" value={usRate.value as number} unit="%" changePct={usRate.pct} chartData={data} dataKey="us_rate"
             source={INDICATOR_META.US_FED_RATE.source} freq={INDICATOR_META.US_FED_RATE.freq} />
+          <TickerCard label="한국 제조업생산지수" value={krIpi.value as number} unit="" changePct={krIpi.pct} chartData={data} dataKey="kr_ipi"
+            source={INDICATOR_META.KR_IPI_MFG.source} freq={INDICATOR_META.KR_IPI_MFG.freq} />
+          <TickerCard label="한국 제조업경기전망" value={krBsi.value as number} unit="" changePct={krBsi.pct} chartData={data} dataKey="kr_bsi"
+            source={INDICATOR_META.KR_BSI_MFG.source} freq={INDICATOR_META.KR_BSI_MFG.freq} />
         </>}
       </div>
 
@@ -675,14 +694,20 @@ export function PageExtFX() {
         <ExtChartCard title="CNY/KRW 추이 (위안당)" data={data} lineKeys={['cny']} colors={[T.orange]} />
       </div>
 
+      {/* ── 차트 Row 3: 한국 제조업생산 | 한국 제조업경기전망 ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <ExtChartCard title="한국 제조업생산지수 (KR_IPI)" data={data} lineKeys={['kr_ipi']} colors={[T.blue]} />
+        <ExtChartCard title="한국 제조업경기전망 (BSI)" data={data} lineKeys={['kr_bsi']} colors={[T.purple]} />
+      </div>
+
       {/* ── 기간별 변동률 테이블 ── */}
       <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', marginBottom: 16, boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 14 }}>기간별 변동률</div>
         <PeriodTable
           data={data}
-          keys={['usd', 'eur', 'jpy', 'cny', 'rate', 'us_rate']}
-          labels={['USD/KRW', 'EUR/KRW', 'JPY/KRW', 'CNY/KRW', '한국 기준금리', '미국 기준금리']}
-          units={['원', '원', '원', '원', '%', '%']}
+          keys={['usd', 'eur', 'jpy', 'cny', 'rate', 'us_rate', 'kr_ipi', 'kr_bsi']}
+          labels={['USD/KRW', 'EUR/KRW', 'JPY/KRW', 'CNY/KRW', '한국 기준금리', '미국 기준금리', '한국 제조업생산', '한국 경기전망BSI']}
+          units={['원', '원', '원', '원', '%', '%', '', '']}
         />
       </div>
 
@@ -797,9 +822,9 @@ export function PageExtFX() {
           </div>
           <DataListTable
             data={data}
-            keys={['usd', 'eur', 'jpy', 'cny', 'rate', 'us_rate']}
-            labels={['USD/KRW', 'EUR/KRW', 'JPY/KRW', 'CNY/KRW', '한국금리', '미국금리']}
-            units={['원', '원', '원', '원', '%', '%']}
+            keys={['usd', 'eur', 'jpy', 'cny', 'rate', 'us_rate', 'kr_ipi', 'kr_bsi']}
+            labels={['USD/KRW', 'EUR/KRW', 'JPY/KRW', 'CNY/KRW', '한국금리', '미국금리', '제조업생산', '경기전망BSI']}
+            units={['원', '원', '원', '원', '%', '%', '', '']}
             startIdx={fxStartIdx}
             endIdx={fxEndIdx}
             freq={freq}
@@ -839,7 +864,7 @@ export function PageExtSupply() {
   />
 }
 
-// WTI=일간(거래일), 구리 LME=일간(거래일), 금=일간
+// WTI=일간(거래일), 구리 LME=일간(거래일)
 export function PageExtRaw() {
   const [freq, setFreq] = useState<Freq>('month')
   const period = Math.max(...(periodOptionsForFreq(freq) as unknown as number[]))
@@ -847,17 +872,21 @@ export function PageExtRaw() {
   const { data, loading } = useExtData(fetchRawData, EXT_RAW_DATA, period, freq)
   const isLive = data !== EXT_RAW_DATA
   const wti = calcChange(data, 'wti')
+  const copper = calcChange(data, 'copper')
   return <ExtLayout
-    title="원자재" sub="WTI 원유(일간, 거래일) — 구리·금 미연동"
+    title="원자재" sub="WTI 원유(일간, 거래일) · 구리 LME(일간) — 금 미연동"
     isLive={isLive} loading={loading}
     freqOptions={['day', 'week', 'month']} freq={freq} onFreqChange={setFreq}
     tickerItems={[
       <TickerCard key="wti" label="WTI 원유" value={wti.value as number} unit="$/bbl" changePct={wti.pct} chartData={data} dataKey="wti"
         source={INDICATOR_META.WTI_MONTHLY.source} freq={INDICATOR_META.WTI_MONTHLY.freq} />,
+      <TickerCard key="copper" label="구리 (LME)" value={copper.value as number} unit="$/톤" changePct={copper.pct} chartData={data} dataKey="copper"
+        source={INDICATOR_META.COPPER_LME.source} freq={INDICATOR_META.COPPER_LME.freq} />,
     ]}
     chartL={<ExtChartCard title="WTI 원유 추이" data={data} lineKeys={['wti']} colors={[T.amber]} />}
-    tableData={data} tableKeys={['wti']}
-    tableLabels={['WTI']} tableUnits={['$/bbl']}
+    chartR={<ExtChartCard title="구리 (LME) 추이" data={data} lineKeys={['copper']} colors={[T.orange]} />}
+    tableData={data} tableKeys={['wti', 'copper']}
+    tableLabels={['WTI', '구리LME']} tableUnits={['$/bbl', '$/톤']}
     filename="ext_raw.csv"
     indicatorType="raw"
   />
