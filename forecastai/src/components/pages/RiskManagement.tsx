@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { T, card } from '@/lib/data'
 import { StatusBadge, GradeBadge, RiskTypeBadge, ScoreBar,
   PageHeader, Btn, FilterBar, Select, SearchInput, Table, Badge } from '@/components/ui'
@@ -43,6 +43,8 @@ export default function PageRiskManagement() {
   // 사용자가 선택한 필터 상태
   const [selCategory, setSelCategory] = useState<string>('전체')
   const [selDate,     setSelDate]     = useState<string>('')
+  const [filtersLoaded, setFiltersLoaded] = useState<boolean>(false)
+  const requestRef = useRef(0)
 
   // ─── 날짜 표시 형식 변환 유틸 ───────────────────────────────────────────────
   const getWeekOfMonth = (date: Date) => {
@@ -81,6 +83,7 @@ export default function PageRiskManagement() {
 
   /* ── 초기 필터 정보 로드 (periodType 변경 시 재로드) ── */
   useEffect(() => {
+    setFiltersLoaded(false)
     fetch(`/api/risk/filters?type=${periodType}`)
       .then(r => r.json())
       .then(d => {
@@ -94,6 +97,7 @@ export default function PageRiskManagement() {
         }
       })
       .catch(e => console.error('Filter load error', e))
+      .finally(() => setFiltersLoaded(true))
   }, [periodType])
 
   /* ── 데이터 로드 (필터 변경 시 1페이지부터) ── */
@@ -107,30 +111,33 @@ export default function PageRiskManagement() {
     setPage(1)
     
     if (selDate) {
-      loadPage(1, selDate, selCategory, periodType, false)
-    } else if (availDates.length === 0 && dataSource !== 'loading') {
+      loadPage(1, selDate, selCategory, periodType, gradeF, false)
+    } else if (filtersLoaded && availDates.length === 0) {
        // 필터 로드 완료 후에도 날짜가 없으면 empty 처리
        setDataSource('empty')
     }
-  }, [selDate, selCategory, periodType])
+  }, [selDate, selCategory, periodType, gradeF, filtersLoaded, availDates.length])
 
   /* ── 페이지 추가 로드 ── */
   useEffect(() => {
     if (page === 1) return // 최초 로드는 위 effect에서 처리
     setLoadingMore(true)
-    loadPage(page, selDate, selCategory, periodType, true)
+    loadPage(page, selDate, selCategory, periodType, gradeF, true)
   }, [page])
 
-  function loadPage(p: number, date: string, category: string, pType: string, append: boolean) {
+  function loadPage(p: number, date: string, category: string, pType: string, grade: string, append: boolean) {
+    const requestId = ++requestRef.current
     const query = new URLSearchParams()
     query.set('date', date)
     query.set('page', String(p))
     query.set('eval_type', pType)
     if (category !== '전체') query.set('type', category)
+    if (grade !== '전체') query.set('grade', grade)
 
     fetch(`/api/risk?${query.toString()}`)
       .then(r => r.json())
       .then(data => {
+        if (requestId !== requestRef.current) return
         if (data.source === 'database') {
           setRiskItems(prev => append ? [...prev, ...(data.items ?? [])] : (data.items ?? []))
           setEvalDate(data.evalDate ?? '')
@@ -151,16 +158,22 @@ export default function PageRiskManagement() {
           setDataSource(data.source === 'error' ? 'error' : 'mock')
         }
       })
-      .catch(() => setDataSource('error'))
-      .finally(() => setLoadingMore(false))
+      .catch(() => {
+        if (requestId === requestRef.current) setDataSource('error')
+      })
+      .finally(() => {
+        if (requestId === requestRef.current) setLoadingMore(false)
+      })
   }
 
-  const filtered = riskItems.filter(r => {
-    const matchSearch = r.sku.includes(search) || r.name.includes(search)
-    const matchGrade  = gradeF === '전체' || r.grade === gradeF
-    const matchType   = typeF  === '전체' || r.type  === typeF
-    return matchSearch && matchGrade && matchType
-  })
+  const filtered = useMemo(() => {
+    return riskItems.filter(r => {
+      const matchSearch = r.sku.includes(search) || r.name.includes(search)
+      const matchGrade  = gradeF === '전체' || r.grade === gradeF
+      const matchType   = typeF  === '전체' || r.type  === typeF
+      return matchSearch && matchGrade && matchType
+    })
+  }, [riskItems, search, gradeF, typeF])
 
   const gradeColors: Record<string, string> = {
     A: '#10B981', B: '#84CC16', C: '#F59E0B', D: '#F97316', E: '#EF4444', F: '#7C3AED',

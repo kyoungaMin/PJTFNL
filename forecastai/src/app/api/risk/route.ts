@@ -3,7 +3,26 @@ import { supabase } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+const FETCH_PAGE = 1000
 const PAGE_SIZE = 200
+
+async function fetchAll(
+  table: string,
+  select: string,
+  filter?: (q: any) => any,
+): Promise<any[]> {
+  const all: any[] = []
+  for (let offset = 0; ; offset += FETCH_PAGE) {
+    let q = supabase.from(table).select(select).range(offset, offset + FETCH_PAGE - 1)
+    if (filter) q = filter(q)
+    const { data, error } = await q
+    if (error) throw error
+    if (!data?.length) break
+    all.push(...data)
+    if (data.length < FETCH_PAGE) break
+  }
+  return all
+}
 
 /* ─── 배치 .in() 헬퍼 ─── */
 const IN_BATCH = 400
@@ -68,6 +87,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const dateParam = searchParams.get('date')
     const typeParam = searchParams.get('type')
+    const gradeParam = searchParams.get('grade')
     const evalType  = searchParams.get('eval_type') || 'monthly' // 주간/월간 구분
     const page      = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
     const offset    = (page - 1) * PAGE_SIZE
@@ -93,11 +113,11 @@ export async function GET(request: Request) {
     // ── 2. 제품유형 필터: product_master에서 대상 product_code 목록 선추출 ─
     let validProductIds: string[] | null = null
     if (typeParam && typeParam !== '전체') {
-      const { data: typeRows, error: typeErr } = await supabase
-        .from('product_master')
-        .select('product_code')
-        .eq('product_type', typeParam)
-      if (typeErr) throw typeErr
+      const typeRows = await fetchAll(
+        'product_master',
+        'product_code',
+        (q) => q.eq('product_type', typeParam),
+      )
       validProductIds = typeRows.map((r: any) => r.product_code)
       if (validProductIds.length === 0) {
         return NextResponse.json({ items: [], evalDate, gradeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
@@ -118,7 +138,7 @@ export async function GET(request: Request) {
         const g = String(r.risk_grade ?? '')
         if (g) gradeSummary[g] = (gradeSummary[g] ?? 0) + 1
       }
-      totalCount = gradeRows.length
+      totalCount = gradeParam ? (gradeSummary[gradeParam] ?? 0) : gradeRows.length
     } else {
       const countResults = await Promise.all(
         GRADES.map(g =>
@@ -135,6 +155,7 @@ export async function GET(request: Request) {
         gradeSummary[GRADES[i]] = cnt
         totalCount += cnt
       }
+      if (gradeParam) totalCount = gradeSummary[gradeParam] ?? 0
     }
 
     // ── 4. risk_score 목록 조회 (페이지네이션) ──────────────────────────────
@@ -145,18 +166,25 @@ export async function GET(request: Request) {
     if (validProductIds) {
       const allRisks = await batchIn(
         'risk_score', RISK_SELECT, 'product_id', validProductIds,
-        (q) => q.eq('eval_date', evalDate).eq('eval_type', evalType).order('total_risk', { ascending: false })
+        (q) => {
+          let qq = q.eq('eval_date', evalDate).eq('eval_type', evalType)
+          if (gradeParam) qq = qq.eq('risk_grade', gradeParam)
+          return qq.order('total_risk', { ascending: false })
+        }
       )
       allRisks.sort((a, b) => b.total_risk - a.total_risk)
       risks = allRisks.slice(offset, offset + PAGE_SIZE)
     } else {
-      const { data, error: rErr } = await supabase
+      let riskQuery = supabase
         .from('risk_score')
         .select(RISK_SELECT)
         .eq('eval_date', evalDate)
         .eq('eval_type', evalType)
         .order('total_risk', { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1)
+      if (gradeParam) riskQuery = riskQuery.eq('risk_grade', gradeParam)
+
+      const { data, error: rErr } = await riskQuery
       if (rErr) throw rErr
       if (data) risks = data
     }
