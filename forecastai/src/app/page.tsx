@@ -33,7 +33,7 @@ export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [sessionChecked, setSessionChecked] = useState(false)
   const [page, setPage] = useState('dashboard')
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed] = useState(false)
   const [currentUser, setCurrentUser] = useState<Member | null>(null)
   const [alertCount, setAlertCount] = useState(0)
 
@@ -41,7 +41,17 @@ export default function Home() {
   const handleAlertCount = useCallback((count: number) => setAlertCount(count), [])
 
   // 새로고침 시 Supabase 세션 복원
+  // sessionStorage 플래그가 있을 때만 자동 복원 (탭 닫으면 초기화 → 새 탭은 로그인 필요)
   useEffect(() => {
+    const sessionActive = typeof window !== 'undefined'
+      ? sessionStorage.getItem('session_active')
+      : null
+
+    if (!sessionActive) {
+      setSessionChecked(true)
+      return
+    }
+
     supabaseBrowser.auth.getSession().then(async ({ data }) => {
       const session = data.session
       if (!session) { setSessionChecked(true); return }
@@ -119,7 +129,7 @@ export default function Home() {
     <div style={{ display:'flex', height:'100vh', background:T.pageBg,
       fontFamily:"'Pretendard','Noto Sans KR','Apple SD Gothic Neo',sans-serif",
       color:T.text1, overflow:'hidden' }}>
-      <Sidebar page={page} setPage={setPage} collapsed={collapsed} onToggle={() => setCollapsed(p => !p)} currentUser={currentUser} />
+      <Sidebar page={page} setPage={setPage} collapsed={collapsed} currentUser={currentUser} />
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
         <Header currentUser={currentUser} setCurrentUser={setCurrentUser} setPage={setPage} alertCount={alertCount} />
         <div style={{ flex:1, overflowY:'auto', padding:'28px 32px' }}>

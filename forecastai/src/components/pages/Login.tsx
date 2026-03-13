@@ -1,6 +1,6 @@
 'use client'
-import React, { useState } from 'react'
-import { LOGIN_ACCOUNTS, type Member, type RoleType } from '@/lib/data'
+import React, { useState, useEffect } from 'react'
+import { type Member, type RoleType } from '@/lib/data'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
 // ─── 비밀번호 재설정 요청 ─────────────────────────────────────────────────────
@@ -41,6 +41,18 @@ export default function LoginPage({ onLogin }: { onLogin: (member: Member) => vo
   const [resetEmail, setResetEmail] = useState("")
   const [resetMsg,   setResetMsg]   = useState("")
   const [resetLoading, setResetLoading] = useState(false)
+
+  // DB에서 테스트 계정 목록 동적으로 가져오기
+  const [quickAccounts, setQuickAccounts] = useState<{ email: string; name: string; role: string }[]>([])
+
+  useEffect(() => {
+    fetch('/api/quick-accounts')
+      .then(r => r.json())
+      .then((data: { email: string; name: string; role: string }[]) => {
+        if (Array.isArray(data) && data.length > 0) setQuickAccounts(data)
+      })
+      .catch(() => {})
+  }, [])
 
   const handleReset = async () => {
     setResetLoading(true)
@@ -93,38 +105,28 @@ export default function LoginPage({ onLogin }: { onLogin: (member: Member) => vo
       }
     } catch { /* DB 프로필 조회 실패 → LOCAL fallback */ }
 
-    // 3) DB 프로필 없으면 LOGIN_ACCOUNTS 로컬 데이터로 fallback
+    // 3) DB 프로필 없으면 이메일 기반 Viewer 계정으로 fallback
     if (!member) {
-      const localAcc = LOGIN_ACCOUNTS.find(a => a.email.toLowerCase() === email.toLowerCase())
-      if (localAcc) {
-        member = {
-          ...localAcc.member,
-          id:    authData.user?.id ?? '',
-          email: localAcc.email,
-          grad:  ROLE_GRAD[localAcc.member.role],
-        }
-      } else {
-        // 완전 fallback: Viewer 권한으로 이메일 기반 생성
-        const name = email.split('@')[0]
-        member = {
-          id:      authData.user?.id ?? '',
-          name,
-          role:    'Viewer',
-          dept:    '',
-          email,
-          grad:    ROLE_GRAD['Viewer'],
-          initial: name.charAt(0) || '?',
-          orgId:   'default',
-        }
+      const name = email.split('@')[0]
+      member = {
+        id:      authData.user?.id ?? '',
+        name,
+        role:    'Viewer',
+        dept:    '',
+        email,
+        grad:    ROLE_GRAD['Viewer'],
+        initial: name.charAt(0) || '?',
+        orgId:   'default',
       }
     }
 
+    sessionStorage.setItem('session_active', '1')
     onLogin(member)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleLogin() }
 
-  // 빠른 로그인: 폼에 이메일/비밀번호를 자동으로 채워줌 (Supabase 계정이 있어야 실제 로그인 가능)
+  // 빠른 로그인: 폼에 이메일/비밀번호를 자동으로 채워줌
   const quickLogin = (acc: { email: string; password: string }) => {
     setEmail(acc.email)
     setPassword(acc.password)
@@ -252,20 +254,22 @@ export default function LoginPage({ onLogin }: { onLogin: (member: Member) => vo
         </div>
       )}
 
-        {/* 빠른 로그인 — 폼 자동완성용 (Supabase에 동일 이메일 계정 필요) */}
-        <div style={{ marginTop:20, padding:"16px 20px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:12 }}>
-          <div style={{ fontSize:11, fontWeight:600, color:"#475569", marginBottom:10, letterSpacing:"0.04em" }}>테스트 계정 (비밀번호: 1234)</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {LOGIN_ACCOUNTS.map((acc, i) => (
-              <button key={i} onClick={() => quickLogin(acc)}
-                style={{ fontSize:11, color:"#94A3B8", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:6, padding:"4px 10px", cursor:"pointer", transition:"all 0.15s" }}
-                onMouseEnter={e=>{ (e.target as HTMLButtonElement).style.background="rgba(37,99,235,0.15)"; (e.target as HTMLButtonElement).style.color="#93C5FD" }}
-                onMouseLeave={e=>{ (e.target as HTMLButtonElement).style.background="rgba(255,255,255,0.05)"; (e.target as HTMLButtonElement).style.color="#94A3B8" }}>
-                {acc.member.name} ({acc.member.role})
-              </button>
-            ))}
+        {/* 빠른 로그인 — DB 등록 계정 자동완성용 */}
+        {quickAccounts.length > 0 && (
+          <div style={{ marginTop:20, padding:"16px 20px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:12 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:"#475569", marginBottom:10, letterSpacing:"0.04em" }}>등록 계정 (비밀번호: 1234)</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {quickAccounts.map((acc, i) => (
+                <button key={i} onClick={() => quickLogin({ email: acc.email, password: '1234' })}
+                  style={{ fontSize:11, color:"#94A3B8", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:6, padding:"4px 10px", cursor:"pointer", transition:"all 0.15s" }}
+                  onMouseEnter={e=>{ (e.target as HTMLButtonElement).style.background="rgba(37,99,235,0.15)"; (e.target as HTMLButtonElement).style.color="#93C5FD" }}
+                  onMouseLeave={e=>{ (e.target as HTMLButtonElement).style.background="rgba(255,255,255,0.05)"; (e.target as HTMLButtonElement).style.color="#94A3B8" }}>
+                  {acc.name} ({acc.role})
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={{ textAlign:"center", marginTop:20, fontSize:11, color:"#334155" }}>
           Copyright © 2026 ICA 1 Team. All rights reserved.

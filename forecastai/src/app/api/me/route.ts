@@ -36,5 +36,9 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  return NextResponse.json(profile)
+  // Supabase Auth 이메일을 항상 우선 사용 (user_profile.email은 오래된 값일 수 있음)
+  return NextResponse.json({
+    ...profile,
+    email: userData.user.email ?? profile.email ?? '',
+  })
 }

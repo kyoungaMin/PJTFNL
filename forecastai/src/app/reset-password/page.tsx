@@ -14,17 +14,21 @@ export default function ResetPasswordPage() {
   const [ready,     setReady]     = useState(false)
 
   // Supabase가 URL 해시에서 세션 복원하는 것을 기다림
+  // onAuthStateChange를 먼저 등록해야 race condition 없이 이벤트를 잡을 수 있음
   useEffect(() => {
-    // 이미 세션이 있는 경우 (페이지 로드 시 해시가 먼저 처리된 경우)
-    supabaseBrowser.auth.getSession().then(({ data }) => {
-      if (data.session) setReady(true)
-    })
-
-    // 또는 PASSWORD_RECOVERY 이벤트를 기다림
-    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((event, session) => {
+      // PASSWORD_RECOVERY: 비밀번호 재설정 링크 클릭 시
+      // SIGNED_IN: 일부 Supabase 버전에서 recovery 링크가 SIGNED_IN으로 오는 경우
       if (event === 'PASSWORD_RECOVERY') {
         setReady(true)
+      } else if (event === 'SIGNED_IN' && session) {
+        setReady(true)
       }
+    })
+
+    // 이벤트 구독 후 세션 확인 (이미 해시가 처리된 경우 대비)
+    supabaseBrowser.auth.getSession().then(({ data }) => {
+      if (data.session) setReady(true)
     })
 
     return () => subscription.unsubscribe()
@@ -32,7 +36,7 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async () => {
     if (!password)              { setMsg('새 비밀번호를 입력해 주세요.'); return }
-    if (password.length < 4)    { setMsg('비밀번호는 최소 4자 이상이어야 합니다.'); return }
+    if (password.length < 6)    { setMsg('비밀번호는 최소 6자 이상이어야 합니다.'); return }
     if (password !== password2) { setMsg('비밀번호가 일치하지 않습니다.'); return }
 
     setLoading(true)
@@ -41,8 +45,17 @@ export default function ResetPasswordPage() {
     const { error } = await supabaseBrowser.auth.updateUser({ password })
 
     if (error) {
-      setMsg(`오류: ${error.message}`)
+      // Supabase 영문 에러 → 한글 변환
+      const errMap: Record<string, string> = {
+        'Password should be at least 6 characters.': '비밀번호는 최소 6자 이상이어야 합니다.',
+        'New password should be different from the old password.': '기존 비밀번호와 다른 비밀번호를 입력해 주세요.',
+        'Auth session missing!': '세션이 만료되었습니다. 이메일 링크를 다시 요청해 주세요.',
+      }
+      setMsg(errMap[error.message] ?? `오류: ${error.message}`)
     } else {
+      // 변경 완료 후 세션 초기화 → 새 비밀번호로 로그인하도록 유도
+      await supabaseBrowser.auth.signOut()
+      sessionStorage.removeItem('session_active')
       setDone(true)
       setMsg('비밀번호가 변경되었습니다! 3초 후 로그인 화면으로 이동합니다.')
       setTimeout(() => { window.location.href = '/' }, 3000)
@@ -81,7 +94,7 @@ export default function ResetPasswordPage() {
                 <div style={{ fontSize:11, fontWeight:600, color:'#94A3B8', marginBottom:7 }}>새 비밀번호</div>
                 <input
                   type="password" value={password} onChange={e => setPassword(e.target.value)}
-                  placeholder="새 비밀번호 (4자 이상)"
+                  placeholder="새 비밀번호 (6자 이상)"
                   style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.10)', borderRadius:10, padding:'12px 14px', fontSize:13, color:'#F1F5F9', outline:'none', boxSizing:'border-box' }}
                 />
               </div>
