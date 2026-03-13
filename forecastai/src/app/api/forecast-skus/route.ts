@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const model = searchParams.get('model') ?? 'weekly'
-  const modelId = model === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v3'
+  const modelId = model === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v4'
 
   if (!supabase) {
     return NextResponse.json({ skus: [], source: 'no_client' }, { status: 200 })

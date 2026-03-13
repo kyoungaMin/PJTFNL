@@ -96,7 +96,7 @@ function generateInsights(
 
   const zero_actual_comment = zeroActualCount > 0
     ? `또한 실제 수주가 0건인데 예측한 경우가 ${zeroActualCount}건 있습니다. `
-      + '수주 유무를 먼저 분류하는 2단계 모델(수주 여부 → 수량 예측) 도입을 검토할 필요가 있습니다.'
+      + 'v4 글로벌 모델의 2-Stage 분류(수주 유무 → 수량 예측)가 이 문제를 개선하고 있으며, 분류 임계값 조정으로 추가 개선이 가능합니다.'
     : ''
 
   // ── 제품군 분석 ──
@@ -169,9 +169,9 @@ function generateInsights(
   if (zeroActualCount > 0) {
     recommendations.push({
       area: '모델 개선',
-      action: '수주 유무를 먼저 분류하는 2-Stage 모델(분류→회귀) 도입을 검토하세요',
+      action: 'v4 2-Stage 모델의 분류 임계값(ZERO_THRESHOLDS)을 제품 세그먼트별로 미세 조정하세요',
       priority: 'medium',
-      reason: `실제 수주 0인데 예측한 건 ${zeroActualCount}건 — 불필요한 생산/발주 위험`,
+      reason: `실제 수주 0인데 예측한 건 ${zeroActualCount}건 — 분류 단계 임계값 최적화로 추가 개선 가능`,
     })
   }
 
@@ -226,7 +226,7 @@ function parsePeriodToDateRange(type: string, period: string) {
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? 'weekly'
   const period = req.nextUrl.searchParams.get('period') ?? ''
-  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
+  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v4'
 
   if (!period) {
     return NextResponse.json({ error: 'period parameter required' }, { status: 400 })
@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const type = body.type ?? 'weekly'
     const period = body.period ?? ''
-    const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
+    const modelId = type === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v4'
 
     if (!period) {
       return NextResponse.json({ error: 'period required' }, { status: 400 })

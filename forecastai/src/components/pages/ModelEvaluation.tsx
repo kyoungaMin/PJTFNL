@@ -225,13 +225,15 @@ export default function PageModelEvaluation() {
   // 모델 선택
   const MODEL_OPTIONS = {
     weekly: [
-      { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3 (기본)' },
+      { id: 'lgbm_q_v4', label: 'LightGBM 2-Stage Global v4 (기본)' },
+      { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3' },
       { id: 'lgbm_q_v2', label: 'LightGBM Quantile v2' },
       { id: 'ridge_v1', label: 'Ridge Regression' },
       { id: 'svr_linear_v1', label: 'SVR Linear' },
     ],
     monthly: [
-      { id: 'lgbm_q_monthly_v1', label: 'LightGBM Quantile (기본)' },
+      { id: 'lgbm_q_monthly_v2', label: 'LightGBM Quantile v2 (기본)' },
+      { id: 'lgbm_q_monthly_v1', label: 'LightGBM Quantile v1' },
       { id: 'ridge_monthly_v1', label: 'Ridge Regression' },
       { id: 'svr_linear_monthly_v1', label: 'SVR Linear' },
     ],
@@ -1649,12 +1651,12 @@ function TabExecutive({ data, periodData, selectedPeriod, periodType, periodLoad
           ))}
         </div>
         <div style={{ background: T.surface2, borderRadius: 8, padding: '14px 18px', fontSize: 13, color: T.text2, lineHeight: 1.8 }}>
-          <b style={{ color: T.blue }}>2-Stage 모델이란?</b><br />
-          현재 모델은 "다음 주/월에 몇 개 수주될까?"를 바로 예측합니다.<br />
-          2-Stage 모델은 두 단계로 나눕니다:<br />
-          &nbsp;&nbsp;1단계: "수주가 있을까, 없을까?" (분류) → 수주 0인 제품 필터링<br />
-          &nbsp;&nbsp;2단계: "수주가 있다면, 몇 개?" (회귀) → 정확한 수량 예측<br />
-          이렇게 하면 수주가 드문 제품의 예측 정확도가 크게 향상됩니다.
+          <b style={{ color: T.blue }}>2-Stage 글로벌 모델 (v4) — 현재 적용 중</b><br />
+          기존 v3는 제품별 개별 모델을 학습했지만, v4는 전 제품 데이터를 통합한 <b>글로벌 모델</b>입니다.<br />
+          <b>1단계 (분류)</b>: "이 제품에 수주가 있을까, 없을까?" → LightGBM 이진분류로 수주 0 제품 필터링<br />
+          <b>2단계 (회귀)</b>: "수주가 있다면, 몇 개?" → log1p 변환 + Quantile Regression으로 P10/P50/P90 예측<br />
+          제품 수요 규모·제로 비율 등 5개 메타 피처를 추가하여 수요 패턴이 다른 제품도 하나의 모델로 정확하게 예측합니다.<br />
+          결과: WMAPE 39.7~71.4% (v3 대비 22% 개선), Coverage 80%+ (4W 이상 호라이즌)
         </div>
       </div>
     </div>

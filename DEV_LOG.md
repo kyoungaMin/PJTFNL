@@ -2,7 +2,7 @@
 
 > **프로젝트명**: 반도체 부품·소재 수요 변동성 분석 및 재고 리스크 최적화 AI SaaS
 > **프로젝트 시작일**: 2026-02-27
-> **최종 수정일**: 2026-03-13
+> **최종 수정일**: 2026-03-14
 
 ---
 
@@ -144,6 +144,7 @@ DEV_LOG/
 | mc_svr | 2026-03-07 | kyoungaMin | 주간+월간 | Linear SVR (scaled) | C=1.0, epsilon=0.1, StandardScaler | 주간 R²=0.02/MAE=39.3/±5=62.6%, 월간 R²=0.68/MAE=49.2/±5=47.8% | **±5 최고** |
 | mc_ridge | 2026-03-07 | kyoungaMin | 주간+월간 | Ridge Regression (scaled) | alpha=1.0, StandardScaler | 주간 R²=0.26/MAE=42.3/±5=60.2%, 월간 R²=0.69/MAE=54.3/±5=27.6% | **월간 R² 최고** |
 | segment_v1 | 2026-03-11 | kyoungaMin | 주간+월간 | 구간별 모델 선택기 | low<10→SVR, mid/high→LightGBM(주간)/Ridge(월간) | 11,431건 선택 (주간4,280+월간7,151) | 저수요303/중수요1,100/고수요718제품 |
+| global_v4_2stage | 2026-03-14 | kyoungaMin | 주간 (6호라이즌) | 2-Stage 글로벌 LightGBM (분류+회귀) | max_depth=8, lr=0.03, num_leaves=63, log1p변환, 5메타피처 | WMAPE 39.7~71.4%, Coverage 80%+ (4W~) | **★ v3 대비 22% 개선, 80,065건** |
 
 ---
 

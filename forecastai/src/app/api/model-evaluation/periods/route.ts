@@ -28,8 +28,7 @@ function fmtShort(d: Date) {
 // GET /api/model-evaluation/periods?type=weekly|monthly
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? 'weekly'
-  // monthly_v2 데이터가 0건이므로 v1 사용
-  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
+  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v4'
 
   try {
     const { data, error } = await supabase
