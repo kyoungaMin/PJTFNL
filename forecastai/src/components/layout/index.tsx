@@ -8,7 +8,7 @@ export function Sidebar({ page, setPage, collapsed, currentUser }: { page:string
   const [openGroups, setOpenGroups] = useState({"재고 관리":true,"수요예측":true,"최적화":true,"외부 지표":true});
   const groups = Array.from(new Set(NAV_STRUCTURE.filter(n=>n.parent).map(n=>n.parent)));
   const grouped = {
-    top:    NAV_STRUCTURE.filter(n=>!n.parent && n.id!=="admin"),
+    top:    NAV_STRUCTURE.filter(n=>!n.parent && n.id!=="admin" && n.id!=="executive-report"),
     groups: groups.map(g=>({ name:g, items:NAV_STRUCTURE.filter(n=>n.parent===g) })),
     bottom: currentUser?.role === 'Admin' ? NAV_STRUCTURE.filter(n=>n.id==="admin") : [],
   };
@@ -57,6 +57,7 @@ export function Sidebar({ page, setPage, collapsed, currentUser }: { page:string
           </div>
         ))}
         <div style={{ height:1, background:T.sidebarBd, margin:"8px 16px" }}/>
+        {NAV_STRUCTURE.filter(n=>n.id==="executive-report").map(item=><NavItem key={item.id} item={item}/>)}
         {grouped.bottom.map(item=><NavItem key={item.id} item={item}/>)}
       </nav>
 

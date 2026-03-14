@@ -17,6 +17,8 @@ import PageModelScenario from '@/components/pages/ModelScenario'
 import PageModelEvaluation from '@/components/pages/ModelEvaluation'
 import { PageExtSemi, PageExtGlobal, PageExtFX, PageExtSupply, PageExtRaw } from '@/components/pages/ExternalIndicators'
 import PageAdmin from '@/components/pages/Admin'
+import PageExecutiveReport from '@/components/pages/ExecutiveReport'
+import PageIndustryNews from '@/components/pages/IndustryNews'
 
 const ROLE_GRAD: Record<RoleType, string> = {
   Admin:   'linear-gradient(135deg,#7C3AED,#EC4899)',
@@ -114,6 +116,8 @@ export default function Home() {
     'ext-fx':           <PageExtFX />,
     'ext-supply':       <PageExtSupply />,
     'ext-raw':          <PageExtRaw />,
+    'executive-report': <PageExecutiveReport />,
+    'industry-news':    <PageIndustryNews />,
     admin: currentUser.role === 'Admin'
       ? <PageAdmin currentUser={currentUser} />
       : (
