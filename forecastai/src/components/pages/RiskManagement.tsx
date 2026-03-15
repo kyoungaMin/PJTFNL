@@ -10,6 +10,109 @@ type RiskItem = {
   stock: number; safeStock: number; leadTime: number; customer: string;
 }
 
+// ─── 예측 주의 제품 패널 ───────────────────────────────────────────────────────
+
+type ConfidenceItem = {
+  productId: string
+  zeroRatio: number  // 0~100 (수요 공백률 %)
+  cv: number         // 변동계수
+  level: 'high' | 'medium'
+}
+
+function useHighUncertaintySkus(limit = 6) {
+  const [items, setItems] = useState<ConfidenceItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/forecast-weekly/confidence?limit=${limit}`)
+      .then(r => r.json())
+      .then(d => setItems(d.items ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [limit])
+
+  return { items, loading }
+}
+
+function HighUncertaintyPanel() {
+  const [open, setOpen] = useState(true)
+  const { items, loading } = useHighUncertaintySkus(6)
+
+  // 로드 완료 후 데이터 없으면 패널 숨김
+  if (!loading && items.length === 0) return null
+
+  return (
+    <div style={{ ...card, marginBottom: 20, border: `1px solid ${T.amberMid}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>⚠ 예측 주의 제품</span>
+          <span style={{ fontSize: 11, color: T.text3 }}>
+            간헐·고변동 수요 — 예측 신뢰도가 낮아 실제와 크게 다를 수 있습니다
+          </span>
+        </div>
+        <Btn
+          variant="ghost"
+          onClick={() => setOpen(o => !o)}
+          style={{ fontSize: 11, padding: '4px 8px' }}
+        >
+          {open ? '접기' : '펼치기'}
+        </Btn>
+      </div>
+
+      {open && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+          gap: 10,
+          marginTop: 14,
+        }}>
+          {loading
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{
+                  height: 78, borderRadius: 8,
+                  background: T.surface2, border: `1px solid ${T.border}`,
+                  animation: 'pulse 1.5s ease-in-out infinite',
+                }} />
+              ))
+            : items.map(item => {
+                const isHigh = item.level === 'high'
+                return (
+                  <div key={item.productId} style={{
+                    padding: '10px 14px', borderRadius: 8,
+                    background: isHigh ? T.redSoft : T.amberSoft,
+                    border: `1px solid ${isHigh ? T.redMid : T.amberMid}`,
+                  }}>
+                    <div style={{
+                      fontSize: 12, fontWeight: 700, color: T.text1,
+                      fontFamily: "'IBM Plex Mono',monospace",
+                      marginBottom: 4,
+                    }}>
+                      {item.productId}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.text3, lineHeight: 1.6 }}>
+                      수요 공백률 <span style={{ fontWeight: 700, color: T.text2 }}>{item.zeroRatio}%</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: T.text3 }}>
+                      변동계수(CV) <span style={{ fontWeight: 700, color: T.text2 }}>{item.cv.toFixed(2)}</span>
+                    </div>
+                    <div style={{
+                      marginTop: 6,
+                      display: 'inline-block',
+                      fontSize: 10, fontWeight: 700,
+                      color: isHigh ? T.red : T.amber,
+                    }}>
+                      {isHigh ? '⚠ 신뢰도 낮음' : '△ 신뢰도 보통'}
+                    </div>
+                  </div>
+                )
+              })
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SourceBadge({ source }: { source: string }) {
   if (source === 'database')
     return <Badge color={T.green} bg={T.greenSoft} border={T.greenMid} size={10}>DB 실데이터</Badge>
@@ -279,6 +382,8 @@ export default function PageRiskManagement() {
             : `총 ${filtered.length}건`}
         </span>
       </FilterBar>
+
+      <HighUncertaintyPanel />
 
       {filtered.some(r => ['E','F'].includes(r.grade)) && (
         <div style={{ padding: '10px 14px', background: T.redSoft, border: `1px solid ${T.redMid}`, borderRadius: 8, fontSize: 12, color: T.red, fontWeight: 500, marginBottom: 16 }}>

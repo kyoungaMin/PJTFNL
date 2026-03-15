@@ -65,7 +65,7 @@
 |------|------|
 | **예측 단위** | 고객사별, 제품별, 주차별/월별 선택 |
 | **예측 범위** | 주간: 1w/2w/4w (최대 28일) / 월간: 1m/3m/6m (최대 180일) |
-| **예측 모델** | LightGBM Quantile + Ridge + SVR Linear (멀티 모델, 주간 46피처, 월간 35피처) |
+| **예측 모델** | LightGBM Quantile + Ridge + SVR Linear (멀티 모델, 주간 69피처 (v4: 74피처), 월간 35피처) |
 | **출력** | P10(낙관) / P50(중앙) / P90(비관) 밴드 |
 
 ```
@@ -183,7 +183,7 @@
 │  │ action_queue / daily_inventory_estimated       │   │
 │  └───────────────────────────────────────────────┘   │
 │  ┌─ ML 피처 ─────────────────────────────────────┐   │
-│  │ feature_store_weekly (46피처, 83K행)            │   │
+│  │ feature_store_weekly (69피처, 83K행)            │   │
 │  │ feature_store_monthly (35피처, 48K행)           │   │
 │  └───────────────────────────────────────────────┘   │
 │  ┌─ 최적화 ────────────────────────────────────────┐ │
@@ -240,7 +240,7 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | 0 | `s0_aggregation.py` | 수주, 매출, 생산 | 주별·월별 집계 4테이블 | ISO 주차 캘린더 + 다차원 집계 |
 | 1 | `s1_daily_inventory.py` | 재고, 생산, 매출 | `daily_inventory_estimated` | 월초 스냅샷 기반 일간 재고 보간 |
 | 2 | `s2_lead_time.py` | 구매발주 | `product_lead_time` | 제품별 리드타임 통계 (AVG/P90) |
-| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store_weekly` | 주간 피처 엔지니어링 (46개 피처) |
+| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store_weekly` | 주간 피처 엔지니어링 (69개 피처, v4 학습 시 74개) |
 | 4 | `s4_forecast.py` | feature_store_weekly | `forecast_result` | LightGBM Quantile 예측 (1w/2w/4w) |
 | 4L | `s4_linear_models.py` | feature_store_weekly/monthly | `forecast_result` | Ridge + SVR Linear 예측 (Conformal P10/P50/P90) |
 | 5 | `s5_risk_score.py` | 예측 + 재고 + 리드타임 | `risk_score` | 4유형 리스크 스코어링 |
@@ -269,7 +269,7 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | **백엔드** | FastAPI (Python) | ML 연동, 자동 Swagger, 비동기 지원 |
 | **프론트엔드** | Next.js (React) | SSR 대시보드, Supabase 연동, Vercel 배포 |
 | **데이터베이스** | PostgreSQL (Supabase) | REST API, 실시간 구독, RLS 보안 |
-| **ML 모델** | LightGBM Quantile + Ridge + SVR Linear | 멀티 모델 비교, 주간(46피처)+월간(35피처) 이중 파이프라인 |
+| **ML 모델** | LightGBM Quantile + Ridge + SVR Linear | 멀티 모델 비교, 주간(69피처, v4: 74피처)+월간(35피처) 이중 파이프라인 |
 | **외부 데이터** | FRED / EIA / 관세청 API | 거시경제·에너지·무역 실시간 수집 |
 | **인증** | Supabase Auth + RBAC | JWT, 4단계 역할 (admin/manager/analyst/viewer) |
 | **배포** | Vercel + Supabase Cloud | 서버리스, 자동 스케일링 |
@@ -357,13 +357,14 @@ PJTFNL/
 │
 ├── forecastai/                        ← Next.js 프론트엔드 (Phase 5)
 │   ├── src/app/                       ← 라우팅 + 레이아웃
-│   │   └── api/                       ← API 라우트 (7개)
+│   │   └── api/                       ← API 라우트 (8개)
 │   │       ├── dashboard/             ← 대시보드 KPI·매출·재고
 │   │       ├── production-plan/       ← 생산 권고
 │   │       ├── purchase-recommendation/ ← 구매 권고
 │   │       ├── model-evaluation/      ← 모델 평가 (종합·기간별·리포트)
 │   │       ├── model-scenario/        ← 모델 시나리오
-│   │       └── simulation-skus/       ← 시뮬레이션 SKU
+│   │       ├── simulation-skus/       ← 시뮬레이션 SKU
+│   │       └── forecast-weekly/confidence ← 예측 신뢰도 (주의 제품 조회)
 │   ├── src/components/pages/          ← 13개 페이지 컴포넌트
 │   ├── src/components/ui/             ← 공통 UI (Badge, Table 등)
 │   └── src/lib/data.ts                ← 테마, 목데이터, 유틸

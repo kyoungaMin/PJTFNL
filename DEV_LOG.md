@@ -2,7 +2,7 @@
 
 > **프로젝트명**: 반도체 부품·소재 수요 변동성 분석 및 재고 리스크 최적화 AI SaaS
 > **프로젝트 시작일**: 2026-02-27
-> **최종 수정일**: 2026-03-14
+> **최종 수정일**: 2026-03-15
 
 ---
 
@@ -119,6 +119,9 @@ DEV_LOG/
 | 2026-03-13 | kyoungaMin | 개별 모델 비교 범위 | 주간/월간 2종만 / 5종 전체 | 5종 전체 | 사용자가 segment_best 외 개별 모델도 직접 비교 가능하도록 |
 | 2026-03-13 | kyoungaMin | 월간 모델 ID 기준 | monthly_v2 (데이터 없음) / monthly_v1 (24,482건) | monthly_v1 | 실제 forecast_result 데이터가 v1에만 존재 |
 | 2026-03-13 | kyoungaMin | 모델평가 기본 화면 | 전체 집계 / 최신 기간 자동 선택 | 최신 기간 자동 선택 | 기간별 추이를 먼저 보는 것이 실무적으로 유용 |
+| 2026-03-15 | kyoungaMin | 신뢰도 배지 계산 기준 | meta.coverageRate(과거 정확도) / 밴드폭 비율(미래 불확실성) | 밴드폭 비율 | 과거 정확도와 미래 불확실성은 다른 개념 — 현재 예측의 불확실성을 직접 표시 |
+| 2026-03-15 | kyoungaMin | 주의 제품 데이터 출처 | 정적 하드코딩 / feature_store_weekly / model_evaluation WMAPE | feature_store_weekly | 실시간 반영, 최신 데이터 기반, 추가 파이프라인 불필요 |
+| 2026-03-15 | kyoungaMin | 주의 제품 UI 위치 | 별도 페이지 / WeeklyForecast 배지만 / RiskManagement 패널만 / 배지+패널 병행 | 배지+패널 병행 | 예측·리스크 양쪽 맥락에서 정보 제공, 클릭 없이 바로 확인 |
 
 ---
 
@@ -196,3 +199,6 @@ DEV_LOG/
 | 2026-03-07 | kyoungaMin | 생산권고 UI 개선: 가이드 모달 배경 수정, 알고리즘 산식 추가, 로딩 UX |
 | 2026-03-07 | kyoungaMin | S8 파이프라인 주차별 재고/PO 보정 계수 강화 (3%→15%/10%), product_master 배치 조인 |
 | 2026-03-07 | kyoungaMin | 대시보드 구성 검토 보고서 작성 (DB 연동 가능 여부 + 사용자 유의미성 분석) |
+| 2026-03-15 | kyoungaMin | 분석 리포트 2종 교차검증 및 오류 수정: zero_target(4건), top_error(2건) |
+| 2026-03-15 | kyoungaMin | ForecastConfidenceBadge(WeeklyForecast), HighUncertaintyPanel(RiskManagement) 신규 기능 구현 |
+| 2026-03-15 | kyoungaMin | /api/forecast-weekly/confidence 신규 API 라우트 생성 (feature_store_weekly 기반 불확실성 점수) |
