@@ -11,6 +11,8 @@ const monthlyInventoryMapCache = new Map<string, { expiresAt: number; invByProdu
 const monthlyInventoryMapPending = new Map<string, Promise<Record<string, number>>>()
 let availableMonthsCache: { expiresAt: number; months: string[] } | null = null
 let availableMonthsPending: Promise<string[]> | null = null
+const customerMapCache = new Map<string, { expiresAt: number; customerMap: Record<string, string>; customerOptions: string[] }>()
+const customerMapPending = new Map<string, Promise<{ customerMap: Record<string, string>; customerOptions: string[] }>>()
 
 async function fetchAll(
   table: string,
@@ -151,6 +153,17 @@ async function getAvailableMonths() {
   if (availableMonthsPending) return availableMonthsPending
 
   availableMonthsPending = (async () => {
+    // Fast path: single RPC call (27_inventory_rpc.sql)
+    const { data: rpcData, error: rpcErr } = await supabase
+      .rpc('get_inventory_available_months')
+
+    if (!rpcErr && rpcData?.length > 0) {
+      const months = (rpcData as Array<{ snapshot_date: string }>).map(r => String(r.snapshot_date))
+      availableMonthsCache = { expiresAt: Date.now() + INVENTORY_CACHE_TTL_MS, months }
+      return months
+    }
+
+    // Fallback: serial pagination (RPC 미등록 환경 대비)
     const months: string[] = []
     let cursor: string | null = null
 
@@ -169,11 +182,7 @@ async function getAvailableMonths() {
       cursor = String(data[0].snapshot_date)
     }
 
-    availableMonthsCache = {
-      expiresAt: Date.now() + INVENTORY_CACHE_TTL_MS,
-      months,
-    }
-
+    availableMonthsCache = { expiresAt: Date.now() + INVENTORY_CACHE_TTL_MS, months }
     return months
   })()
 
@@ -217,6 +226,48 @@ async function getMonthlyInventoryMap(snapshotDate: string) {
     return await promise
   } finally {
     monthlyInventoryMapPending.delete(snapshotDate)
+  }
+}
+
+/** (selectedMonth + typeParam) 기준 캐시 — 동일 월/유형 필터 조합은 DB 재조회 없이 재사용 */
+async function getBaseCustomerData(
+  selectedMonth: string,
+  typeParam: string,
+  productIds: string[],
+  referenceDate: Date,
+): Promise<{ customerMap: Record<string, string>; customerOptions: string[] }> {
+  const cacheKey = `cust_${selectedMonth}_${typeParam}`
+
+  const cached = customerMapCache.get(cacheKey)
+  if (cached && cached.expiresAt >= Date.now()) return { customerMap: cached.customerMap, customerOptions: cached.customerOptions }
+
+  const pending = customerMapPending.get(cacheKey)
+  if (pending) return pending
+
+  const promise = (async () => {
+    const fourWeeksAgo = new Date(referenceDate)
+    fourWeeksAgo.setDate(referenceDate.getDate() - 28)
+
+    const rows = await batchIn(
+      'weekly_customer_summary',
+      'product_id,customer_id,customer_name,order_qty',
+      'product_id',
+      productIds,
+      q => q.gte('week_start', formatDate(fourWeeksAgo)).lte('week_start', formatDate(referenceDate))
+    )
+
+    const customerMap = buildTopCustomerMap(rows)
+    const customerOptions = ['전체', ...Array.from(new Set(Object.values(customerMap).filter(Boolean))).sort()]
+
+    customerMapCache.set(cacheKey, { expiresAt: Date.now() + INVENTORY_CACHE_TTL_MS, customerMap, customerOptions })
+    return { customerMap, customerOptions }
+  })()
+
+  customerMapPending.set(cacheKey, promise)
+  try {
+    return await promise
+  } finally {
+    customerMapPending.delete(cacheKey)
   }
 }
 
@@ -409,20 +460,9 @@ export async function GET(req: Request) {
       const sixMonthsAgo = new Date(referenceDate)
       sixMonthsAgo.setMonth(referenceDate.getMonth() - 6)
 
-      const fourWeeksAgo = new Date(referenceDate)
-      fourWeeksAgo.setDate(referenceDate.getDate() - 28)
-
-      const baseCustomerRows = await batchIn(
-        'weekly_customer_summary',
-        'product_id,customer_id,customer_name,order_qty',
-        'product_id',
-        baseProductIds,
-        q => q.gte('week_start', formatDate(fourWeeksAgo)).lte('week_start', formatDate(referenceDate))
+      const { customerMap: baseCustomerMap, customerOptions } = await getBaseCustomerData(
+        selectedMonth, typeParam, baseProductIds, referenceDate
       )
-      const baseCustomerMap = buildTopCustomerMap(baseCustomerRows)
-      const customerOptions = ['전체', ...Array.from(new Set(
-        Object.values(baseCustomerMap).filter(Boolean)
-      )).sort()]
 
       const normalizedSearch = search.trim().toLowerCase()
       const customerScoped = customerParam !== '전체'
