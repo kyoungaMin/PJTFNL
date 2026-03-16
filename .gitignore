@@ -20,5 +20,13 @@ venv/
 # Node
 node_modules/
 
+# Next.js (auto-generated)
+forecastai/.next/
+forecastai/next-env.d.ts
+forecastai/tsconfig.tsbuildinfo
+forecastai/tsconfig.codex-temp.tsbuildinfo
+forecastai/.next-dev.log
+forecastai/.next-dev.err.log
+
 # Jupyter
 .ipynb_checkpoints/
