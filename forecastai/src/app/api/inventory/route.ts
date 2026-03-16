@@ -129,17 +129,12 @@ function formatDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-async function resolveMonthlyRiskDate(referenceMonth: string) {
-  // referenceMonth is YYYYMM (e.g. '202602')
-  // risk_score.eval_date is YYYY-MM-DD (e.g. '2026-02-01')
-  // We need to compare them. Converting YYYYMM to YYYY-MM-DD (last day of month is safer for lte)
-  const comparableDate = formatDate(resolveReferenceDate(referenceMonth))
-
+async function resolveMonthlyRiskDate(_referenceMonth: string) {
+  // 안전재고는 현재 수요 파라미터 기준이므로 항상 최신 monthly 평가 사용
   const { data } = await supabase
     .from('risk_score')
     .select('eval_date')
     .eq('eval_type', 'monthly')
-    .lte('eval_date', comparableDate)
     .order('eval_date', { ascending: false })
     .limit(1)
 

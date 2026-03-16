@@ -8,6 +8,7 @@ BOM 전개 + 안전재고/ROP/EOQ + 공급사 추천 기반 최적 발주 추천
 """
 
 import json
+import math
 from datetime import date, timedelta
 from collections import defaultdict
 from math import sqrt
@@ -16,6 +17,8 @@ from config import (
     supabase, upsert_batch,
     PRODUCTION_PLAN_DAYS, ORDERING_COST, HOLDING_RATE, SUPPLIER_WEIGHTS,
 )
+
+SAFETY_STOCK_Z = 1.65  # 95% 서비스 수준 계수
 
 
 # ─── 데이터 로드 ─────────────────────────────────────────────
@@ -95,7 +98,7 @@ def load_pending_po() -> dict:
 
 
 def load_lead_times() -> dict:
-    """자재별 최신 리드타임: {product_id: {avg, p90}}"""
+    """자재별 최신 리드타임: {product_id: {avg, p90, std}}"""
     rows = fetch_all("product_lead_time",
                      "product_id,avg_lead_days,p90_lead_days,calc_date")
     latest = {}
@@ -103,13 +106,14 @@ def load_lead_times() -> dict:
         pid = r["product_id"]
         if pid not in latest or r["calc_date"] > latest[pid]["calc_date"]:
             latest[pid] = r
-    return {
-        pid: {
-            "avg": float(r["avg_lead_days"] or 7),
-            "p90": float(r["p90_lead_days"] or 14),
-        }
-        for pid, r in latest.items()
-    }
+    result = {}
+    for pid, r in latest.items():
+        avg = float(r["avg_lead_days"] or 7)
+        p90 = float(r["p90_lead_days"] or 14)
+        # σ_lead 역산: P90 = avg + 1.28×σ → σ = (p90 - avg) / 1.28
+        std = max((p90 - avg) / 1.28, avg * 0.1)
+        result[pid] = {"avg": avg, "p90": p90, "std": std}
+    return result
 
 
 def load_supplier_profiles() -> dict:
@@ -329,12 +333,20 @@ def run(weeks_back: int = 4):
             daily_consumption = gross_qty / PRODUCTION_PLAN_DAYS if PRODUCTION_PLAN_DAYS > 0 else 0
 
             # 리드타임
-            lt = lead_map.get(comp_id, {"avg": 7, "p90": 14})
+            lt = lead_map.get(comp_id, {"avg": 7, "p90": 14, "std": 2.1})
             lead_avg = lt["avg"]
             lead_p90 = lt["p90"]
+            std_lead = lt.get("std", lead_avg * 0.3)
 
             # 안전재고 & ROP
-            safety_stock = lead_p90 * daily_consumption
+            # σ_demand ≈ daily_consumption * 0.3 (자재 소비 변동성 보수적 추정)
+            std_consumption = daily_consumption * 0.3
+            if daily_consumption > 0 and lead_avg > 0:
+                safety_stock = SAFETY_STOCK_Z * math.sqrt(
+                    lead_avg * (std_consumption ** 2) + (daily_consumption ** 2) * (std_lead ** 2)
+                )
+            else:
+                safety_stock = 0.0
             rop = daily_consumption * lead_avg + safety_stock
 
             # 공급사 선택
