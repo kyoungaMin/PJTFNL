@@ -96,7 +96,8 @@ def _load_common_data():
             d1 = date.fromisoformat(r["po_date"])
             d2 = date.fromisoformat(r["receipt_date"])
             days = (d2 - d1).days
-            if days >= 0:
+            # 365일 초과는 데이터 오류(예: receipt_date 연도 오입력)로 간주하여 제외
+            if 0 <= days <= 365:
                 lead_days_map[r["component_product_id"]].append(days)
         except ValueError:
             pass
@@ -186,10 +187,16 @@ def _compute_demand(all_order_rows, eval_d, lookback_days=90):
     eval_str = eval_d.isoformat()
     demand_by_day = defaultdict(lambda: defaultdict(float))
     demand_days = defaultdict(set)
+    # 동일 거래가 중복 삽입된 경우를 제거 (product+customer+date+qty+amount 기준)
+    seen_orders: set = set()
     for r in all_order_rows:
         od = r.get("order_date")
         if od and cutoff <= od <= eval_str:
             pid = r["product_id"]
+            dedup_key = (pid, r.get("customer_id"), od, r.get("order_qty"), r.get("order_amount"))
+            if dedup_key in seen_orders:
+                continue
+            seen_orders.add(dedup_key)
             demand_by_day[pid][od] += float(r["order_qty"] or 0)
             demand_days[pid].add(od)
     daily_avg = {}
