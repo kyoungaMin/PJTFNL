@@ -44,67 +44,99 @@ function extractSource(url: string): string {
 
 function detectCategory(title: string, content: string): string {
   const text = (title + ' ' + content).toLowerCase()
-  if (/환율|금리|달러|연준|\bfed\b|interest rate|inflation|인플레|gdp|경기침체|recession/.test(text)) return '거시경제'
-  if (/공급망|supply chain|물류|해운|freight|logistics|지연|배송|납기|lead.?time/.test(text)) return '공급망'
-  if (/원자재|구리|copper|\bwti\b|원유|wafer|화학|에폭시|수지|가소제/.test(text)) return '원자재'
-  if (/\bai\b|인공지능|\bllm\b|chatgpt|엔비디아|\bnvidia\b|\bgpu\b|데이터센터|data.?center/.test(text)) return 'AI'
+  // 공급망 먼저 — 원자재/거시경제 포함 키워드가 공급망과 겹치는 경우 대비
+  if (/공급망|supply chain|물류|해운|freight|logistics|지연|배송|납기|lead.?time|수출 규제|export.?control/.test(text)) return '공급망'
+  if (/\bai\b|인공지능|\bllm\b|chatgpt|엔비디아|\bnvidia\b|\bgpu\b|데이터센터|data.?center|hbm/.test(text)) return 'AI'
+  // '거시경제', '원자재'는 UI에 탭이 없으므로 '반도체'로 통합
   return '반도체'
 }
 
-// ─── Naver 뉴스 검색 (국내) ───────────────────────────────────────────────────
-const NAVER_QUERIES = [
-  '반도체 부품 소재 시장 동향',
-  '반도체 공급망 이슈',
-  '반도체 원자재 가격',
+// ─── Google News RSS 검색 (국내) ──────────────────────────────────────────────
+// 이미지 기준 키워드: 대기업 수주/실적, AI 반도체, 공급망·원자재
+const GOOGLE_NEWS_QUERIES = [
+  'SK하이닉스 수주 OR 실적',
+  '삼성전자 반도체 수주 OR 투자',
+  '반도체 부품 납품',
+  'HBM 수요 AI 반도체 시장',
+  '반도체 공급망 소재 수출 규제',
 ]
 
-// Naver 뉴스 응답에 포함되는 HTML 태그·엔티티 제거
+// HTML 태그·엔티티 제거
+// 순서 중요: 엔티티 디코딩 먼저 → 태그 제거 (RSS에서 &lt;a&gt; 형태로 인코딩된 태그 처리)
 function stripHtml(str: string): string {
   return str
-    .replace(/<[^>]*>/g, '')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/gi, ' ')    // 줄바꿈 없는 공백 → 일반 공백
+    .replace(/&#160;/g, ' ')     // &nbsp; 숫자 버전
     .replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/gi, '')   // 그 외 named entity 제거
+    .replace(/<[^>]*>/g, '')     // HTML 태그 제거 (엔티티 디코딩 후)
+    .replace(/\s{2,}/g, ' ')     // 연속 공백 → 단일 공백
     .trim()
 }
 
-async function searchNaver(query: string): Promise<NewsItem[]> {
-  const clientId     = process.env.NAVER_CLIENT_ID
-  const clientSecret = process.env.NAVER_CLIENT_SECRET
-  if (!clientId || !clientSecret) throw new Error('NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 미설정')
+// RSS XML에서 특정 태그 첫 번째 값 추출 (CDATA 처리 포함)
+function extractXmlTag(xml: string, tag: string): string {
+  const re = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))<\\/${tag}>`, 'i')
+  const m = xml.match(re)
+  return (m?.[1] ?? m?.[2] ?? '').trim()
+}
 
-  const url = `https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(query)}&display=5&sort=date`
+async function searchGoogleNewsRSS(query: string, days: number): Promise<NewsItem[]> {
+  // when:7d → 최근 7일, when:1m → 최근 1달 (Google News RSS 기간 필터)
+  const when  = days <= 7 ? 'when:7d' : 'when:1m'
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' ' + when)}&hl=ko&gl=KR&ceid=KR:ko`
   const res = await fetch(url, {
-    headers: {
-      'X-Naver-Client-Id':     clientId,
-      'X-Naver-Client-Secret': clientSecret,
-    },
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
+    // 캐시 없이 최신 기사 수신
+    cache: 'no-store',
   })
+  if (!res.ok) throw new Error(`Google News RSS 오류: ${res.status}`)
 
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Naver API 오류: ${res.status} — ${err}`)
-  }
+  const xml = await res.text()
+  const items: NewsItem[] = []
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g
+  let match: RegExpExecArray | null
 
-  const data = await res.json()
-  return (data.items ?? []).map((r: Record<string, unknown>) => {
-    const title   = stripHtml(String(r.title ?? '제목 없음'))
-    const desc    = stripHtml(String(r.description ?? ''))
-    const link    = String(r.originallink ?? r.link ?? '')
-    // pubDate 예: "Fri, 14 Mar 2026 10:00:00 +0900"
-    const pubDate = r.pubDate ? new Date(String(r.pubDate)).toISOString().slice(0, 10) : ''
-    return {
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const itemXml = match[1]
+
+    // 제목 — Google News는 "기사제목 - 언론사" 형식인 경우가 많음
+    const rawTitle = stripHtml(extractXmlTag(itemXml, 'title'))
+    if (!rawTitle) continue
+
+    // 제목 끝 " - 언론사" 분리
+    const titleParts = rawTitle.split(/\s+[-–]\s+/)
+    const title  = titleParts.length > 1 ? titleParts.slice(0, -1).join(' - ') : rawTitle
+    const srcFallback = titleParts.length > 1 ? (titleParts[titleParts.length - 1] ?? '') : ''
+
+    const link    = extractXmlTag(itemXml, 'link') || ''
+    const pubRaw  = extractXmlTag(itemXml, 'pubDate')
+    const pubDate = pubRaw ? new Date(pubRaw).toISOString().slice(0, 10) : ''
+    const desc    = stripHtml(extractXmlTag(itemXml, 'description'))
+
+    // <source> 태그에 언론사 이름이 있으면 우선 사용
+    const sourceTagMatch = itemXml.match(/<source[^>]*>([\s\S]*?)<\/source>/)
+    const source = stripHtml(sourceTagMatch?.[1] ?? '') || srcFallback || extractSource(link)
+
+    items.push({
       title,
       url:           link,
-      source:        extractSource(link),
+      source,
       publishedDate: pubDate,
       summary:       desc.slice(0, 200),
       category:      detectCategory(title, desc),
       locale:        'domestic' as const,
-    }
-  })
+    })
+
+    if (items.length >= 5) break
+  }
+
+  return items
 }
 
 // ─── Tavily 뉴스 검색 (국외) ──────────────────────────────────────────────────
@@ -347,12 +379,12 @@ export async function GET(req: Request) {
       }
     }
 
-    // 국내: Naver API (Naver 키 없으면 skip)
-    for (const query of NAVER_QUERIES) {
+    // 국내: Google News RSS (대한민국 기사 크롤링)
+    for (const query of GOOGLE_NEWS_QUERIES) {
       try {
-        addNews(await searchNaver(query))
+        addNews(await searchGoogleNewsRSS(query, days))
       } catch (e) {
-        console.warn(`[Industry-News] Naver 쿼리 실패: ${query}`, e)
+        console.warn(`[Industry-News] Google News RSS 쿼리 실패: ${query}`, e)
       }
     }
 

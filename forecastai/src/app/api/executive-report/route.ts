@@ -226,7 +226,9 @@ export async function GET(request: Request) {
       const { data: riskRows } = await supabase
         .rpc('get_risk_grade_summary', { p_date: weekEnd })
       if (riskRows) {
-        for (const r of riskRows) riskSummary[String(r.grade)] = Number(r.cnt ?? 0)
+        for (const r of riskRows) {
+          if (r.grade != null) riskSummary[String(r.grade)] = Number(r.cnt ?? 0)
+        }
       }
     } catch { /* 리스크 데이터 실패 시 빈 객체 유지 */ }
 

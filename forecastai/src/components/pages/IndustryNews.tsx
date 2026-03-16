@@ -26,14 +26,12 @@ interface ApiData {
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
-const CATEGORY_LIST = ['전체', '반도체', 'AI', '공급망', '원자재', '거시경제']
+const CATEGORY_LIST = ['전체', '반도체', 'AI', '공급망']
 
 const CATEGORY_COLORS: Record<string, { c: string; bg: string; b: string }> = {
   반도체:   { c: T.blue,   bg: T.blueSoft,   b: T.blueMid   },
   AI:       { c: T.purple, bg: T.purpleSoft, b: T.purpleMid },
   공급망:   { c: T.orange, bg: T.orangeSoft, b: T.orangeMid },
-  원자재:   { c: T.amber,  bg: T.amberSoft,  b: T.amberMid  },
-  거시경제: { c: T.green,  bg: T.greenSoft,  b: T.greenMid  },
 }
 
 const INSIGHT_STYLE: Record<string, { bg: string; border: string; dot: string }> = {
@@ -142,7 +140,7 @@ export default function IndustryNews() {
             )}
           </div>
           <div style={{ fontSize: 12, color: T.text3, marginTop: 4 }}>
-            Naver·Tavily 뉴스 검색 + GPT 요약 · 6시간 캐시
+            Google News (국내)·Tavily (국외) + GPT 요약 · 6시간 캐시
           </div>
         </div>
 
