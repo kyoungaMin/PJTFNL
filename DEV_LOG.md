@@ -2,7 +2,7 @@
 
 > **프로젝트명**: 반도체 부품·소재 수요 변동성 분석 및 재고 리스크 최적화 AI SaaS
 > **프로젝트 시작일**: 2026-02-27
-> **최종 수정일**: 2026-03-15
+> **최종 수정일**: 2026-03-16
 
 ---
 
@@ -122,6 +122,11 @@ DEV_LOG/
 | 2026-03-15 | kyoungaMin | 신뢰도 배지 계산 기준 | meta.coverageRate(과거 정확도) / 밴드폭 비율(미래 불확실성) | 밴드폭 비율 | 과거 정확도와 미래 불확실성은 다른 개념 — 현재 예측의 불확실성을 직접 표시 |
 | 2026-03-15 | kyoungaMin | 주의 제품 데이터 출처 | 정적 하드코딩 / feature_store_weekly / model_evaluation WMAPE | feature_store_weekly | 실시간 반영, 최신 데이터 기반, 추가 파이프라인 불필요 |
 | 2026-03-15 | kyoungaMin | 주의 제품 UI 위치 | 별도 페이지 / WeeklyForecast 배지만 / RiskManagement 패널만 / 배지+패널 병행 | 배지+패널 병행 | 예측·리스크 양쪽 맥락에서 정보 제공, 클릭 없이 바로 확인 |
+| 2026-03-16 | kyoungaMin | 데이터 생성 위치 | 각 화면에서 개별 생성 / 별도 관리 화면 | 별도 관리 화면 1개 | 의존성 순서 보장, 권한 관리, 일괄 갱신 편의성 |
+| 2026-03-16 | kyoungaMin | 기간 선택 방식 | 글로벌 기간 1개 / 파이프라인별 맞춤 | 파이프라인별 맞춤 | 주/월/일 주기가 다른데 동일 선택기는 혼란 유발 |
+| 2026-03-16 | kyoungaMin | 기간의 의미 | 입력 데이터 범위 / 반복 실행 | 입력 데이터 범위 | 비개발자 사용자에게 "이 기간의 데이터로 결과 생성"이 직관적 |
+| 2026-03-16 | kyoungaMin | 주차 선택 UI | 최근 N주 리스트 / 년월→주차 2단계 | 년월→주차 2단계 | 월 선택 달력과 동일한 패턴으로 사용자 학습 부담 감소 |
+| 2026-03-16 | kyoungaMin | 외부지표 기간 | 즉시 실행(기간 없음) / 일자 선택 | 일자 선택 | 과거 데이터 재수집 필요성 있음 |
 
 ---
 
@@ -202,3 +207,5 @@ DEV_LOG/
 | 2026-03-15 | kyoungaMin | 분석 리포트 2종 교차검증 및 오류 수정: zero_target(4건), top_error(2건) |
 | 2026-03-15 | kyoungaMin | ForecastConfidenceBadge(WeeklyForecast), HighUncertaintyPanel(RiskManagement) 신규 기능 구현 |
 | 2026-03-15 | kyoungaMin | /api/forecast-weekly/confidence 신규 API 라우트 생성 (feature_store_weekly 기반 불확실성 점수) |
+| 2026-03-16 | kyoungaMin | 데이터 생성 관리 페이지 신규: DataPipelineManager.tsx + /api/data-pipeline + pipeline_run 테이블 |
+| 2026-03-16 | kyoungaMin | 파이프라인별 맞춤 기간 선택기: 주차(년월→주차 2단계 달력), 월(달력 모달), 일(date picker), 즉시 |
