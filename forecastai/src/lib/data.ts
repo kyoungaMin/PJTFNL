@@ -610,6 +610,7 @@ export const NAV_STRUCTURE = [
   {id:'ext-supply',      label:'물류',         parent:'외부 지표', dot:'#93C5FD'},
   {id:'ext-raw',         label:'원자재',       parent:'외부 지표', dot:'#93C5FD'},
   {id:'executive-report',label:'임원 보고서',  dot:'#A78BFA'},
+  {id:'data-pipeline',   label:'데이터 관리',  dot:'#F59E0B'},
   {id:'admin',           label:'관리자',       dot:'#93C5FD'},
 ]
 
