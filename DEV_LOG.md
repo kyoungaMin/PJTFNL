@@ -2,7 +2,7 @@
 
 > **프로젝트명**: 반도체 부품·소재 수요 변동성 분석 및 재고 리스크 최적화 AI SaaS
 > **프로젝트 시작일**: 2026-02-27
-> **최종 수정일**: 2026-03-01
+> **최종 수정일**: 2026-03-15
 
 ---
 
@@ -68,7 +68,7 @@ DEV_LOG/
 | Phase 2 | 수요 변동성 분석 모델 개발 | | `완료` |
 | Phase 3 | 재고 리스크 점수화 엔진 개발 | | `완료` |
 | Phase 4 | 생산·발주 최적화 알고리즘 개발 | | `완료` |
-| Phase 5 | 웹 대시보드 및 API 서버 구축 | | `대기` |
+| Phase 5 | 웹 대시보드 및 API 서버 구축 | | `진행중` |
 | Phase 6 | 통합 테스트·배포 | | `대기` |
 
 ---
@@ -80,7 +80,7 @@ DEV_LOG/
 | **백엔드** | FastAPI (Python) | Python ML 연동, 자동 API 문서(Swagger), 비동기 지원 |
 | **프론트엔드** | Next.js (React) | SSR/SSG 대시보드, Supabase 공식 지원, Vercel 배포 |
 | **데이터 파이프라인** | Python (supabase-py, pandas) | DB 직접 연동, 6단계 순차 파이프라인 |
-| **ML/AI 모델** | LightGBM Quantile / 이동평균 fallback | P10/P50/P90 분위 예측, 외부 피처 활용 |
+| **ML/AI 모델** | LightGBM Quantile + Ridge + SVR Linear (구간별 선택) | 수요 구간별 최적 모델 자동 선택, P10/P50/P90 분위 예측 |
 | **데이터베이스** | PostgreSQL (Supabase) | SaaS 프로덕션, 팀 공유, REST API 제공 |
 | **배포/인프라** | | |
 
@@ -112,14 +112,42 @@ DEV_LOG/
 | 2026-03-01 | kyoungaMin | S7 생산량 기준 | P50만 / P90만 / 리스크별 동적 | 리스크별 동적 | 결품 위험 시 P90, 과잉 위험 시 10% 감량 |
 | 2026-03-01 | kyoungaMin | S8 발주량 산출 | lot-for-lot만 / EOQ만 / EOQ+fallback | EOQ+fallback | EOQ 불가 시 lot-for-lot 자동 전환 |
 | 2026-03-01 | kyoungaMin | 공급사 추천 가중치 | 단가 위주 / 리드타임 위주 / 종합 점수 | 종합(리드0.4+단가0.35+신뢰0.25) | 편향 방지, 대체 공급사 함께 제시 |
+| 2026-03-11 | kyoungaMin | 멀티모델 활용 전략 | 앙상블 / 구간별 선택 / 용도별 분리 | 구간별 모델 선택 | 저수요 SVR(±5=62.6%), 중·고수요 LightGBM/Ridge(R² 우위) |
+| 2026-03-11 | kyoungaMin | 구간 경계값 | 5/50, 10/100, 20/200 | 10/100 (일평균 수주) | 모델 비교 보고서 Small/Medium/Large 구간과 정합 |
+| 2026-03-11 | kyoungaMin | risk_score eval_type 분리 | A안(날짜 규칙) / B안(eval_type 컬럼) | B안 (eval_type 컬럼) | 주/월 날짜 충돌 방지, UNIQUE 제약 명확 |
+| 2026-03-13 | kyoungaMin | 시나리오 기본 모델 | lgbm_q_v3 단일 / segment_best_v1 | segment_best_v1 | 구간별 최적 모델이 이미 선별되어 있으므로 기본으로 사용 |
+| 2026-03-13 | kyoungaMin | 개별 모델 비교 범위 | 주간/월간 2종만 / 5종 전체 | 5종 전체 | 사용자가 segment_best 외 개별 모델도 직접 비교 가능하도록 |
+| 2026-03-13 | kyoungaMin | 월간 모델 ID 기준 | monthly_v2 (데이터 없음) / monthly_v1 (24,482건) | monthly_v1 | 실제 forecast_result 데이터가 v1에만 존재 |
+| 2026-03-13 | kyoungaMin | 모델평가 기본 화면 | 전체 집계 / 최신 기간 자동 선택 | 최신 기간 자동 선택 | 기간별 추이를 먼저 보는 것이 실무적으로 유용 |
+| 2026-03-15 | kyoungaMin | 신뢰도 배지 계산 기준 | meta.coverageRate(과거 정확도) / 밴드폭 비율(미래 불확실성) | 밴드폭 비율 | 과거 정확도와 미래 불확실성은 다른 개념 — 현재 예측의 불확실성을 직접 표시 |
+| 2026-03-15 | kyoungaMin | 주의 제품 데이터 출처 | 정적 하드코딩 / feature_store_weekly / model_evaluation WMAPE | feature_store_weekly | 실시간 반영, 최신 데이터 기반, 추가 파이프라인 불필요 |
+| 2026-03-15 | kyoungaMin | 주의 제품 UI 위치 | 별도 페이지 / WeeklyForecast 배지만 / RiskManagement 패널만 / 배지+패널 병행 | 배지+패널 병행 | 예측·리스크 양쪽 맥락에서 정보 제공, 클릭 없이 바로 확인 |
 
 ---
 
 ## 모델 실험 종합 추적표
 
-| 실험 ID | 날짜 | 작성자 | 대상 | 모델/방법 | 핵심 파라미터 | 주요 지표 (MAPE/RMSE 등) | 비고 |
-|---------|------|--------|------|----------|--------------|--------------------------|------|
-| — | — | — | — | — | — | — | — |
+| 실험 ID | 날짜 | 작성자 | 대상 | 모델/방법 | 핵심 파라미터 | 주요 지표 | 비고 |
+|---------|------|--------|------|----------|--------------|-----------|------|
+| v1_baseline | 2026-03-07 | kyoungaMin | 주간 (target_1w) | LightGBM 5-Fold CV 앙상블 | max_depth=6, lr=0.05, reg_alpha=0.1, reg_lambda=1.0 | R²=0.2642, MAE=50.6, Gap=0.20 | 기본 설정 |
+| v2_log_transform | 2026-03-07 | kyoungaMin | 주간 | LightGBM + log1p 변환 | 동일 + log1p/expm1 | R²=-0.0005, MAE=39.2, Gap=0.03 | R² 악화, 부적합 |
+| v3_strong_reg | 2026-03-07 | kyoungaMin | 주간 | LightGBM 정규화 강화 | max_depth=4, num_leaves=15, reg_alpha=1.0, reg_lambda=5.0, min_child=50, lr=0.03 | R²=0.2667, MAE=49.7, Gap=0.09 | **★ 주간 BEST** |
+| v4_log_reg | 2026-03-07 | kyoungaMin | 주간 | LightGBM Log+정규화 | v2+v3 결합 | R²=-0.0016, MAE=39.2, Gap=0.02 | R² 악화 |
+| v5_full | 2026-03-07 | kyoungaMin | 주간 | LightGBM 종합 | v4+파생피처+P99캡핑 | R²=0.0001, MAE=39.2, Gap=0.04 | R² 악화 |
+| monthly_v1_baseline | 2026-03-07 | kyoungaMin | 월간 (target_1m) | LightGBM 5-Fold CV 앙상블 | max_depth=6, lr=0.05, min_child=15 | R²=0.6403, MAE=59.6, Gap=0.11 | **★ 월간 BEST** |
+| monthly_v2_log | 2026-03-07 | kyoungaMin | 월간 | LightGBM + log1p 변환 | 동일 + log1p/expm1 | R²=0.2940, MAE=62.1, Gap=0.01 | R² 대폭 하락 |
+| monthly_v3_reg | 2026-03-07 | kyoungaMin | 월간 | LightGBM 정규화 강화 | max_depth=4, num_leaves=15, reg_alpha=1.0, reg_lambda=5.0 | R²=0.5984, MAE=60.1, Gap=0.02 | 과적합↓ but R²↓ |
+| monthly_v4_log_reg | 2026-03-07 | kyoungaMin | 월간 | LightGBM Log+정규화 | v2+v3 결합 | R²=0.3179, MAE=60.5, Gap=-0.03 | R² 하락 |
+| monthly_v5_full | 2026-03-07 | kyoungaMin | 월간 | LightGBM 종합 | v4+파생피처+P99캡핑 | R²=0.2450, MAE=62.5, Gap=-0.02 | R² 최저 |
+| mc_lgbm_base | 2026-03-07 | kyoungaMin | 주간+월간 | LightGBM Baseline | max_depth=6, lr=0.05, reg_alpha=0.1 | 주간 R²=0.26/MAE=52.6/±5=6.7%, 월간 R²=0.67/MAE=60.0/±5=5.8% | 멀티모델 비교 |
+| mc_lgbm_reg | 2026-03-07 | kyoungaMin | 주간+월간 | LightGBM 정규화 강화 | max_depth=4, num_leaves=15, reg_lambda=5.0 | 주간 R²=0.27/MAE=50.8/±5=6.5%, 월간 R²=0.61/MAE=60.8/±5=5.7% | 주간 R² 최고 |
+| mc_lgbm_deep | 2026-03-07 | kyoungaMin | 주간+월간 | LightGBM Deep | max_depth=8, num_leaves=127, min_child=5 | 주간 R²=0.26/MAE=53.4/±5=5.4%, 월간 R²=0.67/MAE=64.0/±5=3.9% | 과적합 경향 |
+| mc_lgbm_cons | 2026-03-07 | kyoungaMin | 주간+월간 | LightGBM Conservative | max_depth=3, num_leaves=7, lr=0.01 | 주간 R²=0.26/MAE=51.1/±5=6.3%, 월간 R²=0.52/MAE=65.1/±5=4.6% | 언더피팅 |
+| mc_rf | 2026-03-07 | kyoungaMin | 주간+월간 | Random Forest | n_estimators=300, max_depth=8, min_samples_leaf=10 | 주간 R²=0.27/MAE=50.2/±5=15.4%, 월간 R²=0.68/MAE=55.3/±5=35.7% | ±5 양호 |
+| mc_svr | 2026-03-07 | kyoungaMin | 주간+월간 | Linear SVR (scaled) | C=1.0, epsilon=0.1, StandardScaler | 주간 R²=0.02/MAE=39.3/±5=62.6%, 월간 R²=0.68/MAE=49.2/±5=47.8% | **±5 최고** |
+| mc_ridge | 2026-03-07 | kyoungaMin | 주간+월간 | Ridge Regression (scaled) | alpha=1.0, StandardScaler | 주간 R²=0.26/MAE=42.3/±5=60.2%, 월간 R²=0.69/MAE=54.3/±5=27.6% | **월간 R² 최고** |
+| segment_v1 | 2026-03-11 | kyoungaMin | 주간+월간 | 구간별 모델 선택기 | low<10→SVR, mid/high→LightGBM(주간)/Ridge(월간) | 11,431건 선택 (주간4,280+월간7,151) | 저수요303/중수요1,100/고수요718제품 |
+| global_v4_2stage | 2026-03-14 | kyoungaMin | 주간 (6호라이즌) | 2-Stage 글로벌 LightGBM (분류+회귀) | max_depth=8, lr=0.03, num_leaves=63, log1p변환, 5메타피처 | WMAPE 39.7~71.4%, Coverage 80%+ (4W~) | **★ v3 대비 22% 개선, 80,065건** |
 
 ---
 
@@ -160,3 +188,17 @@ DEV_LOG/
 | 2026-02-28 | kyoungaMin | ECOS 한국은행 API 연동 (10종 실데이터 1,810건), ISS-001 해결 |
 | 2026-03-01 | kyoungaMin | Phase 3 리스크 실데이터 검증: 등급경계 갭 버그, 과잉 리스크 폴백, 납기 스케일링, 심각도 로직 수정 |
 | 2026-03-01 | kyoungaMin | Phase 4 생산·발주 최적화: S7(생산계획)+S8(발주추천) 신규 모듈, DDL 2테이블, S6 suggested_qty 보강 |
+| 2026-03-11 | kyoungaMin | risk_score eval_type 분리 + 백필(133,077건), 브랜치 3개 머지, API force-dynamic 수정 |
+| 2026-03-11 | kyoungaMin | 구간별 모델 선택기(S4S) 구현: 저/중/고수요별 최적 모델 자동 선택 → segment_best_v1(11,431건) |
+| 2026-03-07 | kyoungaMin | LightGBM 주간 5-Fold CV 평가 + 5개 실험 비교 프레임워크 구축, 주간 최적 V3(정규화 강화, R²=0.27) |
+| 2026-03-07 | kyoungaMin | LightGBM 월간 5-Fold CV 평가 + 5개 실험 비교, 월간 최적 V1(베이스라인, R²=0.64) |
+| 2026-03-07 | kyoungaMin | 멀티 모델 비교 (LightGBM 4종+RF+SVR+Ridge), ±5 허용 오차 분석, 경영진 요약 대시보드 생성 |
+| 2026-03-07 | kyoungaMin | 프론트엔드 모델 평가 대시보드 UI (4탭, Recharts), API route, 기존 타입 에러 수정 |
+| 2026-03-07 | kyoungaMin | 브랜치 통합: main→dev/kyoungaMin merge + 모델 평가 작업물 커밋·push (41d945f, 37파일) |
+| 2026-03-07 | kyoungaMin | 구매권고 UI 개선: 가이드 모달, 로딩 스피너, 긴급도 바 차트, 발주방식 설명, Supabase 페이지네이션 |
+| 2026-03-07 | kyoungaMin | 생산권고 UI 개선: 가이드 모달 배경 수정, 알고리즘 산식 추가, 로딩 UX |
+| 2026-03-07 | kyoungaMin | S8 파이프라인 주차별 재고/PO 보정 계수 강화 (3%→15%/10%), product_master 배치 조인 |
+| 2026-03-07 | kyoungaMin | 대시보드 구성 검토 보고서 작성 (DB 연동 가능 여부 + 사용자 유의미성 분석) |
+| 2026-03-15 | kyoungaMin | 분석 리포트 2종 교차검증 및 오류 수정: zero_target(4건), top_error(2건) |
+| 2026-03-15 | kyoungaMin | ForecastConfidenceBadge(WeeklyForecast), HighUncertaintyPanel(RiskManagement) 신규 기능 구현 |
+| 2026-03-15 | kyoungaMin | /api/forecast-weekly/confidence 신규 API 라우트 생성 (feature_store_weekly 기반 불확실성 점수) |

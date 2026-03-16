@@ -34,10 +34,15 @@ except ImportError:
 from dotenv import load_dotenv
 
 # ── 설정 ──────────────────────────────────────────────
-load_dotenv()
+from pathlib import Path
+_base = Path(__file__).resolve().parent.parent
+for _env_path in [_base / ".env", _base / "forecastai" / ".env.local"]:
+    if _env_path.exists():
+        load_dotenv(dotenv_path=_env_path)
+        break
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 FRED_API_KEY = os.getenv("FRED_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
@@ -51,7 +56,7 @@ MAX_RETRIES = 3
 
 # 데이터 기간
 START_DATE = date(2021, 1, 1)
-END_DATE = date(2026, 2, 28)
+END_DATE = date(2026, 3, 31)
 
 
 # ── 환율 앵커 포인트 (실제 시세 기반) ─────────────────
@@ -80,7 +85,7 @@ USD_KRW_ANCHORS = {
     "2025-04": 1420, "2025-05": 1390, "2025-06": 1380,
     "2025-07": 1370, "2025-08": 1365, "2025-09": 1350,
     "2025-10": 1365, "2025-11": 1380, "2025-12": 1390,
-    "2026-01": 1400, "2026-02": 1405,
+    "2026-01": 1400, "2026-02": 1405, "2026-03": 1437,
 }
 
 # JPY/KRW: 100 JPY = ? KRW (DB에는 1 JPY = ? KRW로 저장)
@@ -105,7 +110,7 @@ JPY100_KRW_ANCHORS = {
     "2025-04": 970, "2025-05": 955, "2025-06": 950,
     "2025-07": 945, "2025-08": 940, "2025-09": 945,
     "2025-10": 950, "2025-11": 955, "2025-12": 960,
-    "2026-01": 965, "2026-02": 970,
+    "2026-01": 965, "2026-02": 970, "2026-03": 969,
 }
 
 # EUR/KRW: 1 EUR = ? KRW
@@ -130,7 +135,7 @@ EUR_KRW_ANCHORS = {
     "2025-04": 1540, "2025-05": 1520, "2025-06": 1510,
     "2025-07": 1500, "2025-08": 1495, "2025-09": 1490,
     "2025-10": 1500, "2025-11": 1510, "2025-12": 1515,
-    "2026-01": 1520, "2026-02": 1525,
+    "2026-01": 1520, "2026-02": 1525, "2026-03": 1524,
 }
 
 # CNY/KRW: 1 CNY = ? KRW
@@ -155,7 +160,7 @@ CNY_KRW_ANCHORS = {
     "2025-04": 198, "2025-05": 195, "2025-06": 193,
     "2025-07": 192, "2025-08": 191, "2025-09": 190,
     "2025-10": 192, "2025-11": 193, "2025-12": 194,
-    "2026-01": 195, "2026-02": 196,
+    "2026-01": 195, "2026-02": 196, "2026-03": 196,
 }
 
 

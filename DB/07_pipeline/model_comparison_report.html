@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>멀티 모델 비교 — 최종 성능 리포트</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+:root {
+  --primary: #1e40af; --blue: #3b82f6; --green: #059669; --red: #dc2626;
+  --orange: #d97706; --purple: #7c3aed; --cyan: #0891b2; --gray: #64748b;
+  --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0; --text: #1e293b; --muted: #64748b;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+        background: var(--bg); color: var(--text); line-height: 1.6; }
+
+.header {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e40af 100%);
+  color: white; padding: 36px 48px 28px;
+}
+.header h1 { font-size: 26px; font-weight: 700; }
+.header .sub { font-size: 14px; opacity: 0.8; margin-top: 4px; }
+.header-stats {
+  display: flex; gap: 32px; margin-top: 20px;
+  padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.2);
+}
+.header-stats .hs { text-align: center; }
+.header-stats .hs .v { font-size: 22px; font-weight: 700; }
+.header-stats .hs .l { font-size: 11px; opacity: 0.7; }
+
+.container { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
+
+.tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 24px; }
+.tab {
+  padding: 10px 24px; cursor: pointer; font-size: 14px; font-weight: 500;
+  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -2px;
+  transition: all 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.card {
+  background: var(--card); border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 20px; overflow: hidden;
+}
+.card-header {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  font-size: 16px; font-weight: 600;
+}
+.card-body { padding: 20px 24px; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
+.kpi { background: var(--card); border-radius: 10px; padding: 18px; text-align: center;
+        border: 1px solid var(--border); }
+.kpi .kl { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.kpi .kv { font-size: 26px; font-weight: 700; }
+.kpi .ks { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.kpi.good { border-color: var(--green); background: #f0fdf4; }
+.kpi.good .kv { color: var(--green); }
+.kpi.warn { border-color: var(--orange); background: #fffbeb; }
+.kpi.warn .kv { color: var(--orange); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f1f5f9; padding: 10px 14px; text-align: left; font-weight: 600;
+      border-bottom: 2px solid var(--border); font-size: 12px; color: var(--muted); }
+td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; }
+tr:hover { background: #f8fafc; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+          font-size: 11px; font-weight: 600; }
+.badge-green { background: #dcfce7; color: var(--green); }
+.badge-orange { background: #fef3c7; color: var(--orange); }
+.badge-red { background: #fee2e2; color: var(--red); }
+.badge-blue { background: #dbeafe; color: var(--blue); }
+.best-star { color: #f59e0b; font-weight: 700; }
+
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.chart-box { min-height: 320px; }
+
+.note {
+  background: #f1f5f9; border-radius: 8px; padding: 14px 18px;
+  font-size: 13px; color: var(--muted); margin-top: 16px;
+}
+.note strong { color: var(--text); }
+
+.footer { text-align: center; padding: 24px; color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>멀티 모델 비교 — 최종 성능 리포트</h1>
+  <div class="sub">LightGBM 4종 + Random Forest + Linear SVR + Ridge Regression | ±5 허용 오차 분석</div>
+  <div class="header-stats">
+    <div class="hs"><div class="v">7</div><div class="l">비교 모델 수</div></div>
+    <div class="hs"><div class="v">1,560</div><div class="l">분석 제품</div></div>
+    <div class="hs"><div class="v">127,427</div><div class="l">총 데이터 행</div></div>
+    <div class="hs"><div class="v">±5</div><div class="l">허용 오차 (개)</div></div>
+    <div class="hs"><div class="v">27.6%</div><div class="l">월간 최고 성공률</div></div>
+  </div>
+</div>
+
+<div class="container">
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">종합 비교</div>
+  <div class="tab" onclick="switchTab(1)">±5 허용 오차 분석</div>
+  <div class="tab" onclick="switchTab(2)">주간 상세</div>
+  <div class="tab" onclick="switchTab(3)">월간 상세</div>
+  <div class="tab" onclick="switchTab(4)">모델별 파라미터</div>
+</div>
+
+<!-- ═══ TAB 0: 종합 비교 ═══ -->
+<div class="tab-content active" id="tab0">
+
+<div class="kpi-row">
+  <div class="kpi good">
+    <div class="kl">월간 최고 R²</div>
+    <div class="kv">69.1%</div>
+    <div class="ks">Ridge Regression</div>
+  </div>
+  <div class="kpi warn">
+    <div class="kl">주간 최고 R²</div>
+    <div class="kv">27.5%</div>
+    <div class="ks">LightGBM 정규화 강화</div>
+  </div>
+  <div class="kpi">
+    <div class="kl">월간 최저 MAE</div>
+    <div class="kv">49.2</div>
+    <div class="ks">개 단위</div>
+  </div>
+  <div class="kpi">
+    <div class="kl">주간 최저 MAE</div>
+    <div class="kv">39.3</div>
+    <div class="ks">개 단위</div>
+  </div>
+  <div class="kpi good">
+    <div class="kl">월간 ±5 최고</div>
+    <div class="kv">47.8%</div>
+    <div class="ks">성공률</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">주간 모델 비교</div>
+  <div class="card-body">
+    <table>
+      <thead><tr>
+        <th>모델</th><th>R²</th><th>MAE</th><th>RMSE</th>
+        <th>±5 성공률</th><th>과적합 Gap</th><th>소요 시간</th><th>판정</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>LightGBM 정규화 강화</strong> <span class="best-star">★</span></td>
+          <td><strong>0.2749</strong></td>
+          <td>50.8</td><td>165.4</td>
+          <td>6.5%</td>
+          <td>0.2635</td>
+          <td>3.4s</td>
+          <td><span class="badge badge-green">최적</span></td>
+        </tr>
+        <tr>
+          <td><strong>Random Forest</strong></td>
+          <td><strong>0.2700</strong></td>
+          <td>50.2</td><td>166.0</td>
+          <td>15.4%</td>
+          <td>0.5309</td>
+          <td>46.1s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 베이스라인</strong></td>
+          <td><strong>0.2635</strong></td>
+          <td>52.6</td><td>166.7</td>
+          <td>6.7%</td>
+          <td>0.5245</td>
+          <td>7.3s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>Ridge Regression</strong></td>
+          <td><strong>0.2623</strong></td>
+          <td>42.3</td><td>166.9</td>
+          <td>60.2%</td>
+          <td>0.2387</td>
+          <td>1.8s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 깊은 트리</strong></td>
+          <td><strong>0.2622</strong></td>
+          <td>53.4</td><td>166.9</td>
+          <td>5.4%</td>
+          <td>0.5384</td>
+          <td>3.9s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 보수적</strong></td>
+          <td><strong>0.2551</strong></td>
+          <td>51.1</td><td>167.7</td>
+          <td>6.3%</td>
+          <td>0.2350</td>
+          <td>5.3s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>Linear SVR</strong></td>
+          <td><strong>0.0249</strong></td>
+          <td>39.3</td><td>191.8</td>
+          <td>62.6%</td>
+          <td>0.0127</td>
+          <td>35.1s</td>
+          <td><span class="badge badge-red">개선필요</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">월간 모델 비교</div>
+  <div class="card-body">
+    <table>
+      <thead><tr>
+        <th>모델</th><th>R²</th><th>MAE</th><th>RMSE</th>
+        <th>±5 성공률</th><th>과적합 Gap</th><th>소요 시간</th><th>판정</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Ridge Regression</strong> <span class="best-star">★</span></td>
+          <td><strong>0.6908</strong></td>
+          <td>54.3</td><td>204.8</td>
+          <td>27.6%</td>
+          <td>0.3685</td>
+          <td>0.8s</td>
+          <td><span class="badge badge-green">최적</span></td>
+        </tr>
+        <tr>
+          <td><strong>Linear SVR</strong></td>
+          <td><strong>0.6791</strong></td>
+          <td>49.2</td><td>208.7</td>
+          <td>47.8%</td>
+          <td>0.2981</td>
+          <td>6.6s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>Random Forest</strong></td>
+          <td><strong>0.6777</strong></td>
+          <td>55.3</td><td>209.1</td>
+          <td>35.7%</td>
+          <td>0.4029</td>
+          <td>21.4s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 베이스라인</strong></td>
+          <td><strong>0.6717</strong></td>
+          <td>60.0</td><td>211.1</td>
+          <td>5.8%</td>
+          <td>0.4783</td>
+          <td>2.0s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 깊은 트리</strong></td>
+          <td><strong>0.6651</strong></td>
+          <td>64.0</td><td>213.2</td>
+          <td>3.9%</td>
+          <td>0.5396</td>
+          <td>2.4s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 정규화 강화</strong></td>
+          <td><strong>0.6052</strong></td>
+          <td>60.8</td><td>231.4</td>
+          <td>5.7%</td>
+          <td>0.3434</td>
+          <td>1.9s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 보수적</strong></td>
+          <td><strong>0.5237</strong></td>
+          <td>65.1</td><td>254.2</td>
+          <td>4.6%</td>
+          <td>0.2459</td>
+          <td>3.2s</td>
+          <td><span class="badge badge-green">양호</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="chart-row">
+  <div class="card"><div class="card-body"><div id="chart_r2" class="chart-box"></div></div></div>
+  <div class="card"><div class="card-body"><div id="chart_mae" class="chart-box"></div></div></div>
+</div>
+<div class="chart-row">
+  <div class="card"><div class="card-body"><div id="chart_success" class="chart-box"></div></div></div>
+  <div class="card"><div class="card-body"><div id="chart_gap" class="chart-box"></div></div></div>
+</div>
+
+</div>
+
+<!-- ═══ TAB 1: ±5 허용 오차 분석 ═══ -->
+<div class="tab-content" id="tab1">
+
+<div class="card">
+  <div class="card-header">±5 허용 오차란?</div>
+  <div class="card-body">
+    <div class="note">
+      <strong>정의:</strong> 예측값과 실제값의 차이가 ±5개 이내이면 "예측 성공", 초과하면 "예측 실패"로 분류합니다.<br>
+      <strong>예시:</strong> 실제 수주 100개, 예측 103개 → 오차 3개 → ✅ 성공 (±5 이내)<br>
+      <strong>예시:</strong> 실제 수주 100개, 예측 112개 → 오차 12개 → ❌ 실패 (±5 초과)<br><br>
+      <strong>제로 수주 성공률:</strong> 실제 수주가 0인 경우의 성공률 (예측이 5 이하이면 성공)<br>
+      <strong>비제로 수주 성공률:</strong> 실제 수주가 0보다 큰 경우의 성공률 (더 어려운 예측)
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">주간 ±5 성공률 상세</div>
+  <div class="card-body">
+    <table>
+      <thead><tr>
+        <th>모델</th><th>±1</th><th>±5</th><th>±10</th><th>±20</th><th>±50</th><th>±100</th>
+        <th>제로 수주</th><th>비제로 수주</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Linear SVR</strong></td>
+          <td>43.2%</td>
+          <td><strong>62.6%</strong></td>
+          <td>70.8%</td>
+          <td>78.5%</td>
+          <td>87.7%</td>
+          <td>93.1%</td>
+          <td>91.0%</td>
+          <td>23.3%</td>
+        </tr>
+        <tr>
+          <td><strong>Ridge Regression</strong></td>
+          <td>51.4%</td>
+          <td><strong>60.2%</strong></td>
+          <td>67.1%</td>
+          <td>74.8%</td>
+          <td>84.5%</td>
+          <td>91.0%</td>
+          <td>88.55%</td>
+          <td>21.03%</td>
+        </tr>
+        <tr>
+          <td><strong>Random Forest</strong></td>
+          <td>2.4%</td>
+          <td><strong>15.4%</strong></td>
+          <td>43.0%</td>
+          <td>67.7%</td>
+          <td>81.7%</td>
+          <td>89.7%</td>
+          <td>7.42%</td>
+          <td>26.37%</td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 베이스라인</strong></td>
+          <td>1.1%</td>
+          <td><strong>6.7%</strong></td>
+          <td>15.8%</td>
+          <td>59.9%</td>
+          <td>82.3%</td>
+          <td>89.9%</td>
+          <td>0.0%</td>
+          <td>16.02%</td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 정규화 강화</strong></td>
+          <td>1.2%</td>
+          <td><strong>6.5%</strong></td>
+          <td>14.1%</td>
+          <td>60.5%</td>
+          <td>82.5%</td>
+          <td>90.5%</td>
+          <td>0.0%</td>
+          <td>15.37%</td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 보수적</strong></td>
+          <td>1.4%</td>
+          <td><strong>6.3%</strong></td>
+          <td>13.5%</td>
+          <td>60.5%</td>
+          <td>82.9%</td>
+          <td>90.8%</td>
+          <td>0.0%</td>
+          <td>14.93%</td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 깊은 트리</strong></td>
+          <td>1.1%</td>
+          <td><strong>5.4%</strong></td>
+          <td>11.6%</td>
+          <td>55.6%</td>
+          <td>82.2%</td>
+          <td>90.1%</td>
+          <td>0.0%</td>
+          <td>12.84%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">월간 ±5 성공률 상세</div>
+  <div class="card-body">
+    <table>
+      <thead><tr>
+        <th>모델</th><th>±1</th><th>±5</th><th>±10</th><th>±20</th><th>±50</th><th>±100</th>
+        <th>제로 수주</th><th>비제로 수주</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Linear SVR</strong></td>
+          <td>20.3%</td>
+          <td><strong>47.8%</strong></td>
+          <td>58.0%</td>
+          <td>69.4%</td>
+          <td>83.0%</td>
+          <td>90.6%</td>
+          <td>79.32%</td>
+          <td>23.27%</td>
+        </tr>
+        <tr>
+          <td><strong>Random Forest</strong></td>
+          <td>2.3%</td>
+          <td><strong>35.7%</strong></td>
+          <td>47.4%</td>
+          <td>58.7%</td>
+          <td>81.5%</td>
+          <td>89.2%</td>
+          <td>53.12%</td>
+          <td>22.19%</td>
+        </tr>
+        <tr>
+          <td><strong>Ridge Regression</strong></td>
+          <td>13.4%</td>
+          <td><strong>27.6%</strong></td>
+          <td>45.3%</td>
+          <td>63.7%</td>
+          <td>80.6%</td>
+          <td>89.6%</td>
+          <td>42.54%</td>
+          <td>16.03%</td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 베이스라인</strong></td>
+          <td>1.2%</td>
+          <td><strong>5.8%</strong></td>
+          <td>12.2%</td>
+          <td>55.3%</td>
+          <td>81.6%</td>
+          <td>89.4%</td>
+          <td>0.0%</td>
+          <td>10.32%</td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 정규화 강화</strong></td>
+          <td>1.3%</td>
+          <td><strong>5.7%</strong></td>
+          <td>12.3%</td>
+          <td>59.9%</td>
+          <td>82.2%</td>
+          <td>89.6%</td>
+          <td>0.0%</td>
+          <td>10.21%</td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 보수적</strong></td>
+          <td>0.9%</td>
+          <td><strong>4.6%</strong></td>
+          <td>9.9%</td>
+          <td>27.1%</td>
+          <td>82.1%</td>
+          <td>89.8%</td>
+          <td>0.0%</td>
+          <td>8.24%</td>
+        </tr>
+        <tr>
+          <td><strong>LightGBM 깊은 트리</strong></td>
+          <td>0.7%</td>
+          <td><strong>3.9%</strong></td>
+          <td>8.3%</td>
+          <td>19.5%</td>
+          <td>81.2%</td>
+          <td>89.5%</td>
+          <td>0.0%</td>
+          <td>6.91%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="chart-row">
+  <div class="card"><div class="card-body"><div id="chart_cum_w" class="chart-box"></div></div></div>
+  <div class="card"><div class="card-body"><div id="chart_cum_m" class="chart-box"></div></div></div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <div id="chart_band_compare" class="chart-box"></div>
+  </div>
+</div>
+
+</div>
+
+<!-- ═══ TAB 2: 주간 상세 ═══ -->
+<div class="tab-content" id="tab2">
+<div class="card">
+  <div class="card-header">주간 모델별 Fold 성능</div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>모델</th><th>Fold 1</th><th>Fold 2</th><th>Fold 3</th><th>Fold 4</th><th>Fold 5</th><th>평균 Val R²</th><th>Test R²</th></tr></thead>
+      <tbody><tr><td><strong>LightGBM 정규화 강화</strong></td><td>0.1335</td><td>0.1130</td><td>-0.4020</td><td>0.1980</td><td>0.2405</td><td><strong>0.0566</strong></td><td><strong>0.2749</strong></td></tr><tr><td><strong>Random Forest</strong></td><td>0.1084</td><td>0.0902</td><td>-1.3318</td><td>0.1803</td><td>0.2187</td><td><strong>-0.1468</strong></td><td><strong>0.2700</strong></td></tr><tr><td><strong>LightGBM 베이스라인</strong></td><td>0.1325</td><td>0.0927</td><td>-1.0592</td><td>0.2125</td><td>0.2266</td><td><strong>-0.0790</strong></td><td><strong>0.2635</strong></td></tr><tr><td><strong>Ridge Regression</strong></td><td>0.0309</td><td>0.0461</td><td>-0.2445</td><td>0.1675</td><td>0.2055</td><td><strong>0.0411</strong></td><td><strong>0.2623</strong></td></tr><tr><td><strong>LightGBM 깊은 트리</strong></td><td>0.1482</td><td>0.0786</td><td>-0.7420</td><td>0.2212</td><td>0.2140</td><td><strong>-0.0160</strong></td><td><strong>0.2622</strong></td></tr><tr><td><strong>LightGBM 보수적</strong></td><td>0.1263</td><td>0.1170</td><td>-0.5024</td><td>0.1888</td><td>0.2340</td><td><strong>0.0327</strong></td><td><strong>0.2551</strong></td></tr><tr><td><strong>Linear SVR</strong></td><td>0.0134</td><td>-0.0025</td><td>0.0240</td><td>0.0079</td><td>-0.0431</td><td><strong>-0.0001</strong></td><td><strong>0.0249</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="card"><div class="card-body"><div id="chart_fi_w" class="chart-box" style="min-height:400px"></div></div></div>
+</div>
+
+<!-- ═══ TAB 3: 월간 상세 ═══ -->
+<div class="tab-content" id="tab3">
+<div class="card">
+  <div class="card-header">월간 모델별 Fold 성능</div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>모델</th><th>Fold 1</th><th>Fold 2</th><th>Fold 3</th><th>Fold 4</th><th>Fold 5</th><th>평균 Val R²</th><th>Test R²</th></tr></thead>
+      <tbody><tr><td><strong>Ridge Regression</strong></td><td>0.1144</td><td>0.2267</td><td>0.0000</td><td>0.5332</td><td>0.3311</td><td><strong>0.2411</strong></td><td><strong>0.6908</strong></td></tr><tr><td><strong>Linear SVR</strong></td><td>0.2269</td><td>0.2862</td><td>0.0000</td><td>0.5377</td><td>0.3372</td><td><strong>0.2776</strong></td><td><strong>0.6791</strong></td></tr><tr><td><strong>Random Forest</strong></td><td>0.2304</td><td>0.2645</td><td>0.0000</td><td>0.5538</td><td>0.2924</td><td><strong>0.2682</strong></td><td><strong>0.6777</strong></td></tr><tr><td><strong>LightGBM 베이스라인</strong></td><td>0.2501</td><td>0.2362</td><td>0.0000</td><td>0.5166</td><td>0.2976</td><td><strong>0.2601</strong></td><td><strong>0.6717</strong></td></tr><tr><td><strong>LightGBM 깊은 트리</strong></td><td>0.2248</td><td>0.0794</td><td>0.0000</td><td>0.5398</td><td>0.2826</td><td><strong>0.2253</strong></td><td><strong>0.6651</strong></td></tr><tr><td><strong>LightGBM 정규화 강화</strong></td><td>0.2507</td><td>0.3051</td><td>0.0000</td><td>0.5136</td><td>0.2893</td><td><strong>0.2717</strong></td><td><strong>0.6052</strong></td></tr><tr><td><strong>LightGBM 보수적</strong></td><td>0.2462</td><td>0.3260</td><td>0.0000</td><td>0.4881</td><td>0.2919</td><td><strong>0.2704</strong></td><td><strong>0.5237</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="card"><div class="card-body"><div id="chart_fi_m" class="chart-box" style="min-height:400px"></div></div></div>
+</div>
+
+<!-- ═══ TAB 4: 모델별 파라미터 ═══ -->
+<div class="tab-content" id="tab4">
+<div class="card">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+    <span>LightGBM 베이스라인</span>
+    <span style="font-size:12px;color:var(--muted)">lgbm</span>
+  </div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>파라미터</th><th>값</th></tr></thead>
+      <tbody><tr><td>n_estimators</td><td><strong>1000</strong></td></tr><tr><td>max_depth</td><td><strong>6</strong></td></tr><tr><td>learning_rate</td><td><strong>0.05</strong></td></tr><tr><td>num_leaves</td><td><strong>31</strong></td></tr><tr><td>min_child_samples</td><td><strong>20</strong></td></tr><tr><td>reg_alpha</td><td><strong>0.1</strong></td></tr><tr><td>reg_lambda</td><td><strong>1.0</strong></td></tr><tr><td>colsample_bytree</td><td><strong>0.8</strong></td></tr><tr><td>subsample</td><td><strong>0.8</strong></td></tr><tr><td>subsample_freq</td><td><strong>1</strong></td></tr></tbody></table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="note"><strong>주간:</strong> R²=0.2635 | MAE=52.6 | ±5 6.7%</div>
+      <div class="note"><strong>월간:</strong> R²=0.6717 | MAE=60.0 | ±5 5.8%</div>
+    </div></div></div>
+<div class="card">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+    <span>LightGBM 정규화 강화</span>
+    <span style="font-size:12px;color:var(--muted)">lgbm</span>
+  </div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>파라미터</th><th>값</th></tr></thead>
+      <tbody><tr><td>n_estimators</td><td><strong>1000</strong></td></tr><tr><td>max_depth</td><td><strong>4</strong></td></tr><tr><td>learning_rate</td><td><strong>0.03</strong></td></tr><tr><td>num_leaves</td><td><strong>15</strong></td></tr><tr><td>min_child_samples</td><td><strong>50</strong></td></tr><tr><td>reg_alpha</td><td><strong>1.0</strong></td></tr><tr><td>reg_lambda</td><td><strong>5.0</strong></td></tr><tr><td>colsample_bytree</td><td><strong>0.7</strong></td></tr><tr><td>subsample</td><td><strong>0.7</strong></td></tr><tr><td>subsample_freq</td><td><strong>1</strong></td></tr></tbody></table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="note"><strong>주간:</strong> R²=0.2749 | MAE=50.8 | ±5 6.5%</div>
+      <div class="note"><strong>월간:</strong> R²=0.6052 | MAE=60.8 | ±5 5.7%</div>
+    </div></div></div>
+<div class="card">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+    <span>LightGBM 깊은 트리</span>
+    <span style="font-size:12px;color:var(--muted)">lgbm</span>
+  </div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>파라미터</th><th>값</th></tr></thead>
+      <tbody><tr><td>n_estimators</td><td><strong>1000</strong></td></tr><tr><td>max_depth</td><td><strong>8</strong></td></tr><tr><td>learning_rate</td><td><strong>0.05</strong></td></tr><tr><td>num_leaves</td><td><strong>63</strong></td></tr><tr><td>min_child_samples</td><td><strong>10</strong></td></tr><tr><td>reg_alpha</td><td><strong>0.05</strong></td></tr><tr><td>reg_lambda</td><td><strong>0.5</strong></td></tr><tr><td>colsample_bytree</td><td><strong>0.8</strong></td></tr><tr><td>subsample</td><td><strong>0.8</strong></td></tr><tr><td>subsample_freq</td><td><strong>1</strong></td></tr></tbody></table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="note"><strong>주간:</strong> R²=0.2622 | MAE=53.4 | ±5 5.4%</div>
+      <div class="note"><strong>월간:</strong> R²=0.6651 | MAE=64.0 | ±5 3.9%</div>
+    </div></div></div>
+<div class="card">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+    <span>LightGBM 보수적</span>
+    <span style="font-size:12px;color:var(--muted)">lgbm</span>
+  </div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>파라미터</th><th>값</th></tr></thead>
+      <tbody><tr><td>n_estimators</td><td><strong>1000</strong></td></tr><tr><td>max_depth</td><td><strong>3</strong></td></tr><tr><td>learning_rate</td><td><strong>0.01</strong></td></tr><tr><td>num_leaves</td><td><strong>8</strong></td></tr><tr><td>min_child_samples</td><td><strong>100</strong></td></tr><tr><td>reg_alpha</td><td><strong>5.0</strong></td></tr><tr><td>reg_lambda</td><td><strong>10.0</strong></td></tr><tr><td>colsample_bytree</td><td><strong>0.6</strong></td></tr><tr><td>subsample</td><td><strong>0.6</strong></td></tr><tr><td>subsample_freq</td><td><strong>1</strong></td></tr></tbody></table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="note"><strong>주간:</strong> R²=0.2551 | MAE=51.1 | ±5 6.3%</div>
+      <div class="note"><strong>월간:</strong> R²=0.5237 | MAE=65.1 | ±5 4.6%</div>
+    </div></div></div>
+<div class="card">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Random Forest</span>
+    <span style="font-size:12px;color:var(--muted)">sklearn</span>
+  </div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>파라미터</th><th>값</th></tr></thead>
+      <tbody><tr><td>n_estimators</td><td><strong>200</strong></td></tr><tr><td>max_depth</td><td><strong>8</strong></td></tr><tr><td>min_samples_leaf</td><td><strong>20</strong></td></tr><tr><td>max_features</td><td><strong>0.8</strong></td></tr><tr><td>n_jobs</td><td><strong>-1</strong></td></tr><tr><td>random_state</td><td><strong>42</strong></td></tr></tbody></table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="note"><strong>주간:</strong> R²=0.2700 | MAE=50.2 | ±5 15.4%</div>
+      <div class="note"><strong>월간:</strong> R²=0.6777 | MAE=55.3 | ±5 35.7%</div>
+    </div></div></div>
+<div class="card">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Linear SVR</span>
+    <span style="font-size:12px;color:var(--muted)">sklearn_scaled</span>
+  </div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>파라미터</th><th>값</th></tr></thead>
+      <tbody><tr><td>C</td><td><strong>1.0</strong></td></tr><tr><td>epsilon</td><td><strong>0.1</strong></td></tr><tr><td>max_iter</td><td><strong>20000</strong></td></tr><tr><td>dual</td><td><strong>auto</strong></td></tr><tr><td>random_state</td><td><strong>42</strong></td></tr></tbody></table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="note"><strong>주간:</strong> R²=0.0249 | MAE=39.3 | ±5 62.6%</div>
+      <div class="note"><strong>월간:</strong> R²=0.6791 | MAE=49.2 | ±5 47.8%</div>
+    </div></div></div>
+<div class="card">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Ridge Regression</span>
+    <span style="font-size:12px;color:var(--muted)">sklearn_scaled</span>
+  </div>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>파라미터</th><th>값</th></tr></thead>
+      <tbody><tr><td>alpha</td><td><strong>1.0</strong></td></tr></tbody></table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="note"><strong>주간:</strong> R²=0.2623 | MAE=42.3 | ±5 60.2%</div>
+      <div class="note"><strong>월간:</strong> R²=0.6908 | MAE=54.3 | ±5 27.6%</div>
+    </div></div></div>
+</div>
+
+</div><!-- container -->
+
+<div class="footer">
+  멀티 모델 비교 최종 리포트 | 생성: 2026-03-07 11:55 | 허용 오차: ±5개
+</div>
+
+<script>
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab-content').forEach((t,i) => t.classList.toggle('active', i===n));
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+}
+
+const W = [{"model_id": "lgbm_baseline", "model_label": "LightGBM 베이스라인", "model_type": "lgbm", "color": "#3b82f6", "ensemble_metrics": {"mse": 27798.66, "rmse": 166.73, "mae": 52.6, "r2": 0.2635, "mape": 2471.45}, "fold_metrics": [{"fold": 1, "val_r2": 0.1325, "val_mae": 54.58, "train_r2": 0.5127, "gap": 0.3803, "best_iter": 39, "n_train": 10635, "n_val": 10632}, {"fold": 2, "val_r2": 0.0927, "val_mae": 42.63, "train_r2": 0.4033, "gap": 0.3107, "best_iter": 31, "n_train": 21267, "n_val": 10632}, {"fold": 3, "val_r2": -1.0592, "val_mae": 24.09, "train_r2": 0.3911, "gap": 1.4504, "best_iter": 38, "n_train": 31899, "n_val": 10632}, {"fold": 4, "val_r2": 0.2125, "val_mae": 41.5, "train_r2": 0.4868, "gap": 0.2744, "best_iter": 77, "n_train": 42531, "n_val": 10632}, {"fold": 5, "val_r2": 0.2266, "val_mae": 59.21, "train_r2": 0.4331, "gap": 0.2065, "best_iter": 60, "n_train": 53163, "n_val": 10632}], "avg_val_r2": -0.079, "avg_gap": 0.5245, "tolerance_analysis": {"tolerance": 5, "n_total": 18364, "within_1": 207, "rate_1": 1.13, "within_5": 1235, "rate_5": 6.73, "within_10": 2903, "rate_10": 15.81, "within_20": 10992, "rate_20": 59.86, "within_50": 15108, "rate_50": 82.27, "within_100": 16504, "rate_100": 89.87, "n_success": 1235, "n_fail": 17129, "success_rate": 6.73, "error_mean": 52.6, "error_median": 15.13, "error_p90": 101.6, "error_p99": 625.28, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 1.13, 2.57, 4.23, 5.46, 6.73, 8.2, 10.0, 12.03, 13.74, 15.81, 17.72, 23.69, 28.44, 44.94, 49.21, 52.62, 55.57, 57.3, 58.77, 59.86, 61.04, 62.02, 63.01, 63.87, 64.85, 65.92, 66.88, 67.72, 68.81, 69.85, 70.74, 71.49, 72.29, 73.0, 73.75, 74.23, 74.72, 75.53, 76.39, 76.92, 78.23, 79.0, 79.42, 80.47, 80.79, 81.13, 81.46, 81.71, 82.02, 82.27, 82.53, 82.84, 83.07, 83.25, 83.49, 83.66, 83.9, 84.1, 84.3, 84.52, 84.76, 84.95, 85.12, 85.3, 85.46, 85.62, 85.83, 86.01, 86.17, 86.33, 86.46, 86.58, 86.75, 86.91, 87.06, 87.23, 87.36, 87.47, 87.6, 87.75, 87.87, 87.95, 88.06, 88.17, 88.35, 88.46, 88.61, 88.72, 88.78, 88.85, 88.97, 89.09, 89.22, 89.32, 89.41, 89.51, 89.63, 89.7, 89.76, 89.87, 89.96, 90.03, 90.14, 90.21, 90.3, 90.34, 90.43, 90.54, 90.6, 90.69, 90.78, 90.86, 90.95, 91.04, 91.1, 91.18, 91.27, 91.34, 91.42, 91.54, 91.6, 91.64, 91.72, 91.78, 91.83, 91.87, 91.93, 92.0, 92.06, 92.12, 92.21, 92.28, 92.32, 92.37, 92.42, 92.47, 92.53, 92.56, 92.62, 92.69, 92.71, 92.75, 92.79, 92.84, 92.89, 92.94, 92.98, 93.02, 93.06, 93.07, 93.12, 93.17, 93.2, 93.25, 93.31, 93.35, 93.37, 93.42, 93.45, 93.51, 93.54, 93.58, 93.63, 93.64, 93.68, 93.73, 93.76, 93.81, 93.87, 93.89, 93.93, 93.99, 94.04, 94.09, 94.12, 94.14, 94.19, 94.21, 94.27, 94.3, 94.33, 94.34, 94.39, 94.44, 94.46, 94.49, 94.52, 94.56, 94.61, 94.64, 94.69, 94.72, 94.74, 94.76, 94.8, 94.84, 94.86, 94.88, 94.89, 94.94], "zero_success_rate": 0.0, "n_zero": 10655, "nonzero_success_rate": 16.02, "n_nonzero": 7709}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma26", "importance": 123.0}, {"rank": 2, "name": "revenue_qty_ma4", "importance": 115.0}, {"rank": 3, "name": "revenue_qty_lag1", "importance": 64.0}, {"rank": 4, "name": "copper_lme", "importance": 62.0}, {"rank": 5, "name": "order_qty_std13", "importance": 57.0}, {"rank": 6, "name": "order_qty_diff_4w", "importance": 48.0}, {"rank": 7, "name": "inventory_qty", "importance": 48.0}, {"rank": 8, "name": "order_qty_ma13", "importance": 44.0}, {"rank": 9, "name": "order_qty_max4", "importance": 38.0}, {"rank": 10, "name": "usd_krw_roc_4w", "importance": 35.0}, {"rank": 11, "name": "usd_krw", "importance": 33.0}, {"rank": 12, "name": "inventory_weeks", "importance": 32.0}, {"rank": 13, "name": "sox_roc_4w", "importance": 32.0}, {"rank": 14, "name": "order_qty_std4", "importance": 31.0}, {"rank": 15, "name": "order_qty_lag8", "importance": 31.0}, {"rank": 16, "name": "order_qty_lag1", "importance": 29.0}, {"rank": 17, "name": "order_qty_diff_1w", "importance": 28.0}, {"rank": 18, "name": "order_amount_lag1", "importance": 27.0}, {"rank": 19, "name": "order_qty_lag4", "importance": 27.0}, {"rank": 20, "name": "wti_price", "importance": 26.0}], "elapsed_sec": 7.3, "params": {"n_estimators": 1000, "max_depth": 6, "learning_rate": 0.05, "num_leaves": 31, "min_child_samples": 20, "reg_alpha": 0.1, "reg_lambda": 1.0, "colsample_bytree": 0.8, "subsample": 0.8, "subsample_freq": 1}}, {"model_id": "lgbm_strong_reg", "model_label": "LightGBM 정규화 강화", "model_type": "lgbm", "color": "#059669", "ensemble_metrics": {"mse": 27369.26, "rmse": 165.44, "mae": 50.79, "r2": 0.2749, "mape": 2227.46}, "fold_metrics": [{"fold": 1, "val_r2": 0.1335, "val_mae": 57.26, "train_r2": 0.3401, "gap": 0.2066, "best_iter": 46, "n_train": 10635, "n_val": 10632}, {"fold": 2, "val_r2": 0.113, "val_mae": 42.78, "train_r2": 0.3046, "gap": 0.1916, "best_iter": 54, "n_train": 21267, "n_val": 10632}, {"fold": 3, "val_r2": -0.402, "val_mae": 17.12, "train_r2": 0.2913, "gap": 0.6933, "best_iter": 67, "n_train": 31899, "n_val": 10632}, {"fold": 4, "val_r2": 0.198, "val_mae": 42.63, "train_r2": 0.3176, "gap": 0.1196, "best_iter": 88, "n_train": 42531, "n_val": 10632}, {"fold": 5, "val_r2": 0.2405, "val_mae": 58.49, "train_r2": 0.3469, "gap": 0.1064, "best_iter": 177, "n_train": 53163, "n_val": 10632}], "avg_val_r2": 0.0566, "avg_gap": 0.2635, "tolerance_analysis": {"tolerance": 5, "n_total": 18364, "within_1": 223, "rate_1": 1.21, "within_5": 1185, "rate_5": 6.45, "within_10": 2580, "rate_10": 14.05, "within_20": 11112, "rate_20": 60.51, "within_50": 15150, "rate_50": 82.5, "within_100": 16610, "rate_100": 90.45, "n_success": 1185, "n_fail": 17179, "success_rate": 6.45, "error_mean": 50.79, "error_median": 15.75, "error_p90": 94.83, "error_p99": 629.23, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 1.21, 2.34, 3.51, 5.09, 6.45, 7.72, 9.12, 10.5, 12.31, 14.05, 15.66, 17.8, 28.48, 41.72, 46.81, 50.94, 54.21, 57.34, 58.89, 60.51, 61.77, 63.13, 64.59, 65.97, 68.56, 71.19, 72.72, 73.49, 74.18, 74.81, 75.31, 75.83, 76.44, 77.04, 77.54, 77.98, 78.45, 78.87, 79.17, 79.57, 79.93, 80.26, 80.62, 80.92, 81.19, 81.51, 81.8, 82.04, 82.26, 82.5, 82.79, 83.0, 83.23, 83.46, 83.66, 83.87, 84.11, 84.38, 84.61, 84.81, 85.01, 85.24, 85.48, 85.67, 85.84, 86.03, 86.24, 86.38, 86.53, 86.74, 86.93, 87.04, 87.24, 87.37, 87.55, 87.69, 87.81, 87.96, 88.13, 88.24, 88.35, 88.46, 88.6, 88.78, 88.97, 89.08, 89.23, 89.37, 89.42, 89.52, 89.62, 89.7, 89.83, 89.91, 90.01, 90.12, 90.21, 90.28, 90.38, 90.45, 90.6, 90.72, 90.81, 90.88, 90.94, 90.99, 91.03, 91.07, 91.13, 91.19, 91.25, 91.3, 91.38, 91.46, 91.52, 91.56, 91.62, 91.71, 91.75, 91.8, 91.84, 91.92, 91.95, 92.04, 92.11, 92.16, 92.19, 92.24, 92.29, 92.34, 92.4, 92.47, 92.51, 92.57, 92.63, 92.65, 92.69, 92.73, 92.76, 92.8, 92.84, 92.87, 92.94, 92.99, 93.02, 93.08, 93.12, 93.16, 93.22, 93.29, 93.35, 93.39, 93.44, 93.49, 93.54, 93.62, 93.66, 93.7, 93.75, 93.81, 93.85, 93.88, 93.9, 93.94, 93.98, 94.03, 94.06, 94.08, 94.1, 94.16, 94.17, 94.21, 94.28, 94.31, 94.34, 94.39, 94.44, 94.51, 94.52, 94.54, 94.59, 94.63, 94.68, 94.73, 94.77, 94.79, 94.81, 94.86, 94.89, 94.92, 94.96, 94.99, 95.01, 95.04, 95.08, 95.13, 95.15, 95.15, 95.19, 95.21], "zero_success_rate": 0.0, "n_zero": 10655, "nonzero_success_rate": 15.37, "n_nonzero": 7709}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma26", "importance": 159.0}, {"rank": 2, "name": "revenue_qty_ma4", "importance": 154.0}, {"rank": 3, "name": "order_qty_ma13", "importance": 83.0}, {"rank": 4, "name": "order_qty_std13", "importance": 67.0}, {"rank": 5, "name": "revenue_qty_lag1", "importance": 63.0}, {"rank": 6, "name": "order_qty_max4", "importance": 60.0}, {"rank": 7, "name": "order_qty_lag4", "importance": 56.0}, {"rank": 8, "name": "copper_lme", "importance": 54.0}, {"rank": 9, "name": "order_qty_lag8", "importance": 49.0}, {"rank": 10, "name": "order_qty_diff_4w", "importance": 43.0}, {"rank": 11, "name": "order_qty_std4", "importance": 40.0}, {"rank": 12, "name": "order_qty_ma4", "importance": 38.0}, {"rank": 13, "name": "order_qty_lag1", "importance": 33.0}, {"rank": 14, "name": "usd_krw", "importance": 31.0}, {"rank": 15, "name": "kr_bsi_mfg", "importance": 31.0}, {"rank": 16, "name": "order_qty_diff_1w", "importance": 30.0}, {"rank": 17, "name": "inventory_qty", "importance": 27.0}, {"rank": 18, "name": "order_qty_lag2", "importance": 24.0}, {"rank": 19, "name": "nand_price", "importance": 22.0}, {"rank": 20, "name": "order_qty_lag13", "importance": 22.0}], "elapsed_sec": 3.4, "params": {"n_estimators": 1000, "max_depth": 4, "learning_rate": 0.03, "num_leaves": 15, "min_child_samples": 50, "reg_alpha": 1.0, "reg_lambda": 5.0, "colsample_bytree": 0.7, "subsample": 0.7, "subsample_freq": 1}}, {"model_id": "lgbm_deep", "model_label": "LightGBM 깊은 트리", "model_type": "lgbm", "color": "#7c3aed", "ensemble_metrics": {"mse": 27850.1, "rmse": 166.88, "mae": 53.37, "r2": 0.2622, "mape": 2532.92}, "fold_metrics": [{"fold": 1, "val_r2": 0.1482, "val_mae": 57.0, "train_r2": 0.5433, "gap": 0.3951, "best_iter": 24, "n_train": 10635, "n_val": 10632}, {"fold": 2, "val_r2": 0.0786, "val_mae": 44.4, "train_r2": 0.4676, "gap": 0.389, "best_iter": 24, "n_train": 21267, "n_val": 10632}, {"fold": 3, "val_r2": -0.742, "val_mae": 21.05, "train_r2": 0.4472, "gap": 1.1892, "best_iter": 27, "n_train": 31899, "n_val": 10632}, {"fold": 4, "val_r2": 0.2212, "val_mae": 41.87, "train_r2": 0.6962, "gap": 0.475, "best_iter": 114, "n_train": 42531, "n_val": 10632}, {"fold": 5, "val_r2": 0.214, "val_mae": 60.66, "train_r2": 0.4579, "gap": 0.2439, "best_iter": 29, "n_train": 53163, "n_val": 10632}], "avg_val_r2": -0.016, "avg_gap": 0.5384, "tolerance_analysis": {"tolerance": 5, "n_total": 18364, "within_1": 212, "rate_1": 1.15, "within_5": 990, "rate_5": 5.39, "within_10": 2130, "rate_10": 11.6, "within_20": 10205, "rate_20": 55.57, "within_50": 15096, "rate_50": 82.2, "within_100": 16543, "rate_100": 90.08, "n_success": 990, "n_fail": 17374, "success_rate": 5.39, "error_mean": 53.37, "error_median": 18.36, "error_p90": 99.18, "error_p99": 616.82, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 1.15, 2.25, 3.17, 4.24, 5.39, 6.75, 7.88, 8.96, 10.18, 11.6, 13.29, 15.02, 16.64, 18.62, 22.74, 36.65, 45.6, 48.74, 52.6, 55.57, 59.28, 61.53, 62.5, 63.43, 64.38, 65.29, 65.96, 66.91, 69.16, 71.55, 72.42, 73.02, 73.68, 74.27, 75.29, 77.29, 77.73, 78.15, 78.58, 78.95, 79.38, 79.68, 79.98, 80.34, 80.69, 81.0, 81.28, 81.64, 81.95, 82.2, 82.48, 82.77, 83.0, 83.22, 83.43, 83.72, 83.97, 84.19, 84.42, 84.6, 84.83, 85.0, 85.21, 85.41, 85.62, 85.75, 85.97, 86.13, 86.3, 86.46, 86.57, 86.73, 86.86, 87.01, 87.16, 87.3, 87.39, 87.54, 87.66, 87.82, 87.99, 88.11, 88.27, 88.38, 88.46, 88.57, 88.66, 88.73, 88.85, 88.93, 89.01, 89.14, 89.29, 89.44, 89.51, 89.61, 89.75, 89.89, 89.99, 90.08, 90.17, 90.27, 90.35, 90.45, 90.55, 90.66, 90.77, 90.86, 90.96, 91.06, 91.13, 91.23, 91.3, 91.36, 91.43, 91.53, 91.61, 91.7, 91.77, 91.82, 91.88, 91.96, 92.02, 92.09, 92.12, 92.16, 92.21, 92.28, 92.32, 92.37, 92.45, 92.48, 92.55, 92.57, 92.62, 92.65, 92.72, 92.76, 92.78, 92.83, 92.88, 92.92, 92.98, 93.01, 93.07, 93.11, 93.19, 93.2, 93.26, 93.3, 93.33, 93.35, 93.37, 93.44, 93.48, 93.53, 93.57, 93.6, 93.61, 93.67, 93.69, 93.71, 93.75, 93.79, 93.83, 93.85, 93.87, 93.92, 93.96, 94.0, 94.04, 94.06, 94.09, 94.14, 94.18, 94.22, 94.24, 94.29, 94.32, 94.37, 94.42, 94.47, 94.51, 94.55, 94.58, 94.62, 94.64, 94.66, 94.71, 94.75, 94.78, 94.82, 94.86, 94.89, 94.94, 94.97, 94.99, 95.0, 95.02, 95.05], "zero_success_rate": 0.0, "n_zero": 10655, "nonzero_success_rate": 12.84, "n_nonzero": 7709}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma26", "importance": 133.0}, {"rank": 2, "name": "revenue_qty_ma4", "importance": 112.0}, {"rank": 3, "name": "copper_lme", "importance": 84.0}, {"rank": 4, "name": "inventory_qty", "importance": 60.0}, {"rank": 5, "name": "revenue_qty_lag1", "importance": 57.0}, {"rank": 6, "name": "inventory_weeks", "importance": 55.0}, {"rank": 7, "name": "usd_krw_roc_4w", "importance": 54.0}, {"rank": 8, "name": "order_qty_diff_4w", "importance": 54.0}, {"rank": 9, "name": "order_qty_ma13", "importance": 44.0}, {"rank": 10, "name": "sox_roc_4w", "importance": 44.0}, {"rank": 11, "name": "order_qty_lag1", "importance": 44.0}, {"rank": 12, "name": "dram_roc_4w", "importance": 43.0}, {"rank": 13, "name": "usd_krw", "importance": 43.0}, {"rank": 14, "name": "order_amount_lag1", "importance": 37.0}, {"rank": 15, "name": "order_qty_std13", "importance": 37.0}, {"rank": 16, "name": "order_qty_diff_1w", "importance": 37.0}, {"rank": 17, "name": "sox_index", "importance": 37.0}, {"rank": 18, "name": "order_qty_roc_13w", "importance": 36.0}, {"rank": 19, "name": "order_qty_lag8", "importance": 35.0}, {"rank": 20, "name": "wti_price", "importance": 34.0}], "elapsed_sec": 3.9, "params": {"n_estimators": 1000, "max_depth": 8, "learning_rate": 0.05, "num_leaves": 63, "min_child_samples": 10, "reg_alpha": 0.05, "reg_lambda": 0.5, "colsample_bytree": 0.8, "subsample": 0.8, "subsample_freq": 1}}, {"model_id": "lgbm_conservative", "model_label": "LightGBM 보수적", "model_type": "lgbm", "color": "#0891b2", "ensemble_metrics": {"mse": 28117.26, "rmse": 167.68, "mae": 51.09, "r2": 0.2551, "mape": 2203.5}, "fold_metrics": [{"fold": 1, "val_r2": 0.1263, "val_mae": 57.09, "train_r2": 0.2913, "gap": 0.165, "best_iter": 155, "n_train": 10635, "n_val": 10632}, {"fold": 2, "val_r2": 0.117, "val_mae": 42.85, "train_r2": 0.2604, "gap": 0.1434, "best_iter": 185, "n_train": 21267, "n_val": 10632}, {"fold": 3, "val_r2": -0.5024, "val_mae": 18.7, "train_r2": 0.2381, "gap": 0.7405, "best_iter": 185, "n_train": 31899, "n_val": 10632}, {"fold": 4, "val_r2": 0.1888, "val_mae": 43.41, "train_r2": 0.2679, "gap": 0.079, "best_iter": 321, "n_train": 42531, "n_val": 10632}, {"fold": 5, "val_r2": 0.234, "val_mae": 58.04, "train_r2": 0.281, "gap": 0.047, "best_iter": 571, "n_train": 53163, "n_val": 10632}], "avg_val_r2": 0.0327, "avg_gap": 0.235, "tolerance_analysis": {"tolerance": 5, "n_total": 18364, "within_1": 255, "rate_1": 1.39, "within_5": 1151, "rate_5": 6.27, "within_10": 2482, "rate_10": 13.52, "within_20": 11116, "rate_20": 60.53, "within_50": 15224, "rate_50": 82.9, "within_100": 16676, "rate_100": 90.81, "n_success": 1151, "n_fail": 17213, "success_rate": 6.27, "error_mean": 51.09, "error_median": 15.87, "error_p90": 89.9, "error_p99": 646.6, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 1.39, 2.3, 3.34, 4.48, 6.27, 7.72, 8.97, 10.19, 11.57, 13.52, 15.24, 17.0, 19.09, 29.59, 44.72, 50.5, 54.9, 57.81, 59.23, 60.53, 61.56, 62.49, 63.4, 64.5, 65.48, 66.47, 68.08, 68.98, 70.22, 72.34, 74.07, 76.25, 76.94, 77.48, 78.01, 78.4, 78.84, 79.3, 79.68, 80.04, 80.3, 80.59, 80.96, 81.33, 81.54, 81.8, 82.11, 82.38, 82.66, 82.9, 83.12, 83.35, 83.6, 83.79, 84.06, 84.24, 84.49, 84.7, 84.93, 85.12, 85.34, 85.56, 85.79, 86.0, 86.15, 86.35, 86.46, 86.69, 86.82, 87.04, 87.15, 87.35, 87.56, 87.74, 87.91, 88.07, 88.21, 88.41, 88.54, 88.71, 88.82, 89.01, 89.11, 89.28, 89.41, 89.53, 89.63, 89.79, 89.92, 90.01, 90.06, 90.18, 90.28, 90.36, 90.43, 90.49, 90.58, 90.68, 90.76, 90.81, 90.86, 90.92, 91.0, 91.05, 91.13, 91.18, 91.25, 91.31, 91.39, 91.43, 91.5, 91.56, 91.6, 91.66, 91.73, 91.8, 91.9, 91.97, 92.03, 92.06, 92.11, 92.18, 92.22, 92.26, 92.3, 92.34, 92.41, 92.49, 92.55, 92.61, 92.69, 92.75, 92.77, 92.81, 92.86, 92.89, 92.93, 92.94, 92.99, 93.02, 93.06, 93.11, 93.14, 93.19, 93.23, 93.28, 93.31, 93.38, 93.44, 93.49, 93.52, 93.54, 93.56, 93.62, 93.65, 93.72, 93.76, 93.81, 93.84, 93.89, 93.95, 93.98, 94.04, 94.07, 94.14, 94.16, 94.2, 94.23, 94.27, 94.29, 94.33, 94.35, 94.38, 94.4, 94.42, 94.46, 94.49, 94.53, 94.57, 94.61, 94.66, 94.7, 94.75, 94.79, 94.83, 94.86, 94.91, 94.94, 94.98, 95.03, 95.04, 95.07, 95.09, 95.12, 95.16, 95.19, 95.22, 95.25, 95.31, 95.33], "zero_success_rate": 0.0, "n_zero": 10655, "nonzero_success_rate": 14.93, "n_nonzero": 7709}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma26", "importance": 368.0}, {"rank": 2, "name": "revenue_qty_ma4", "importance": 294.0}, {"rank": 3, "name": "order_qty_ma13", "importance": 189.0}, {"rank": 4, "name": "order_qty_max4", "importance": 165.0}, {"rank": 5, "name": "order_qty_std13", "importance": 141.0}, {"rank": 6, "name": "revenue_qty_lag1", "importance": 102.0}, {"rank": 7, "name": "order_qty_lag1", "importance": 97.0}, {"rank": 8, "name": "order_qty_ma4", "importance": 86.0}, {"rank": 9, "name": "order_qty_lag4", "importance": 80.0}, {"rank": 10, "name": "copper_lme", "importance": 79.0}, {"rank": 11, "name": "order_qty_std4", "importance": 77.0}, {"rank": 12, "name": "order_qty_lag8", "importance": 67.0}, {"rank": 13, "name": "order_qty_lag13", "importance": 65.0}, {"rank": 14, "name": "kr_bsi_mfg", "importance": 62.0}, {"rank": 15, "name": "order_qty_diff_1w", "importance": 54.0}, {"rank": 16, "name": "order_qty_diff_4w", "importance": 49.0}, {"rank": 17, "name": "order_qty_lag52", "importance": 42.0}, {"rank": 18, "name": "usd_krw", "importance": 42.0}, {"rank": 19, "name": "order_qty_lag2", "importance": 39.0}, {"rank": 20, "name": "week_num", "importance": 37.0}], "elapsed_sec": 5.3, "params": {"n_estimators": 1000, "max_depth": 3, "learning_rate": 0.01, "num_leaves": 8, "min_child_samples": 100, "reg_alpha": 5.0, "reg_lambda": 10.0, "colsample_bytree": 0.6, "subsample": 0.6, "subsample_freq": 1}}, {"model_id": "random_forest", "model_label": "Random Forest", "model_type": "sklearn", "color": "#d97706", "ensemble_metrics": {"mse": 27555.86, "rmse": 166.0, "mae": 50.2, "r2": 0.27, "mape": 2254.73}, "fold_metrics": [{"fold": 1, "val_r2": 0.1084, "val_mae": 53.07, "train_r2": 0.4533, "gap": 0.3449, "best_iter": null, "n_train": 10635, "n_val": 10632}, {"fold": 2, "val_r2": 0.0902, "val_mae": 39.56, "train_r2": 0.3902, "gap": 0.3, "best_iter": null, "n_train": 21267, "n_val": 10632}, {"fold": 3, "val_r2": -1.3318, "val_mae": 26.72, "train_r2": 0.3572, "gap": 1.689, "best_iter": null, "n_train": 31899, "n_val": 10632}, {"fold": 4, "val_r2": 0.1803, "val_mae": 40.69, "train_r2": 0.3633, "gap": 0.1829, "best_iter": null, "n_train": 42531, "n_val": 10632}, {"fold": 5, "val_r2": 0.2187, "val_mae": 59.95, "train_r2": 0.3564, "gap": 0.1377, "best_iter": null, "n_train": 53163, "n_val": 10632}], "avg_val_r2": -0.1468, "avg_gap": 0.5309, "tolerance_analysis": {"tolerance": 5, "n_total": 18364, "within_1": 434, "rate_1": 2.36, "within_5": 2824, "rate_5": 15.38, "within_10": 7899, "rate_10": 43.01, "within_20": 12429, "rate_20": 67.68, "within_50": 15011, "rate_50": 81.74, "within_100": 16470, "rate_100": 89.69, "n_success": 2824, "n_fail": 15540, "success_rate": 15.38, "error_mean": 50.2, "error_median": 12.86, "error_p90": 102.75, "error_p99": 620.03, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 2.36, 4.73, 6.91, 10.88, 15.38, 18.73, 21.36, 23.99, 40.7, 43.01, 45.11, 47.7, 50.38, 52.9, 54.6, 55.82, 56.9, 58.34, 66.8, 67.68, 68.53, 69.3, 70.13, 70.89, 71.59, 72.27, 72.87, 73.51, 74.08, 74.54, 75.13, 75.54, 75.93, 76.38, 76.81, 77.11, 77.5, 77.92, 78.36, 78.68, 79.04, 79.42, 79.69, 79.94, 80.27, 80.57, 80.85, 81.14, 81.47, 81.74, 82.01, 82.29, 82.48, 82.75, 83.02, 83.22, 83.46, 83.7, 83.9, 84.05, 84.23, 84.47, 84.65, 84.86, 85.06, 85.31, 85.52, 85.69, 85.85, 85.95, 86.12, 86.27, 86.41, 86.53, 86.68, 86.82, 86.99, 87.14, 87.27, 87.43, 87.59, 87.73, 87.82, 87.96, 88.11, 88.21, 88.36, 88.49, 88.6, 88.76, 88.84, 88.9, 89.01, 89.13, 89.23, 89.32, 89.45, 89.51, 89.6, 89.69, 89.77, 89.88, 90.03, 90.11, 90.21, 90.32, 90.42, 90.49, 90.57, 90.68, 90.76, 90.84, 90.91, 90.97, 91.04, 91.12, 91.23, 91.29, 91.37, 91.41, 91.46, 91.52, 91.55, 91.59, 91.66, 91.72, 91.79, 91.84, 91.89, 91.94, 91.98, 92.01, 92.04, 92.09, 92.15, 92.2, 92.26, 92.32, 92.36, 92.41, 92.49, 92.54, 92.57, 92.63, 92.69, 92.71, 92.73, 92.77, 92.83, 92.87, 92.92, 92.98, 93.01, 93.04, 93.05, 93.1, 93.14, 93.19, 93.22, 93.25, 93.31, 93.35, 93.41, 93.45, 93.48, 93.5, 93.52, 93.55, 93.57, 93.61, 93.64, 93.67, 93.73, 93.77, 93.81, 93.84, 93.88, 93.92, 93.95, 93.99, 94.06, 94.12, 94.17, 94.22, 94.26, 94.31, 94.31, 94.35, 94.38, 94.41, 94.43, 94.45, 94.48, 94.53, 94.55, 94.59, 94.63, 94.64, 94.65, 94.67], "zero_success_rate": 7.42, "n_zero": 10655, "nonzero_success_rate": 26.37, "n_nonzero": 7709}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma26", "importance": 0.4}, {"rank": 2, "name": "order_qty_ma13", "importance": 0.15}, {"rank": 3, "name": "revenue_qty_ma4", "importance": 0.07}, {"rank": 4, "name": "order_qty_std13", "importance": 0.04}, {"rank": 5, "name": "inventory_qty", "importance": 0.02}, {"rank": 6, "name": "order_qty_std4", "importance": 0.01}, {"rank": 7, "name": "kr_bsi_mfg", "importance": 0.01}, {"rank": 8, "name": "copper_lme", "importance": 0.01}, {"rank": 9, "name": "revenue_qty_lag1", "importance": 0.01}, {"rank": 10, "name": "order_qty_diff_1w", "importance": 0.01}, {"rank": 11, "name": "order_qty_lag4", "importance": 0.01}, {"rank": 12, "name": "usd_krw_roc_4w", "importance": 0.01}, {"rank": 13, "name": "order_qty_max4", "importance": 0.01}, {"rank": 14, "name": "order_qty_roc_13w", "importance": 0.01}, {"rank": 15, "name": "order_qty_cv4", "importance": 0.01}, {"rank": 16, "name": "order_qty_lag1", "importance": 0.01}, {"rank": 17, "name": "usd_krw", "importance": 0.01}, {"rank": 18, "name": "nand_price", "importance": 0.01}, {"rank": 19, "name": "order_qty_diff_4w", "importance": 0.01}, {"rank": 20, "name": "inventory_weeks", "importance": 0.01}], "elapsed_sec": 46.1, "params": {"n_estimators": 200, "max_depth": 8, "min_samples_leaf": 20, "max_features": 0.8, "n_jobs": -1, "random_state": 42}}, {"model_id": "svr_linear", "model_label": "Linear SVR", "model_type": "sklearn_scaled", "color": "#dc2626", "ensemble_metrics": {"mse": 36806.12, "rmse": 191.85, "mae": 39.33, "r2": 0.0249, "mape": 176.44}, "fold_metrics": [{"fold": 1, "val_r2": 0.0134, "val_mae": 42.72, "train_r2": 0.0703, "gap": 0.0568, "best_iter": null, "n_train": 10635, "n_val": 10632}, {"fold": 2, "val_r2": -0.0025, "val_mae": 30.34, "train_r2": 0.0203, "gap": 0.0228, "best_iter": null, "n_train": 21267, "n_val": 10632}, {"fold": 3, "val_r2": 0.024, "val_mae": 2.96, "train_r2": -0.0186, "gap": -0.0426, "best_iter": null, "n_train": 31899, "n_val": 10632}, {"fold": 4, "val_r2": 0.0079, "val_mae": 31.72, "train_r2": -0.0088, "gap": -0.0167, "best_iter": null, "n_train": 42531, "n_val": 10632}, {"fold": 5, "val_r2": -0.0431, "val_mae": 54.52, "train_r2": -0.0, "gap": 0.043, "best_iter": null, "n_train": 53163, "n_val": 10632}], "avg_val_r2": -0.0001, "avg_gap": 0.0127, "tolerance_analysis": {"tolerance": 5, "n_total": 18364, "within_1": 7938, "rate_1": 43.23, "within_5": 11492, "rate_5": 62.58, "within_10": 13002, "rate_10": 70.8, "within_20": 14407, "rate_20": 78.45, "within_50": 16112, "rate_50": 87.74, "within_100": 17099, "rate_100": 93.11, "n_success": 11492, "n_fail": 6872, "success_rate": 62.58, "error_mean": 39.33, "error_median": 1.83, "error_p90": 67.38, "error_p99": 755.67, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [21.42, 43.23, 51.13, 56.46, 60.1, 62.58, 64.63, 66.09, 67.65, 68.79, 70.8, 71.55, 72.35, 73.03, 73.68, 74.69, 75.4, 75.93, 76.72, 77.36, 78.45, 78.73, 79.06, 79.45, 80.04, 80.53, 80.84, 81.29, 81.74, 82.13, 82.78, 82.99, 83.27, 83.43, 83.73, 84.06, 84.32, 84.51, 84.79, 85.09, 85.54, 85.66, 85.84, 85.98, 86.16, 86.38, 86.56, 86.77, 87.01, 87.37, 87.74, 87.8, 87.94, 88.12, 88.29, 88.44, 88.53, 88.68, 88.8, 89.03, 89.29, 89.39, 89.47, 89.63, 89.72, 89.81, 89.9, 89.96, 90.06, 90.17, 90.31, 90.37, 90.48, 90.55, 90.63, 90.78, 90.85, 90.9, 90.99, 91.15, 91.27, 91.35, 91.42, 91.48, 91.57, 91.6, 91.68, 91.72, 91.79, 91.89, 91.98, 92.03, 92.09, 92.17, 92.22, 92.28, 92.38, 92.5, 92.61, 92.83, 93.11, 93.16, 93.18, 93.26, 93.31, 93.35, 93.38, 93.41, 93.46, 93.51, 93.56, 93.59, 93.62, 93.66, 93.71, 93.77, 93.8, 93.81, 93.86, 93.88, 93.94, 93.95, 94.0, 94.05, 94.08, 94.13, 94.17, 94.2, 94.26, 94.29, 94.34, 94.36, 94.39, 94.42, 94.45, 94.48, 94.52, 94.53, 94.56, 94.6, 94.65, 94.67, 94.7, 94.75, 94.79, 94.83, 94.86, 94.89, 94.91, 94.95, 95.04, 95.05, 95.06, 95.07, 95.08, 95.1, 95.13, 95.16, 95.19, 95.21, 95.22, 95.23, 95.24, 95.27, 95.3, 95.32, 95.34, 95.37, 95.38, 95.4, 95.44, 95.45, 95.46, 95.49, 95.51, 95.52, 95.55, 95.55, 95.59, 95.62, 95.64, 95.64, 95.65, 95.67, 95.68, 95.69, 95.71, 95.73, 95.74, 95.76, 95.78, 95.8, 95.83, 95.84, 95.87, 95.88, 95.91, 95.95, 95.98, 96.05, 96.13], "zero_success_rate": 91.0, "n_zero": 10655, "nonzero_success_rate": 23.3, "n_nonzero": 7709}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_lag1", "importance": 7.91}, {"rank": 2, "name": "order_qty_min4", "importance": 6.7}, {"rank": 3, "name": "order_qty_diff_1w", "importance": 4.75}, {"rank": 4, "name": "order_qty_std4", "importance": 4.23}, {"rank": 5, "name": "order_qty_ma4", "importance": 3.38}, {"rank": 6, "name": "revenue_qty_ma4", "importance": 2.88}, {"rank": 7, "name": "order_qty_lag4", "importance": 2.79}, {"rank": 8, "name": "order_qty_ma13", "importance": 2.09}, {"rank": 9, "name": "order_qty_lag52", "importance": 1.44}, {"rank": 10, "name": "order_qty_lag2", "importance": 1.42}, {"rank": 11, "name": "order_qty_std13", "importance": 1.31}, {"rank": 12, "name": "top3_customer_pct", "importance": 1.23}, {"rank": 13, "name": "order_count_ma4", "importance": 0.91}, {"rank": 14, "name": "order_qty_nonzero_13w", "importance": 0.89}, {"rank": 15, "name": "order_qty_max4", "importance": 0.89}, {"rank": 16, "name": "avg_lead_days", "importance": 0.73}, {"rank": 17, "name": "revenue_qty_lag1", "importance": 0.6}, {"rank": 18, "name": "order_count_lag1", "importance": 0.56}, {"rank": 19, "name": "order_qty_diff_4w", "importance": 0.53}, {"rank": 20, "name": "order_qty_lag13", "importance": 0.5}], "elapsed_sec": 35.1, "params": {"C": 1.0, "epsilon": 0.1, "max_iter": 20000, "dual": "auto", "random_state": 42}}, {"model_id": "ridge", "model_label": "Ridge Regression", "model_type": "sklearn_scaled", "color": "#64748b", "ensemble_metrics": {"mse": 27846.91, "rmse": 166.87, "mae": 42.26, "r2": 0.2623, "mape": 871.04}, "fold_metrics": [{"fold": 1, "val_r2": 0.0309, "val_mae": 57.39, "train_r2": 0.3704, "gap": 0.3395, "best_iter": null, "n_train": 10635, "n_val": 10632}, {"fold": 2, "val_r2": 0.0461, "val_mae": 41.77, "train_r2": 0.2895, "gap": 0.2434, "best_iter": null, "n_train": 21267, "n_val": 10632}, {"fold": 3, "val_r2": -0.2445, "val_mae": 8.52, "train_r2": 0.2456, "gap": 0.4901, "best_iter": null, "n_train": 31899, "n_val": 10632}, {"fold": 4, "val_r2": 0.1675, "val_mae": 43.15, "train_r2": 0.2514, "gap": 0.084, "best_iter": null, "n_train": 42531, "n_val": 10632}, {"fold": 5, "val_r2": 0.2055, "val_mae": 59.94, "train_r2": 0.2421, "gap": 0.0366, "best_iter": null, "n_train": 53163, "n_val": 10632}], "avg_val_r2": 0.0411, "avg_gap": 0.2387, "tolerance_analysis": {"tolerance": 5, "n_total": 18364, "within_1": 9434, "rate_1": 51.37, "within_5": 11056, "rate_5": 60.2, "within_10": 12314, "rate_10": 67.06, "within_20": 13742, "rate_20": 74.83, "within_50": 15511, "rate_50": 84.46, "within_100": 16706, "rate_100": 90.97, "n_success": 11056, "n_fail": 7308, "success_rate": 60.2, "error_mean": 42.26, "error_median": 1.0, "error_p90": 94.55, "error_p99": 675.85, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [48.26, 51.37, 54.04, 55.91, 58.27, 60.2, 61.78, 62.46, 63.87, 64.66, 67.06, 67.6, 68.64, 69.06, 69.73, 70.82, 71.59, 71.91, 72.47, 72.89, 74.83, 75.13, 75.49, 75.71, 76.37, 77.01, 77.29, 77.63, 77.88, 78.17, 79.29, 79.37, 79.73, 79.94, 80.13, 80.51, 80.77, 80.95, 81.25, 81.44, 82.23, 82.34, 82.51, 82.67, 82.86, 83.12, 83.26, 83.39, 83.58, 83.71, 84.46, 84.58, 84.71, 84.84, 85.06, 85.26, 85.38, 85.53, 85.62, 85.73, 86.27, 86.34, 86.46, 86.52, 86.71, 86.91, 87.01, 87.07, 87.14, 87.22, 87.48, 87.57, 87.68, 87.75, 87.88, 88.08, 88.19, 88.28, 88.36, 88.45, 88.77, 88.85, 88.93, 89.03, 89.11, 89.21, 89.29, 89.35, 89.4, 89.47, 89.69, 89.76, 89.82, 89.89, 89.97, 90.03, 90.17, 90.24, 90.32, 90.38, 90.97, 90.98, 91.02, 91.05, 91.13, 91.22, 91.26, 91.31, 91.37, 91.42, 91.54, 91.58, 91.66, 91.72, 91.78, 91.84, 91.89, 91.9, 91.94, 91.97, 92.14, 92.17, 92.21, 92.25, 92.29, 92.36, 92.38, 92.41, 92.46, 92.5, 92.64, 92.66, 92.69, 92.76, 92.78, 92.85, 92.91, 92.95, 92.98, 93.02, 93.14, 93.17, 93.2, 93.23, 93.27, 93.33, 93.37, 93.42, 93.48, 93.52, 93.64, 93.67, 93.71, 93.72, 93.74, 93.75, 93.78, 93.79, 93.82, 93.85, 93.9, 93.92, 93.97, 93.99, 94.02, 94.04, 94.08, 94.11, 94.12, 94.16, 94.18, 94.23, 94.3, 94.33, 94.35, 94.39, 94.41, 94.43, 94.47, 94.47, 94.53, 94.54, 94.57, 94.61, 94.64, 94.67, 94.71, 94.72, 94.75, 94.78, 94.83, 94.84, 94.88, 94.91, 94.95, 94.98, 94.98, 95.0, 95.02, 95.06, 95.2], "zero_success_rate": 88.55, "n_zero": 10655, "nonzero_success_rate": 21.03, "n_nonzero": 7709}, "feature_importance_top20": [{"rank": 1, "name": "fed_funds_rate", "importance": 73.61}, {"rank": 2, "name": "order_qty_std4", "importance": 63.73}, {"rank": 3, "name": "order_qty_diff_1w", "importance": 57.14}, {"rank": 4, "name": "order_qty_lag2", "importance": 54.04}, {"rank": 5, "name": "kr_base_rate", "importance": 49.37}, {"rank": 6, "name": "revenue_qty_ma4", "importance": 43.6}, {"rank": 7, "name": "order_qty_max4", "importance": 40.96}, {"rank": 8, "name": "order_qty_ma26", "importance": 37.9}, {"rank": 9, "name": "top1_customer_pct", "importance": 35.98}, {"rank": 10, "name": "quarter", "importance": 27.84}, {"rank": 11, "name": "order_qty_ma13", "importance": 26.37}, {"rank": 12, "name": "month", "importance": 24.78}, {"rank": 13, "name": "top3_customer_pct", "importance": 19.88}, {"rank": 14, "name": "customer_hhi", "importance": 19.84}, {"rank": 15, "name": "baltic_dry_index", "importance": 18.41}, {"rank": 16, "name": "sox_index", "importance": 16.28}, {"rank": 17, "name": "eur_krw", "importance": 15.7}, {"rank": 18, "name": "ipman_index", "importance": 14.94}, {"rank": 19, "name": "cny_krw", "importance": 14.32}, {"rank": 20, "name": "kr_bsi_mfg", "importance": 13.84}], "elapsed_sec": 1.8, "params": {"alpha": 1.0}}];
+const M = [{"model_id": "lgbm_baseline", "model_label": "LightGBM 베이스라인", "model_type": "lgbm", "color": "#3b82f6", "ensemble_metrics": {"mse": 44545.02, "rmse": 211.06, "mae": 60.02, "r2": 0.6717, "mape": 1674.72}, "fold_metrics": [{"fold": 1, "val_r2": 0.2501, "val_mae": 73.48, "train_r2": 0.762, "gap": 0.5119, "best_iter": 33, "n_train": 5677, "n_val": 5674}, {"fold": 2, "val_r2": 0.2362, "val_mae": 37.87, "train_r2": 0.749, "gap": 0.5128, "best_iter": 72, "n_train": 11351, "n_val": 5674}, {"fold": 3, "val_r2": 0.0, "val_mae": 5.31, "train_r2": 0.8134, "gap": 0.8134, "best_iter": 180, "n_train": 17025, "n_val": 5674}, {"fold": 4, "val_r2": 0.5166, "val_mae": 81.41, "train_r2": 0.7145, "gap": 0.1979, "best_iter": 50, "n_train": 22699, "n_val": 5674}, {"fold": 5, "val_r2": 0.2976, "val_mae": 72.98, "train_r2": 0.6532, "gap": 0.3556, "best_iter": 33, "n_train": 28373, "n_val": 5674}], "avg_val_r2": 0.2601, "avg_gap": 0.4783, "tolerance_analysis": {"tolerance": 5, "n_total": 11221, "within_1": 134, "rate_1": 1.19, "within_5": 651, "rate_5": 5.8, "within_10": 1373, "rate_10": 12.24, "within_20": 6205, "rate_20": 55.3, "within_50": 9156, "rate_50": 81.6, "within_100": 10027, "rate_100": 89.36, "n_success": 651, "n_fail": 10570, "success_rate": 5.8, "error_mean": 60.02, "error_median": 17.66, "error_p90": 105.76, "error_p99": 761.63, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 1.19, 2.29, 3.61, 4.64, 5.8, 6.86, 8.23, 9.68, 11.1, 12.24, 13.77, 15.28, 17.13, 19.15, 44.0, 46.0, 48.1, 51.19, 53.91, 55.3, 56.49, 57.63, 58.65, 60.33, 62.1, 64.0, 65.15, 66.21, 67.18, 68.08, 68.87, 69.59, 70.25, 71.08, 71.86, 72.65, 73.31, 73.89, 74.81, 75.55, 76.85, 77.95, 78.59, 79.57, 79.93, 80.31, 80.72, 81.0, 81.29, 81.6, 81.78, 82.19, 82.49, 82.76, 83.02, 83.25, 83.41, 83.6, 83.86, 84.12, 84.32, 84.51, 84.68, 84.85, 84.98, 85.15, 85.31, 85.49, 85.62, 85.79, 86.02, 86.12, 86.26, 86.37, 86.52, 86.68, 86.74, 86.86, 87.02, 87.18, 87.31, 87.43, 87.53, 87.64, 87.76, 87.8, 87.93, 88.08, 88.21, 88.33, 88.41, 88.49, 88.57, 88.68, 88.76, 88.87, 89.0, 89.14, 89.23, 89.36, 89.4, 89.57, 89.64, 89.8, 89.94, 90.02, 90.12, 90.16, 90.29, 90.33, 90.43, 90.49, 90.55, 90.61, 90.73, 90.82, 90.91, 90.95, 91.06, 91.11, 91.16, 91.2, 91.31, 91.4, 91.46, 91.54, 91.56, 91.63, 91.7, 91.78, 91.84, 91.87, 91.92, 92.0, 92.07, 92.15, 92.22, 92.29, 92.32, 92.38, 92.42, 92.45, 92.49, 92.53, 92.55, 92.61, 92.68, 92.74, 92.76, 92.8, 92.84, 92.91, 92.95, 92.99, 93.01, 93.04, 93.09, 93.13, 93.16, 93.18, 93.24, 93.25, 93.29, 93.32, 93.37, 93.43, 93.51, 93.56, 93.61, 93.69, 93.73, 93.75, 93.77, 93.86, 93.9, 93.95, 93.96, 94.0, 94.05, 94.08, 94.1, 94.14, 94.2, 94.23, 94.27, 94.31, 94.35, 94.38, 94.41, 94.47, 94.48, 94.5, 94.54, 94.55, 94.58, 94.61, 94.64, 94.64, 94.65, 94.65], "zero_success_rate": 0.0, "n_zero": 4913, "nonzero_success_rate": 10.32, "n_nonzero": 6308}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma12", "importance": 123.0}, {"rank": 2, "name": "revenue_qty_ma3", "importance": 69.0}, {"rank": 3, "name": "order_qty_ma6", "importance": 56.0}, {"rank": 4, "name": "order_qty_ma3", "importance": 49.0}, {"rank": 5, "name": "inventory_qty", "importance": 47.0}, {"rank": 6, "name": "revenue_qty_lag1", "importance": 41.0}, {"rank": 7, "name": "book_to_bill_3m", "importance": 35.0}, {"rank": 8, "name": "inventory_months", "importance": 33.0}, {"rank": 9, "name": "order_qty_roc_6m", "importance": 29.0}, {"rank": 10, "name": "order_qty_diff_1m", "importance": 26.0}, {"rank": 11, "name": "sox_index", "importance": 25.0}, {"rank": 12, "name": "order_qty_lag1", "importance": 22.0}, {"rank": 13, "name": "order_qty_cv3", "importance": 21.0}, {"rank": 14, "name": "order_qty_lag2", "importance": 20.0}, {"rank": 15, "name": "semi_export_amt", "importance": 20.0}, {"rank": 16, "name": "customer_count_ma3", "importance": 17.0}, {"rank": 17, "name": "order_qty_max3", "importance": 17.0}, {"rank": 18, "name": "kr_bsi_mfg", "importance": 17.0}, {"rank": 19, "name": "order_amount_lag1", "importance": 17.0}, {"rank": 20, "name": "order_avg_value", "importance": 16.0}], "elapsed_sec": 2.0, "params": {"n_estimators": 1000, "max_depth": 6, "learning_rate": 0.05, "num_leaves": 31, "min_child_samples": 20, "reg_alpha": 0.1, "reg_lambda": 1.0, "colsample_bytree": 0.8, "subsample": 0.8, "subsample_freq": 1}}, {"model_id": "lgbm_strong_reg", "model_label": "LightGBM 정규화 강화", "model_type": "lgbm", "color": "#059669", "ensemble_metrics": {"mse": 53555.48, "rmse": 231.42, "mae": 60.76, "r2": 0.6052, "mape": 1575.52}, "fold_metrics": [{"fold": 1, "val_r2": 0.2507, "val_mae": 72.61, "train_r2": 0.6551, "gap": 0.4044, "best_iter": 65, "n_train": 5677, "n_val": 5674}, {"fold": 2, "val_r2": 0.3051, "val_mae": 36.59, "train_r2": 0.6174, "gap": 0.3123, "best_iter": 123, "n_train": 11351, "n_val": 5674}, {"fold": 3, "val_r2": 0.0, "val_mae": 10.46, "train_r2": 0.6165, "gap": 0.6165, "best_iter": 128, "n_train": 17025, "n_val": 5674}, {"fold": 4, "val_r2": 0.5136, "val_mae": 79.54, "train_r2": 0.621, "gap": 0.1074, "best_iter": 127, "n_train": 22699, "n_val": 5674}, {"fold": 5, "val_r2": 0.2893, "val_mae": 71.9, "train_r2": 0.5659, "gap": 0.2766, "best_iter": 58, "n_train": 28373, "n_val": 5674}], "avg_val_r2": 0.2717, "avg_gap": 0.3434, "tolerance_analysis": {"tolerance": 5, "n_total": 11221, "within_1": 143, "rate_1": 1.27, "within_5": 644, "rate_5": 5.74, "within_10": 1378, "rate_10": 12.28, "within_20": 6722, "rate_20": 59.91, "within_50": 9219, "rate_50": 82.16, "within_100": 10054, "rate_100": 89.6, "n_success": 644, "n_fail": 10577, "success_rate": 5.74, "error_mean": 60.76, "error_median": 16.83, "error_p90": 103.45, "error_p99": 821.78, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 1.27, 2.4, 3.41, 4.55, 5.74, 7.03, 8.17, 9.49, 10.97, 12.28, 13.68, 14.94, 16.51, 18.69, 23.33, 25.36, 50.88, 53.5, 56.68, 59.91, 61.83, 63.34, 64.5, 65.58, 66.42, 67.72, 69.94, 71.54, 72.47, 73.12, 73.72, 74.49, 75.06, 75.76, 76.54, 77.24, 77.85, 78.34, 78.75, 79.17, 79.57, 79.89, 80.2, 80.45, 80.75, 81.05, 81.37, 81.59, 81.87, 82.16, 82.43, 82.6, 82.83, 83.11, 83.33, 83.55, 83.73, 83.94, 84.17, 84.35, 84.52, 84.73, 84.86, 85.06, 85.25, 85.42, 85.63, 85.82, 85.92, 86.04, 86.2, 86.29, 86.45, 86.58, 86.69, 86.85, 86.98, 87.08, 87.2, 87.29, 87.48, 87.66, 87.76, 87.91, 88.03, 88.13, 88.25, 88.39, 88.49, 88.6, 88.69, 88.82, 88.91, 89.07, 89.22, 89.27, 89.35, 89.44, 89.54, 89.6, 89.7, 89.83, 89.94, 90.05, 90.2, 90.27, 90.35, 90.42, 90.49, 90.54, 90.66, 90.71, 90.84, 90.86, 90.94, 91.02, 91.07, 91.12, 91.18, 91.26, 91.31, 91.44, 91.54, 91.64, 91.69, 91.7, 91.76, 91.8, 91.85, 91.9, 91.98, 92.01, 92.05, 92.09, 92.15, 92.24, 92.31, 92.39, 92.5, 92.54, 92.6, 92.67, 92.73, 92.75, 92.79, 92.81, 92.85, 92.9, 92.92, 92.97, 93.01, 93.07, 93.11, 93.17, 93.19, 93.22, 93.23, 93.24, 93.29, 93.32, 93.34, 93.38, 93.42, 93.49, 93.55, 93.57, 93.62, 93.63, 93.68, 93.7, 93.73, 93.78, 93.82, 93.9, 93.96, 94.0, 94.04, 94.06, 94.1, 94.12, 94.15, 94.2, 94.23, 94.27, 94.3, 94.32, 94.35, 94.4, 94.41, 94.46, 94.49, 94.55, 94.56, 94.57, 94.61, 94.61, 94.64, 94.68, 94.71, 94.72], "zero_success_rate": 0.0, "n_zero": 4913, "nonzero_success_rate": 10.21, "n_nonzero": 6308}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma12", "importance": 114.0}, {"rank": 2, "name": "order_qty_ma6", "importance": 60.0}, {"rank": 3, "name": "order_qty_ma3", "importance": 49.0}, {"rank": 4, "name": "revenue_qty_ma3", "importance": 47.0}, {"rank": 5, "name": "revenue_qty_lag1", "importance": 32.0}, {"rank": 6, "name": "order_qty_lag1", "importance": 27.0}, {"rank": 7, "name": "order_qty_max3", "importance": 22.0}, {"rank": 8, "name": "book_to_bill_3m", "importance": 19.0}, {"rank": 9, "name": "semi_export_amt", "importance": 16.0}, {"rank": 10, "name": "inventory_months", "importance": 15.0}, {"rank": 11, "name": "sox_index", "importance": 15.0}, {"rank": 12, "name": "order_qty_min3", "importance": 12.0}, {"rank": 13, "name": "order_amount_lag1", "importance": 10.0}, {"rank": 14, "name": "kr_bsi_mfg", "importance": 9.0}, {"rank": 15, "name": "semi_export_roc", "importance": 8.0}, {"rank": 16, "name": "order_qty_roc_6m", "importance": 7.0}, {"rank": 17, "name": "order_qty_std6", "importance": 7.0}, {"rank": 18, "name": "order_qty_cv3", "importance": 6.0}, {"rank": 19, "name": "order_avg_value", "importance": 6.0}, {"rank": 20, "name": "month", "importance": 6.0}], "elapsed_sec": 1.9, "params": {"n_estimators": 1000, "max_depth": 4, "learning_rate": 0.03, "num_leaves": 15, "min_child_samples": 50, "reg_alpha": 1.0, "reg_lambda": 5.0, "colsample_bytree": 0.7, "subsample": 0.7, "subsample_freq": 1}}, {"model_id": "lgbm_deep", "model_label": "LightGBM 깊은 트리", "model_type": "lgbm", "color": "#7c3aed", "ensemble_metrics": {"mse": 45430.86, "rmse": 213.15, "mae": 64.0, "r2": 0.6651, "mape": 1968.24}, "fold_metrics": [{"fold": 1, "val_r2": 0.2248, "val_mae": 79.39, "train_r2": 0.7785, "gap": 0.5537, "best_iter": 26, "n_train": 5677, "n_val": 5674}, {"fold": 2, "val_r2": 0.0794, "val_mae": 64.8, "train_r2": 0.6128, "gap": 0.5334, "best_iter": 19, "n_train": 11351, "n_val": 5674}, {"fold": 3, "val_r2": 0.0, "val_mae": 4.34, "train_r2": 0.8635, "gap": 0.8635, "best_iter": 106, "n_train": 17025, "n_val": 5674}, {"fold": 4, "val_r2": 0.5398, "val_mae": 80.89, "train_r2": 0.7557, "gap": 0.2159, "best_iter": 36, "n_train": 22699, "n_val": 5674}, {"fold": 5, "val_r2": 0.2826, "val_mae": 72.33, "train_r2": 0.8138, "gap": 0.5313, "best_iter": 58, "n_train": 28373, "n_val": 5674}], "avg_val_r2": 0.2253, "avg_gap": 0.5396, "tolerance_analysis": {"tolerance": 5, "n_total": 11221, "within_1": 82, "rate_1": 0.73, "within_5": 436, "rate_5": 3.89, "within_10": 931, "rate_10": 8.3, "within_20": 2190, "rate_20": 19.52, "within_50": 9114, "rate_50": 81.22, "within_100": 10042, "rate_100": 89.49, "n_success": 436, "n_fail": 10785, "success_rate": 3.89, "error_mean": 64.0, "error_median": 23.9, "error_p90": 104.79, "error_p99": 751.58, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 0.73, 1.6, 2.4, 3.06, 3.89, 4.71, 5.5, 6.46, 7.42, 8.3, 9.3, 10.14, 11.21, 12.1, 13.16, 14.39, 15.61, 16.67, 18.05, 19.52, 21.33, 23.3, 47.9, 50.19, 52.33, 55.36, 57.52, 58.8, 59.89, 61.03, 61.96, 62.76, 63.68, 64.66, 65.43, 66.84, 67.41, 74.99, 75.55, 76.09, 76.66, 77.36, 78.03, 78.75, 79.24, 79.71, 80.19, 80.5, 80.88, 81.22, 81.6, 81.95, 82.18, 82.45, 82.74, 83.01, 83.22, 83.48, 83.69, 83.99, 84.15, 84.37, 84.6, 84.81, 85.02, 85.22, 85.38, 85.55, 85.73, 85.93, 86.12, 86.23, 86.37, 86.53, 86.6, 86.74, 86.86, 86.93, 87.05, 87.18, 87.35, 87.43, 87.54, 87.72, 87.82, 87.94, 88.07, 88.2, 88.32, 88.44, 88.53, 88.68, 88.81, 88.91, 89.01, 89.12, 89.23, 89.3, 89.39, 89.49, 89.59, 89.76, 89.85, 89.96, 90.01, 90.1, 90.21, 90.3, 90.37, 90.41, 90.52, 90.69, 90.72, 90.79, 90.83, 90.91, 90.98, 91.09, 91.19, 91.23, 91.28, 91.3, 91.43, 91.49, 91.58, 91.63, 91.68, 91.73, 91.79, 91.86, 91.93, 92.01, 92.1, 92.17, 92.24, 92.29, 92.33, 92.37, 92.43, 92.48, 92.59, 92.64, 92.67, 92.73, 92.79, 92.83, 92.87, 92.89, 92.91, 92.98, 93.02, 93.07, 93.09, 93.16, 93.22, 93.24, 93.27, 93.3, 93.35, 93.39, 93.42, 93.45, 93.49, 93.54, 93.6, 93.69, 93.74, 93.79, 93.82, 93.9, 93.9, 93.97, 93.98, 94.02, 94.06, 94.08, 94.11, 94.14, 94.16, 94.21, 94.3, 94.32, 94.35, 94.36, 94.39, 94.41, 94.41, 94.46, 94.51, 94.54, 94.57, 94.58, 94.59, 94.6, 94.64, 94.65, 94.67, 94.7, 94.72, 94.73], "zero_success_rate": 0.0, "n_zero": 4913, "nonzero_success_rate": 6.91, "n_nonzero": 6308}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma12", "importance": 184.0}, {"rank": 2, "name": "revenue_qty_ma3", "importance": 164.0}, {"rank": 3, "name": "inventory_qty", "importance": 153.0}, {"rank": 4, "name": "revenue_qty_lag1", "importance": 127.0}, {"rank": 5, "name": "book_to_bill_3m", "importance": 125.0}, {"rank": 6, "name": "order_qty_ma6", "importance": 117.0}, {"rank": 7, "name": "order_qty_diff_1m", "importance": 116.0}, {"rank": 8, "name": "order_qty_ma3", "importance": 104.0}, {"rank": 9, "name": "inventory_months", "importance": 97.0}, {"rank": 10, "name": "order_amount_lag1", "importance": 93.0}, {"rank": 11, "name": "order_qty_cv3", "importance": 93.0}, {"rank": 12, "name": "order_qty_lag1", "importance": 81.0}, {"rank": 13, "name": "order_qty_lag2", "importance": 77.0}, {"rank": 14, "name": "order_qty_roc_6m", "importance": 77.0}, {"rank": 15, "name": "order_qty_diff_3m", "importance": 71.0}, {"rank": 16, "name": "order_qty_max3", "importance": 70.0}, {"rank": 17, "name": "order_qty_std6", "importance": 68.0}, {"rank": 18, "name": "order_avg_value", "importance": 68.0}, {"rank": 19, "name": "order_qty_roc_3m", "importance": 66.0}, {"rank": 20, "name": "order_qty_lag3", "importance": 62.0}], "elapsed_sec": 2.4, "params": {"n_estimators": 1000, "max_depth": 8, "learning_rate": 0.05, "num_leaves": 63, "min_child_samples": 10, "reg_alpha": 0.05, "reg_lambda": 0.5, "colsample_bytree": 0.8, "subsample": 0.8, "subsample_freq": 1}}, {"model_id": "lgbm_conservative", "model_label": "LightGBM 보수적", "model_type": "lgbm", "color": "#0891b2", "ensemble_metrics": {"mse": 64612.86, "rmse": 254.19, "mae": 65.11, "r2": 0.5237, "mape": 1791.88}, "fold_metrics": [{"fold": 1, "val_r2": 0.2462, "val_mae": 84.14, "train_r2": 0.5038, "gap": 0.2576, "best_iter": 127, "n_train": 5677, "n_val": 5674}, {"fold": 2, "val_r2": 0.326, "val_mae": 36.2, "train_r2": 0.5116, "gap": 0.1856, "best_iter": 317, "n_train": 11351, "n_val": 5674}, {"fold": 3, "val_r2": 0.0, "val_mae": 10.44, "train_r2": 0.5407, "gap": 0.5407, "best_iter": 563, "n_train": 17025, "n_val": 5674}, {"fold": 4, "val_r2": 0.4881, "val_mae": 80.38, "train_r2": 0.5466, "gap": 0.0585, "best_iter": 562, "n_train": 22699, "n_val": 5674}, {"fold": 5, "val_r2": 0.2919, "val_mae": 72.75, "train_r2": 0.4792, "gap": 0.1873, "best_iter": 141, "n_train": 28373, "n_val": 5674}], "avg_val_r2": 0.2704, "avg_gap": 0.2459, "tolerance_analysis": {"tolerance": 5, "n_total": 11221, "within_1": 105, "rate_1": 0.94, "within_5": 520, "rate_5": 4.63, "within_10": 1108, "rate_10": 9.87, "within_20": 3035, "rate_20": 27.05, "within_50": 9209, "rate_50": 82.07, "within_100": 10077, "rate_100": 89.8, "n_success": 520, "n_fail": 10701, "success_rate": 4.63, "error_mean": 65.11, "error_median": 23.79, "error_p90": 102.03, "error_p99": 853.43, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 0.94, 1.93, 2.75, 3.67, 4.63, 5.98, 6.83, 7.81, 8.71, 9.87, 10.93, 11.86, 12.84, 14.2, 15.38, 16.97, 18.67, 22.88, 25.19, 27.05, 29.77, 32.12, 34.03, 59.29, 62.81, 67.55, 68.97, 70.09, 71.12, 72.07, 73.04, 73.79, 74.46, 75.12, 75.86, 76.59, 77.29, 78.03, 78.49, 78.99, 79.38, 79.7, 79.99, 80.36, 80.61, 80.88, 81.19, 81.4, 81.77, 82.07, 82.31, 82.45, 82.71, 82.91, 83.22, 83.49, 83.68, 83.93, 84.13, 84.37, 84.53, 84.71, 84.97, 85.14, 85.32, 85.54, 85.7, 85.87, 86.0, 86.14, 86.33, 86.47, 86.6, 86.73, 86.85, 86.99, 87.12, 87.24, 87.33, 87.44, 87.59, 87.68, 87.77, 87.9, 88.06, 88.26, 88.47, 88.57, 88.67, 88.74, 88.88, 89.02, 89.17, 89.27, 89.39, 89.47, 89.57, 89.63, 89.73, 89.8, 89.92, 89.99, 90.1, 90.14, 90.21, 90.32, 90.39, 90.53, 90.65, 90.69, 90.74, 90.85, 90.91, 91.0, 91.08, 91.18, 91.23, 91.29, 91.38, 91.47, 91.55, 91.64, 91.71, 91.77, 91.83, 91.88, 91.97, 92.03, 92.09, 92.1, 92.14, 92.18, 92.22, 92.26, 92.34, 92.4, 92.44, 92.51, 92.54, 92.6, 92.71, 92.76, 92.88, 92.91, 92.92, 92.98, 93.02, 93.08, 93.11, 93.13, 93.21, 93.27, 93.3, 93.31, 93.36, 93.38, 93.41, 93.47, 93.49, 93.52, 93.54, 93.54, 93.57, 93.61, 93.64, 93.66, 93.7, 93.75, 93.79, 93.83, 93.88, 93.9, 93.95, 93.99, 94.09, 94.12, 94.18, 94.22, 94.24, 94.28, 94.34, 94.37, 94.39, 94.41, 94.46, 94.49, 94.51, 94.53, 94.56, 94.61, 94.62, 94.63, 94.64, 94.69, 94.7, 94.74, 94.76, 94.81, 94.83, 94.83], "zero_success_rate": 0.0, "n_zero": 4913, "nonzero_success_rate": 8.24, "n_nonzero": 6308}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma12", "importance": 189.0}, {"rank": 2, "name": "order_qty_ma6", "importance": 131.0}, {"rank": 3, "name": "order_qty_ma3", "importance": 67.0}, {"rank": 4, "name": "revenue_qty_ma3", "importance": 66.0}, {"rank": 5, "name": "order_qty_lag1", "importance": 52.0}, {"rank": 6, "name": "revenue_qty_lag1", "importance": 32.0}, {"rank": 7, "name": "order_qty_max3", "importance": 24.0}, {"rank": 8, "name": "kr_bsi_mfg", "importance": 21.0}, {"rank": 9, "name": "sox_index", "importance": 16.0}, {"rank": 10, "name": "semi_export_amt", "importance": 16.0}, {"rank": 11, "name": "book_to_bill_3m", "importance": 12.0}, {"rank": 12, "name": "order_qty_min3", "importance": 10.0}, {"rank": 13, "name": "semi_trade_balance", "importance": 5.0}, {"rank": 14, "name": "order_qty_lag3", "importance": 4.0}, {"rank": 15, "name": "dram_price", "importance": 3.0}, {"rank": 16, "name": "semi_import_amt", "importance": 3.0}, {"rank": 17, "name": "month", "importance": 2.0}, {"rank": 18, "name": "semi_export_roc", "importance": 2.0}, {"rank": 19, "name": "produced_qty_lag1", "importance": 2.0}, {"rank": 20, "name": "order_amount_lag1", "importance": 2.0}], "elapsed_sec": 3.2, "params": {"n_estimators": 1000, "max_depth": 3, "learning_rate": 0.01, "num_leaves": 8, "min_child_samples": 100, "reg_alpha": 5.0, "reg_lambda": 10.0, "colsample_bytree": 0.6, "subsample": 0.6, "subsample_freq": 1}}, {"model_id": "random_forest", "model_label": "Random Forest", "model_type": "sklearn", "color": "#d97706", "ensemble_metrics": {"mse": 43725.12, "rmse": 209.11, "mae": 55.3, "r2": 0.6777, "mape": 1290.85}, "fold_metrics": [{"fold": 1, "val_r2": 0.2304, "val_mae": 64.79, "train_r2": 0.7482, "gap": 0.5177, "best_iter": null, "n_train": 5677, "n_val": 5674}, {"fold": 2, "val_r2": 0.2645, "val_mae": 33.66, "train_r2": 0.6501, "gap": 0.3855, "best_iter": null, "n_train": 11351, "n_val": 5674}, {"fold": 3, "val_r2": 0.0, "val_mae": 0.08, "train_r2": 0.6481, "gap": 0.6481, "best_iter": null, "n_train": 17025, "n_val": 5674}, {"fold": 4, "val_r2": 0.5538, "val_mae": 79.05, "train_r2": 0.6524, "gap": 0.0986, "best_iter": null, "n_train": 22699, "n_val": 5674}, {"fold": 5, "val_r2": 0.2924, "val_mae": 71.32, "train_r2": 0.6568, "gap": 0.3645, "best_iter": null, "n_train": 28373, "n_val": 5674}], "avg_val_r2": 0.2682, "avg_gap": 0.4029, "tolerance_analysis": {"tolerance": 5, "n_total": 11221, "within_1": 263, "rate_1": 2.34, "within_5": 4010, "rate_5": 35.74, "within_10": 5323, "rate_10": 47.44, "within_20": 6590, "rate_20": 58.73, "within_50": 9147, "rate_50": 81.52, "within_100": 10014, "rate_100": 89.24, "n_success": 4010, "n_fail": 7211, "success_rate": 35.74, "error_mean": 55.3, "error_median": 11.69, "error_p90": 108.49, "error_p99": 735.64, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [0.0, 2.34, 4.91, 28.04, 33.36, 35.74, 38.62, 41.49, 43.77, 45.75, 47.44, 49.05, 50.31, 51.51, 52.64, 53.84, 54.77, 55.84, 56.91, 57.87, 58.73, 59.66, 60.66, 61.38, 62.05, 62.83, 63.67, 64.46, 65.22, 65.88, 66.63, 67.46, 68.18, 68.77, 70.35, 74.29, 77.04, 77.51, 77.84, 78.34, 78.67, 78.99, 79.39, 79.73, 80.02, 80.3, 80.51, 80.74, 80.98, 81.22, 81.52, 81.78, 82.06, 82.34, 82.5, 82.69, 82.89, 83.07, 83.28, 83.45, 83.68, 83.95, 84.15, 84.39, 84.64, 84.78, 84.9, 85.12, 85.24, 85.39, 85.58, 85.71, 85.84, 86.04, 86.23, 86.36, 86.53, 86.69, 86.76, 86.85, 86.92, 87.01, 87.09, 87.21, 87.27, 87.38, 87.52, 87.68, 87.76, 87.88, 88.0, 88.13, 88.3, 88.41, 88.53, 88.62, 88.71, 88.85, 89.03, 89.19, 89.24, 89.37, 89.49, 89.58, 89.68, 89.72, 89.81, 89.88, 89.94, 90.12, 90.21, 90.28, 90.35, 90.39, 90.54, 90.59, 90.71, 90.79, 90.85, 90.92, 90.98, 91.03, 91.11, 91.2, 91.26, 91.33, 91.39, 91.46, 91.53, 91.59, 91.63, 91.67, 91.74, 91.78, 91.85, 91.88, 91.91, 91.92, 92.01, 92.1, 92.18, 92.22, 92.32, 92.35, 92.4, 92.42, 92.47, 92.52, 92.6, 92.66, 92.72, 92.75, 92.8, 92.85, 92.92, 92.95, 93.02, 93.08, 93.16, 93.21, 93.27, 93.31, 93.34, 93.37, 93.41, 93.46, 93.48, 93.5, 93.57, 93.59, 93.67, 93.73, 93.76, 93.81, 93.84, 93.89, 93.93, 93.97, 93.98, 94.0, 94.02, 94.06, 94.06, 94.14, 94.17, 94.22, 94.25, 94.29, 94.3, 94.31, 94.33, 94.39, 94.42, 94.46, 94.49, 94.51, 94.54, 94.57, 94.59, 94.61, 94.65], "zero_success_rate": 53.12, "n_zero": 4913, "nonzero_success_rate": 22.19, "n_nonzero": 6308}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma6", "importance": 0.29}, {"rank": 2, "name": "revenue_qty_ma3", "importance": 0.2}, {"rank": 3, "name": "order_qty_ma12", "importance": 0.19}, {"rank": 4, "name": "order_qty_ma3", "importance": 0.13}, {"rank": 5, "name": "revenue_qty_lag1", "importance": 0.08}, {"rank": 6, "name": "order_qty_min3", "importance": 0.01}, {"rank": 7, "name": "order_qty_lag1", "importance": 0.01}, {"rank": 8, "name": "book_to_bill_3m", "importance": 0.01}, {"rank": 9, "name": "sox_index", "importance": 0.01}, {"rank": 10, "name": "order_qty_max3", "importance": 0.01}, {"rank": 11, "name": "order_avg_value", "importance": 0.01}, {"rank": 12, "name": "order_amount_lag1", "importance": 0.0}, {"rank": 13, "name": "inventory_qty", "importance": 0.0}, {"rank": 14, "name": "kr_bsi_mfg", "importance": 0.0}, {"rank": 15, "name": "order_qty_lag2", "importance": 0.0}, {"rank": 16, "name": "semi_export_amt", "importance": 0.0}, {"rank": 17, "name": "order_qty_diff_1m", "importance": 0.0}, {"rank": 18, "name": "inventory_months", "importance": 0.0}, {"rank": 19, "name": "customer_count_ma3", "importance": 0.0}, {"rank": 20, "name": "produced_qty_ma3", "importance": 0.0}], "elapsed_sec": 21.4, "params": {"n_estimators": 200, "max_depth": 8, "min_samples_leaf": 20, "max_features": 0.8, "n_jobs": -1, "random_state": 42}}, {"model_id": "svr_linear", "model_label": "Linear SVR", "model_type": "sklearn_scaled", "color": "#dc2626", "ensemble_metrics": {"mse": 43536.38, "rmse": 208.65, "mae": 49.2, "r2": 0.6791, "mape": 678.95}, "fold_metrics": [{"fold": 1, "val_r2": 0.2269, "val_mae": 62.43, "train_r2": 0.6889, "gap": 0.4619, "best_iter": null, "n_train": 5677, "n_val": 5674}, {"fold": 2, "val_r2": 0.2862, "val_mae": 21.03, "train_r2": 0.5549, "gap": 0.2687, "best_iter": null, "n_train": 11351, "n_val": 5674}, {"fold": 3, "val_r2": 0.0, "val_mae": 0.57, "train_r2": 0.5424, "gap": 0.5424, "best_iter": null, "n_train": 17025, "n_val": 5674}, {"fold": 4, "val_r2": 0.5377, "val_mae": 70.73, "train_r2": 0.5481, "gap": 0.0103, "best_iter": null, "n_train": 22699, "n_val": 5674}, {"fold": 5, "val_r2": 0.3372, "val_mae": 65.72, "train_r2": 0.5446, "gap": 0.2074, "best_iter": null, "n_train": 28373, "n_val": 5674}], "avg_val_r2": 0.2776, "avg_gap": 0.2981, "tolerance_analysis": {"tolerance": 5, "n_total": 11221, "within_1": 2279, "rate_1": 20.31, "within_5": 5365, "rate_5": 47.81, "within_10": 6511, "rate_10": 58.03, "within_20": 7785, "rate_20": 69.38, "within_50": 9319, "rate_50": 83.05, "within_100": 10164, "rate_100": 90.58, "n_success": 5365, "n_fail": 5856, "success_rate": 47.81, "error_mean": 49.2, "error_median": 5.87, "error_p90": 95.2, "error_p99": 724.17, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [11.14, 20.31, 29.47, 40.23, 44.86, 47.81, 50.45, 52.21, 54.42, 56.37, 58.03, 59.38, 60.57, 61.95, 63.2, 64.5, 65.47, 66.34, 67.46, 68.59, 69.38, 69.99, 70.76, 71.53, 72.13, 72.84, 73.5, 74.16, 74.73, 75.25, 76.01, 76.54, 76.95, 77.27, 77.72, 78.02, 78.42, 78.8, 79.11, 79.54, 79.95, 80.29, 80.64, 80.94, 81.32, 81.63, 81.96, 82.29, 82.63, 82.84, 83.05, 83.32, 83.57, 83.8, 84.04, 84.28, 84.44, 84.6, 84.79, 84.92, 85.1, 85.23, 85.46, 85.66, 85.81, 85.98, 86.11, 86.35, 86.52, 86.67, 86.83, 87.01, 87.16, 87.35, 87.48, 87.57, 87.77, 87.91, 88.05, 88.14, 88.26, 88.34, 88.47, 88.58, 88.7, 88.8, 88.94, 89.04, 89.16, 89.29, 89.36, 89.44, 89.61, 89.74, 89.83, 89.98, 90.18, 90.3, 90.42, 90.5, 90.58, 90.64, 90.67, 90.74, 90.84, 90.89, 90.97, 91.01, 91.05, 91.08, 91.14, 91.21, 91.28, 91.39, 91.43, 91.56, 91.61, 91.67, 91.78, 91.81, 91.87, 91.95, 92.03, 92.08, 92.16, 92.29, 92.29, 92.32, 92.35, 92.4, 92.46, 92.51, 92.54, 92.59, 92.68, 92.7, 92.75, 92.76, 92.81, 92.83, 92.86, 92.91, 92.97, 93.05, 93.09, 93.16, 93.2, 93.24, 93.3, 93.36, 93.43, 93.48, 93.48, 93.51, 93.57, 93.63, 93.73, 93.77, 93.8, 93.82, 93.86, 93.9, 93.96, 93.98, 93.99, 94.03, 94.06, 94.11, 94.14, 94.16, 94.2, 94.28, 94.31, 94.37, 94.4, 94.44, 94.49, 94.55, 94.57, 94.61, 94.66, 94.68, 94.68, 94.7, 94.72, 94.76, 94.78, 94.8, 94.81, 94.84, 94.86, 94.88, 94.91, 94.93, 94.95, 94.96, 94.98, 95.01, 95.05, 95.08, 95.09], "zero_success_rate": 79.32, "n_zero": 4913, "nonzero_success_rate": 23.27, "n_nonzero": 6308}, "feature_importance_top20": [{"rank": 1, "name": "revenue_qty_ma3", "importance": 83.23}, {"rank": 2, "name": "order_qty_ma12", "importance": 55.0}, {"rank": 3, "name": "order_qty_std3", "importance": 34.98}, {"rank": 4, "name": "order_qty_lag2", "importance": 34.72}, {"rank": 5, "name": "order_qty_ma6", "importance": 33.66}, {"rank": 6, "name": "order_qty_lag1", "importance": 31.83}, {"rank": 7, "name": "order_qty_std6", "importance": 27.95}, {"rank": 8, "name": "revenue_qty_lag1", "importance": 25.66}, {"rank": 9, "name": "order_qty_diff_1m", "importance": 19.25}, {"rank": 10, "name": "order_qty_lag3", "importance": 17.34}, {"rank": 11, "name": "order_qty_lag12", "importance": 13.66}, {"rank": 12, "name": "order_qty_min3", "importance": 11.83}, {"rank": 13, "name": "order_qty_max3", "importance": 10.22}, {"rank": 14, "name": "order_qty_lag6", "importance": 8.41}, {"rank": 15, "name": "kr_base_rate", "importance": 7.34}, {"rank": 16, "name": "order_qty_ma3", "importance": 7.21}, {"rank": 17, "name": "fed_funds_rate", "importance": 6.74}, {"rank": 18, "name": "nand_price", "importance": 3.54}, {"rank": 19, "name": "silicon_wafer_price", "importance": 3.54}, {"rank": 20, "name": "dram_price", "importance": 2.9}], "elapsed_sec": 6.6, "params": {"C": 1.0, "epsilon": 0.1, "max_iter": 20000, "dual": "auto", "random_state": 42}}, {"model_id": "ridge", "model_label": "Ridge Regression", "model_type": "sklearn_scaled", "color": "#64748b", "ensemble_metrics": {"mse": 41942.5, "rmse": 204.8, "mae": 54.3, "r2": 0.6908, "mape": 966.02}, "fold_metrics": [{"fold": 1, "val_r2": 0.1144, "val_mae": 76.32, "train_r2": 0.7465, "gap": 0.6321, "best_iter": null, "n_train": 5677, "n_val": 5674}, {"fold": 2, "val_r2": 0.2267, "val_mae": 26.96, "train_r2": 0.5866, "gap": 0.3599, "best_iter": null, "n_train": 11351, "n_val": 5674}, {"fold": 3, "val_r2": 0.0, "val_mae": 10.27, "train_r2": 0.5711, "gap": 0.5711, "best_iter": null, "n_train": 17025, "n_val": 5674}, {"fold": 4, "val_r2": 0.5332, "val_mae": 83.28, "train_r2": 0.5743, "gap": 0.0411, "best_iter": null, "n_train": 22699, "n_val": 5674}, {"fold": 5, "val_r2": 0.3311, "val_mae": 72.77, "train_r2": 0.5695, "gap": 0.2384, "best_iter": null, "n_train": 28373, "n_val": 5674}], "avg_val_r2": 0.2411, "avg_gap": 0.3685, "tolerance_analysis": {"tolerance": 5, "n_total": 11221, "within_1": 1506, "rate_1": 13.42, "within_5": 3101, "rate_5": 27.64, "within_10": 5080, "rate_10": 45.27, "within_20": 7152, "rate_20": 63.74, "within_50": 9048, "rate_50": 80.63, "within_100": 10054, "rate_100": 89.6, "n_success": 3101, "n_fail": 8120, "success_rate": 27.64, "error_mean": 54.3, "error_median": 13.01, "error_p90": 104.63, "error_p99": 725.75, "cumulative_x": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200], "cumulative_y": [10.69, 13.42, 19.3, 23.35, 25.59, 27.64, 29.36, 30.85, 33.19, 42.87, 45.27, 47.0, 48.31, 50.0, 55.76, 57.45, 58.84, 60.0, 61.31, 62.45, 63.74, 64.89, 65.85, 66.83, 67.75, 68.66, 69.35, 70.22, 71.08, 71.76, 72.42, 72.95, 73.48, 74.0, 74.53, 75.06, 75.54, 75.99, 76.45, 76.89, 77.31, 77.7, 77.99, 78.33, 78.62, 78.85, 79.28, 79.75, 79.97, 80.32, 80.63, 80.91, 81.29, 81.58, 81.76, 81.95, 82.28, 82.54, 82.78, 83.01, 83.25, 83.41, 83.67, 83.87, 84.07, 84.28, 84.48, 84.66, 84.84, 85.06, 85.28, 85.5, 85.75, 85.95, 86.12, 86.32, 86.41, 86.59, 86.75, 86.88, 87.02, 87.22, 87.31, 87.43, 87.55, 87.68, 87.85, 88.06, 88.16, 88.31, 88.41, 88.55, 88.66, 88.75, 88.87, 88.99, 89.14, 89.26, 89.39, 89.48, 89.6, 89.7, 89.77, 89.87, 89.93, 90.03, 90.14, 90.24, 90.33, 90.38, 90.51, 90.58, 90.62, 90.68, 90.78, 90.83, 90.92, 91.01, 91.06, 91.13, 91.2, 91.27, 91.35, 91.41, 91.52, 91.6, 91.68, 91.71, 91.76, 91.78, 91.83, 91.87, 91.93, 92.01, 92.03, 92.08, 92.12, 92.22, 92.25, 92.33, 92.37, 92.42, 92.45, 92.51, 92.55, 92.6, 92.67, 92.76, 92.81, 92.84, 92.87, 92.93, 92.98, 93.03, 93.09, 93.14, 93.17, 93.24, 93.28, 93.33, 93.37, 93.43, 93.46, 93.5, 93.53, 93.58, 93.64, 93.67, 93.73, 93.73, 93.76, 93.79, 93.83, 93.89, 93.92, 93.98, 94.02, 94.06, 94.12, 94.14, 94.17, 94.18, 94.23, 94.25, 94.29, 94.34, 94.35, 94.37, 94.42, 94.43, 94.44, 94.47, 94.48, 94.49, 94.55, 94.58, 94.6, 94.64, 94.65, 94.66, 94.66], "zero_success_rate": 42.54, "n_zero": 4913, "nonzero_success_rate": 16.03, "n_nonzero": 6308}, "feature_importance_top20": [{"rank": 1, "name": "order_qty_ma3", "importance": 283.45}, {"rank": 2, "name": "order_qty_max3", "importance": 242.02}, {"rank": 3, "name": "order_qty_std3", "importance": 211.57}, {"rank": 4, "name": "order_qty_lag1", "importance": 211.28}, {"rank": 5, "name": "order_qty_min3", "importance": 166.13}, {"rank": 6, "name": "order_qty_diff_1m", "importance": 147.05}, {"rank": 7, "name": "revenue_qty_ma3", "importance": 102.85}, {"rank": 8, "name": "order_qty_lag2", "importance": 102.15}, {"rank": 9, "name": "order_qty_lag3", "importance": 78.54}, {"rank": 10, "name": "fed_funds_rate", "importance": 58.88}, {"rank": 11, "name": "kr_base_rate", "importance": 40.61}, {"rank": 12, "name": "order_qty_ma12", "importance": 39.69}, {"rank": 13, "name": "nand_price", "importance": 38.72}, {"rank": 14, "name": "top3_customer_pct", "importance": 37.37}, {"rank": 15, "name": "revenue_qty_lag1", "importance": 32.39}, {"rank": 16, "name": "dram_price", "importance": 31.56}, {"rank": 17, "name": "order_qty_lag12", "importance": 30.33}, {"rank": 18, "name": "order_qty_std6", "importance": 30.2}, {"rank": 19, "name": "cny_krw", "importance": 28.97}, {"rank": 20, "name": "ipman_index", "importance": 24.01}], "elapsed_sec": 0.8, "params": {"alpha": 1.0}}];
+const labels = W.map(r => r.model_label);
+const colors = W.map(r => r.color);
+
+// 종합 비교 차트
+Plotly.newPlot('chart_r2', [
+  { type:'bar', name:'주간 R²', x: labels, y: W.map(r=>r.ensemble_metrics.r2*100),
+     marker:{ color: colors.map(c=>c+'aa'), cornerradius:4 },
+     text: W.map(r=>(r.ensemble_metrics.r2*100).toFixed(1)+'%'), textposition:'outside' },
+  { type:'bar', name:'월간 R²', x: labels, y: M.map(r=>r.ensemble_metrics.r2*100),
+     marker:{ color: colors, cornerradius:4 },
+     text: M.map(r=>(r.ensemble_metrics.r2*100).toFixed(1)+'%'), textposition:'outside' }
+], {
+  title: '<b>모델별 R² 비교</b>', barmode:'group', height:380,
+  margin:{t:50,b:120,l:50,r:20}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  yaxis:{ gridcolor:'#f1f5f9', title:'R² (%)' }, xaxis:{ tickangle:-25 },
+  legend:{ orientation:'h', y:1.12 }, font:{ family:'Pretendard,sans-serif', size:12 }
+}, {responsive:true, displayModeBar:false});
+
+Plotly.newPlot('chart_mae', [
+  { type:'bar', name:'주간 MAE', x: labels, y: W.map(r=>r.ensemble_metrics.mae),
+     marker:{ color: colors.map(c=>c+'aa'), cornerradius:4 },
+     text: W.map(r=>r.ensemble_metrics.mae.toFixed(1)), textposition:'outside' },
+  { type:'bar', name:'월간 MAE', x: labels, y: M.map(r=>r.ensemble_metrics.mae),
+     marker:{ color: colors, cornerradius:4 },
+     text: M.map(r=>r.ensemble_metrics.mae.toFixed(1)), textposition:'outside' }
+], {
+  title: '<b>모델별 MAE 비교</b> (낮을수록 좋음)', barmode:'group', height:380,
+  margin:{t:50,b:120,l:50,r:20}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  yaxis:{ gridcolor:'#f1f5f9', title:'MAE (개)' }, xaxis:{ tickangle:-25 },
+  legend:{ orientation:'h', y:1.12 }, font:{ family:'Pretendard,sans-serif', size:12 }
+}, {responsive:true, displayModeBar:false});
+
+Plotly.newPlot('chart_success', [
+  { type:'bar', name:'주간', x: labels, y: W.map(r=>r.tolerance_analysis.success_rate),
+     marker:{ color: colors.map(c=>c+'aa'), cornerradius:4 },
+     text: W.map(r=>r.tolerance_analysis.success_rate.toFixed(1)+'%'), textposition:'outside' },
+  { type:'bar', name:'월간', x: labels, y: M.map(r=>r.tolerance_analysis.success_rate),
+     marker:{ color: colors, cornerradius:4 },
+     text: M.map(r=>r.tolerance_analysis.success_rate.toFixed(1)+'%'), textposition:'outside' }
+], {
+  title: '<b>±5 허용 오차 성공률</b>', barmode:'group', height:380,
+  margin:{t:50,b:120,l:50,r:20}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  yaxis:{ gridcolor:'#f1f5f9', title:'성공률 (%)', range:[0,100] }, xaxis:{ tickangle:-25 },
+  legend:{ orientation:'h', y:1.12 }, font:{ family:'Pretendard,sans-serif', size:12 }
+}, {responsive:true, displayModeBar:false});
+
+Plotly.newPlot('chart_gap', [
+  { type:'bar', name:'주간 Gap', x: labels, y: W.map(r=>r.avg_gap),
+     marker:{ color: colors.map(c=>c+'aa'), cornerradius:4 } },
+  { type:'bar', name:'월간 Gap', x: labels, y: M.map(r=>r.avg_gap),
+     marker:{ color: colors, cornerradius:4 } }
+], {
+  title: '<b>과적합 Gap (Train-Val R² 차이)</b> (0에 가까울수록 좋음)', barmode:'group', height:380,
+  margin:{t:50,b:120,l:50,r:20}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  yaxis:{ gridcolor:'#f1f5f9', title:'Avg Gap' }, xaxis:{ tickangle:-25 },
+  legend:{ orientation:'h', y:1.12 }, font:{ family:'Pretendard,sans-serif', size:12 }
+}, {responsive:true, displayModeBar:false});
+
+// 누적 정확도 곡선
+const cumTracesW = W.map(r => ({
+  type:'scatter', mode:'lines', name:r.model_label,
+  x: r.tolerance_analysis.cumulative_x, y: r.tolerance_analysis.cumulative_y,
+  line: { color: r.color, width: 2 }
+}));
+cumTracesW.push({ type:'scatter', mode:'lines', name:'±5 기준선',
+  x:[5,5], y:[0,100], line:{color:'#ef4444',dash:'dash',width:1}, showlegend:true });
+Plotly.newPlot('chart_cum_w', cumTracesW, {
+  title:'<b>주간 — 누적 정확도 곡선</b><br><span style="font-size:11px;color:#64748b">X축: 허용 오차 범위, Y축: 해당 오차 이내 예측 비율</span>',
+  height:380, margin:{t:60,b:40,l:50,r:20}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  xaxis:{ title:'허용 오차 (개)', gridcolor:'#f1f5f9', range:[0,100] },
+  yaxis:{ title:'성공률 (%)', gridcolor:'#f1f5f9', range:[0,100] },
+  legend:{ font:{size:10} }, font:{ family:'Pretendard,sans-serif', size:12 }
+}, {responsive:true, displayModeBar:false});
+
+const cumTracesM = M.map(r => ({
+  type:'scatter', mode:'lines', name:r.model_label,
+  x: r.tolerance_analysis.cumulative_x, y: r.tolerance_analysis.cumulative_y,
+  line: { color: r.color, width: 2 }
+}));
+cumTracesM.push({ type:'scatter', mode:'lines', name:'±5 기준선',
+  x:[5,5], y:[0,100], line:{color:'#ef4444',dash:'dash',width:1}, showlegend:true });
+Plotly.newPlot('chart_cum_m', cumTracesM, {
+  title:'<b>월간 — 누적 정확도 곡선</b><br><span style="font-size:11px;color:#64748b">X축: 허용 오차 범위, Y축: 해당 오차 이내 예측 비율</span>',
+  height:380, margin:{t:60,b:40,l:50,r:20}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  xaxis:{ title:'허용 오차 (개)', gridcolor:'#f1f5f9', range:[0,100] },
+  yaxis:{ title:'성공률 (%)', gridcolor:'#f1f5f9', range:[0,100] },
+  legend:{ font:{size:10} }, font:{ family:'Pretendard,sans-serif', size:12 }
+}, {responsive:true, displayModeBar:false});
+
+// 밴드별 성공률 비교 (최고 모델)
+const bestW = W.reduce((a,b) => a.ensemble_metrics.r2>b.ensemble_metrics.r2?a:b);
+const bestM = M.reduce((a,b) => a.ensemble_metrics.r2>b.ensemble_metrics.r2?a:b);
+const bands = ['±1','±5','±10','±20','±50','±100'];
+Plotly.newPlot('chart_band_compare', [
+  { type:'bar', name:'주간 ('+bestW.model_label+')', x:bands,
+     y:[bestW.tolerance_analysis.rate_1,bestW.tolerance_analysis.rate_5,bestW.tolerance_analysis.rate_10,
+        bestW.tolerance_analysis.rate_20,bestW.tolerance_analysis.rate_50,bestW.tolerance_analysis.rate_100],
+     marker:{color:'#3b82f6aa',cornerradius:4},
+     text:[bestW.tolerance_analysis.rate_1,bestW.tolerance_analysis.rate_5,bestW.tolerance_analysis.rate_10,
+           bestW.tolerance_analysis.rate_20,bestW.tolerance_analysis.rate_50,bestW.tolerance_analysis.rate_100].map(v=>v.toFixed(1)+'%'),
+     textposition:'outside' },
+  { type:'bar', name:'월간 ('+bestM.model_label+')', x:bands,
+     y:[bestM.tolerance_analysis.rate_1,bestM.tolerance_analysis.rate_5,bestM.tolerance_analysis.rate_10,
+        bestM.tolerance_analysis.rate_20,bestM.tolerance_analysis.rate_50,bestM.tolerance_analysis.rate_100],
+     marker:{color:'#059669',cornerradius:4},
+     text:[bestM.tolerance_analysis.rate_1,bestM.tolerance_analysis.rate_5,bestM.tolerance_analysis.rate_10,
+           bestM.tolerance_analysis.rate_20,bestM.tolerance_analysis.rate_50,bestM.tolerance_analysis.rate_100].map(v=>v.toFixed(1)+'%'),
+     textposition:'outside' }
+], {
+  title:'<b>최적 모델 — 허용 오차 구간별 성공률</b>',
+  barmode:'group', height:380,
+  margin:{t:50,b:50,l:50,r:20}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  yaxis:{ title:'성공률 (%)', gridcolor:'#f1f5f9', range:[0,110] },
+  font:{ family:'Pretendard,sans-serif', size:12 }
+}, {responsive:true, displayModeBar:false});
+
+// Feature Importance (주간 — 최고 모델)
+if (bestW.feature_importance_top20 && bestW.feature_importance_top20.length > 0) {
+  const fi = bestW.feature_importance_top20.slice().reverse();
+  Plotly.newPlot('chart_fi_w', [{
+    type:'bar', orientation:'h',
+    y: fi.map(f=>f.name), x: fi.map(f=>f.importance),
+    marker:{ color:'#3b82f6', cornerradius:4 },
+    text: fi.map(f=>f.importance.toFixed(0)), textposition:'outside'
+  }], {
+    title:'<b>주간 Feature Importance TOP 20 ('+bestW.model_label+')</b>',
+    height:500, margin:{t:50,b:30,l:200,r:60},
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    xaxis:{ gridcolor:'#f1f5f9' }, font:{ family:'Pretendard,sans-serif', size:11 }
+  }, {responsive:true, displayModeBar:false});
+}
+
+if (bestM.feature_importance_top20 && bestM.feature_importance_top20.length > 0) {
+  const fi = bestM.feature_importance_top20.slice().reverse();
+  Plotly.newPlot('chart_fi_m', [{
+    type:'bar', orientation:'h',
+    y: fi.map(f=>f.name), x: fi.map(f=>f.importance),
+    marker:{ color:'#059669', cornerradius:4 },
+    text: fi.map(f=>f.importance.toFixed(0)), textposition:'outside'
+  }], {
+    title:'<b>월간 Feature Importance TOP 20 ('+bestM.model_label+')</b>',
+    height:500, margin:{t:50,b:30,l:200,r:60},
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    xaxis:{ gridcolor:'#f1f5f9' }, font:{ family:'Pretendard,sans-serif', size:11 }
+  }, {responsive:true, displayModeBar:false});
+}
+
+</script>
+</body>
+</html>

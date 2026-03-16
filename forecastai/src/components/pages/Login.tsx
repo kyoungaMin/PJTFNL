@@ -1,32 +1,136 @@
 'use client'
-import React, { useState } from 'react'
-import { ALL_MEMBERS, LOGIN_ACCOUNTS, type Member } from '@/lib/data'
+import React, { useState, useEffect } from 'react'
+import { type Member, type RoleType } from '@/lib/data'
+import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
-export default function LoginPage({ onLogin }) {
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [error,    setError]    = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [showPw,   setShowPw]   = useState(false);
+// ─── 비밀번호 재설정 요청 ─────────────────────────────────────────────────────
+async function sendPasswordReset(email: string): Promise<{ ok: boolean; msg: string }> {
+  if (!email) return { ok: false, msg: '이메일을 입력해 주세요.' }
+  const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/reset-password',
+  })
+  if (error) return { ok: false, msg: error.message }
+  return { ok: true, msg: '비밀번호 변경 링크를 이메일로 발송했습니다. 메일함을 확인해 주세요.' }
+}
 
-  const handleLogin = () => {
-    if (!email || !password) { setError("이메일과 비밀번호를 입력해 주세요."); return; }
-    setLoading(true);
-    setError("");
-    setTimeout(() => {
-      const account = LOGIN_ACCOUNTS.find(a => a.email === email && a.password === password);
-      if (account) {
-        onLogin(account.member);
-      } else {
-        setError("이메일 또는 비밀번호가 올바르지 않습니다.");
-        setLoading(false);
+// ─── role 첫 글자 대문자 변환 (DB: 'admin' → Member: 'Admin') ───────────────
+function toRoleType(role: string): RoleType {
+  const map: Record<string, RoleType> = {
+    admin: 'Admin', manager: 'Manager', analyst: 'Analyst', viewer: 'Viewer',
+  }
+  return map[role.toLowerCase()] ?? 'Viewer'
+}
+
+// ─── role별 아바타 그라데이션 색상 ─────────────────────────────────────────────
+const ROLE_GRAD: Record<RoleType, string> = {
+  Admin:   'linear-gradient(135deg,#7C3AED,#EC4899)',
+  Manager: 'linear-gradient(135deg,#3B82F6,#7C3AED)',
+  Analyst: 'linear-gradient(135deg,#10B981,#059669)',
+  Viewer:  'linear-gradient(135deg,#64748B,#94A3B8)',
+}
+
+export default function LoginPage({ onLogin }: { onLogin: (member: Member) => void }) {
+  const [email,    setEmail]    = useState("")
+  const [password, setPassword] = useState("")
+  const [error,    setError]    = useState("")
+  const [loading,  setLoading]  = useState(false)
+  const [showPw,   setShowPw]   = useState(false)
+
+  // 비밀번호 변경 모달
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetEmail, setResetEmail] = useState("")
+  const [resetMsg,   setResetMsg]   = useState("")
+  const [resetLoading, setResetLoading] = useState(false)
+
+  // DB에서 테스트 계정 목록 동적으로 가져오기
+  const [quickAccounts, setQuickAccounts] = useState<{ email: string; name: string; role: string }[]>([])
+
+  useEffect(() => {
+    fetch('/api/quick-accounts')
+      .then(r => r.json())
+      .then((data: { email: string; name: string; role: string }[]) => {
+        if (Array.isArray(data) && data.length > 0) setQuickAccounts(data)
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleReset = async () => {
+    setResetLoading(true)
+    const result = await sendPasswordReset(resetEmail)
+    setResetMsg(result.msg)
+    setResetLoading(false)
+  }
+
+  const handleLogin = async () => {
+    if (!email || !password) { setError("이메일과 비밀번호를 입력해 주세요."); return }
+    setLoading(true)
+    setError("")
+
+    // 1) Supabase Auth 로그인
+    const { data: authData, error: authError } = await supabaseBrowser.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (authError || !authData.user) {
+      setError("이메일 또는 비밀번호가 올바르지 않습니다.")
+      setLoading(false)
+      return
+    }
+
+    // 2) /api/me 서버 API로 프로필 조회 (service role key가 RLS 우회)
+    let member: Member | null = null
+
+    try {
+      const res = await fetch('/api/me', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: authData.session?.access_token }),
+      })
+
+      if (res.ok) {
+        const profile = await res.json()
+        const role = toRoleType(profile.role ?? 'viewer')
+        const name = profile.display_name ?? email.split('@')[0]
+        member = {
+          id:      authData.user?.id ?? '',
+          name,
+          role,
+          dept:    profile.department ?? '',
+          email:   profile.email ?? email,
+          grad:    ROLE_GRAD[role],
+          initial: name.charAt(0) || '?',
+          orgId:   profile.org_id ?? 'default',
+        }
       }
-    }, 800);
-  };
+    } catch { /* DB 프로필 조회 실패 → LOCAL fallback */ }
 
-  const handleKeyDown = (e) => { if (e.key === "Enter") handleLogin(); };
+    // 3) DB 프로필 없으면 이메일 기반 Viewer 계정으로 fallback
+    if (!member) {
+      const name = email.split('@')[0]
+      member = {
+        id:      authData.user?.id ?? '',
+        name,
+        role:    'Viewer',
+        dept:    '',
+        email,
+        grad:    ROLE_GRAD['Viewer'],
+        initial: name.charAt(0) || '?',
+        orgId:   'default',
+      }
+    }
 
-  const quickLogin = (acc) => { setEmail(acc.email); setPassword(acc.password); };
+    sessionStorage.setItem('session_active', '1')
+    onLogin(member)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleLogin() }
+
+  // 빠른 로그인: 폼에 이메일/비밀번호를 자동으로 채워줌
+  const quickLogin = (acc: { email: string; password: string }) => {
+    setEmail(acc.email)
+    setPassword(acc.password)
+  }
 
   return (
     <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0F172A 0%,#1B2B4B 50%,#0F172A 100%)", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Pretendard','Noto Sans KR','Apple SD Gothic Neo',sans-serif", position:"relative", overflow:"hidden" }}>
@@ -60,8 +164,8 @@ export default function LoginPage({ onLogin }) {
               type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={handleKeyDown}
               placeholder="name@company.com"
               style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.10)", borderRadius:10, padding:"12px 14px", fontSize:13, color:"#F1F5F9", outline:"none", boxSizing:"border-box", transition:"border 0.15s" }}
-              onFocus={e=>e.target.style.border="1px solid #3B82F6"}
-              onBlur={e=>e.target.style.border="1px solid rgba(255,255,255,0.10)"}
+              onFocus={e=>(e.target.style.border="1px solid #3B82F6")}
+              onBlur={e=>(e.target.style.border="1px solid rgba(255,255,255,0.10)")}
             />
           </div>
 
@@ -73,8 +177,8 @@ export default function LoginPage({ onLogin }) {
                 type={showPw?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={handleKeyDown}
                 placeholder="비밀번호를 입력하세요"
                 style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.10)", borderRadius:10, padding:"12px 40px 12px 14px", fontSize:13, color:"#F1F5F9", outline:"none", boxSizing:"border-box", transition:"border 0.15s" }}
-                onFocus={e=>e.target.style.border="1px solid #3B82F6"}
-                onBlur={e=>e.target.style.border="1px solid rgba(255,255,255,0.10)"}
+                onFocus={e=>(e.target.style.border="1px solid #3B82F6")}
+                onBlur={e=>(e.target.style.border="1px solid rgba(255,255,255,0.10)")}
               />
               <button onClick={()=>setShowPw(p=>!p)}
                 style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:15, color:"#64748B", padding:0, lineHeight:1 }}>
@@ -101,28 +205,76 @@ export default function LoginPage({ onLogin }) {
             ) : "로그인"}
           </button>
 
+          {/* 비밀번호 변경 링크 */}
+          <div style={{ textAlign:'right', marginTop:10 }}>
+            <button onClick={() => { setResetOpen(true); setResetMsg(''); setResetEmail(email) }}
+              style={{ fontSize:12, color:'#64748B', background:'none', border:'none', cursor:'pointer', textDecoration:'underline' }}>
+              비밀번호 변경
+            </button>
+          </div>
+
           <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
         </div>
 
-        {/* Quick login hint */}
-        <div style={{ marginTop:20, padding:"16px 20px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:12 }}>
-          <div style={{ fontSize:11, fontWeight:600, color:"#475569", marginBottom:10, letterSpacing:"0.04em" }}>테스트 계정 (비밀번호: 1234)</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {LOGIN_ACCOUNTS.map((acc,i)=>(
-              <button key={i} onClick={()=>quickLogin(acc)}
-                style={{ fontSize:11, color:"#94A3B8", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:6, padding:"4px 10px", cursor:"pointer", transition:"all 0.15s" }}
-                onMouseEnter={e=>{ e.target.style.background="rgba(37,99,235,0.15)"; e.target.style.color="#93C5FD"; }}
-                onMouseLeave={e=>{ e.target.style.background="rgba(255,255,255,0.05)"; e.target.style.color="#94A3B8"; }}>
-                {acc.member.name} ({acc.member.role})
+      {/* ── 비밀번호 변경 모달 ── */}
+      {resetOpen && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={() => setResetOpen(false)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:'#1E293B', border:'1px solid rgba(255,255,255,0.12)', borderRadius:16, padding:'28px 28px', width:360, boxShadow:'0 20px 48px rgba(0,0,0,0.5)' }}>
+            <div style={{ fontSize:15, fontWeight:700, color:'#F1F5F9', marginBottom:6 }}>비밀번호 변경</div>
+            <div style={{ fontSize:12, color:'#64748B', marginBottom:20 }}>
+              가입한 이메일을 입력하면 비밀번호 변경 링크를 보내드립니다.
+            </div>
+            <input
+              type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)}
+              placeholder="name@company.com"
+              style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:9, padding:'11px 13px', fontSize:13, color:'#F1F5F9', outline:'none', boxSizing:'border-box', marginBottom:14 }}
+            />
+            {resetMsg && (
+              <div style={{ fontSize:12, marginBottom:14, padding:'9px 12px', borderRadius:7,
+                background: resetMsg.startsWith('비밀번호') ? 'rgba(5,150,105,0.15)' : 'rgba(220,38,38,0.15)',
+                color:      resetMsg.startsWith('비밀번호') ? '#6EE7B7' : '#FCA5A5',
+                border:     `1px solid ${resetMsg.startsWith('비밀번호') ? 'rgba(5,150,105,0.3)' : 'rgba(220,38,38,0.3)'}`,
+              }}>
+                {resetMsg}
+              </div>
+            )}
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setResetOpen(false)}
+                style={{ flex:1, padding:'10px 0', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.10)', borderRadius:9, fontSize:13, color:'#94A3B8', cursor:'pointer' }}>
+                취소
               </button>
-            ))}
+              <button onClick={handleReset} disabled={resetLoading}
+                style={{ flex:2, padding:'10px 0', background:'linear-gradient(135deg,#2563EB,#3B82F6)', border:'none', borderRadius:9, fontSize:13, fontWeight:700, color:'white', cursor:resetLoading?'not-allowed':'pointer', opacity:resetLoading?0.6:1 }}>
+                {resetLoading ? '발송 중…' : '변경 링크 발송'}
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+        {/* 빠른 로그인 — DB 등록 계정 자동완성용 */}
+        {quickAccounts.length > 0 && (
+          <div style={{ marginTop:20, padding:"16px 20px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:12 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:"#475569", marginBottom:10, letterSpacing:"0.04em" }}>등록 계정 (비밀번호: 1234)</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {quickAccounts.map((acc, i) => (
+                <button key={i} onClick={() => quickLogin({ email: acc.email, password: '1234' })}
+                  style={{ fontSize:11, color:"#94A3B8", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:6, padding:"4px 10px", cursor:"pointer", transition:"all 0.15s" }}
+                  onMouseEnter={e=>{ (e.target as HTMLButtonElement).style.background="rgba(37,99,235,0.15)"; (e.target as HTMLButtonElement).style.color="#93C5FD" }}
+                  onMouseLeave={e=>{ (e.target as HTMLButtonElement).style.background="rgba(255,255,255,0.05)"; (e.target as HTMLButtonElement).style.color="#94A3B8" }}>
+                  {acc.name} ({acc.role})
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ textAlign:"center", marginTop:20, fontSize:11, color:"#334155" }}>
-          © 2025 ForecastAI · Anthropic 기반
+          Copyright © 2026 ICA 1 Team. All rights reserved.
         </div>
       </div>
     </div>
-  );
+  )
 }

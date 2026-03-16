@@ -65,7 +65,7 @@
 |------|------|
 | **예측 단위** | 고객사별, 제품별, 주차별/월별 선택 |
 | **예측 범위** | 주간: 1w/2w/4w (최대 28일) / 월간: 1m/3m/6m (최대 180일) |
-| **예측 모델** | LightGBM Quantile Regression (주간 46피처, 월간 35피처) |
+| **예측 모델** | LightGBM Quantile + Ridge + SVR Linear (멀티 모델, 주간 69피처 (v4: 74피처), 월간 35피처) |
 | **출력** | P10(낙관) / P50(중앙) / P90(비관) 밴드 |
 
 ```
@@ -78,15 +78,20 @@
 
 반도체 산업은 단순 수주 흐름만으로 예측할 수 없습니다.
 
-| 변수 카테고리 | 지표 | 활용 목적 |
-|---------------|------|----------|
-| **환율** | USD/KRW, JPY/KRW, EUR/KRW, CNY/KRW | 수출입 가격 변동 |
-| **반도체 시장** | SOX 지수, DRAM 현물가, NAND 현물가, 웨이퍼 ASP | 산업 사이클 판단 |
-| **거시경제** | 미국 기준금리, 산업생산지수, CPI, PPI | 글로벌 수요 환경 |
-| **국내경제** | 한국 기준금리, CPI, 제조업 생산지수 | 국내 수요 환경 |
-| **무역** | 반도체 HS코드 수출입액, 발틱운임지수 | 교역량·물류비 |
-| **원자재** | WTI 유가, 구리 LME 가격 | 제조 원가 변동 |
-| **중국** | 차이신 제조업 PMI | 최대 수요처 경기 |
+| | DRAM 현물가, NAND 현물가 | DRAMeXchange / TrendForce | **주간** (매주 목) | 메모리 시장 동향 |
+| | 웨이퍼 ASP | SEMI | **월간** | 소재 원가 추이 |
+| **거시경제** | 미국 기준금리 | FRED | **비정기** (FOMC, 연 8회) | 글로벌 수요 환경 |
+| | 산업생산지수 (IPI) | FRED | **월간** (익월 중순) | 제조업 경기 판단 |
+| | 미국 CPI / PPI | BLS / FRED | **월간** | 물가·원가 환경 |
+| **국내경제** | 한국 기준금리 | 한국은행 | **비정기** (연 8회) | 국내 수요 환경 |
+| | 한국 CPI, 제조업 생산지수 | 통계청 KOSIS | **월간** (익월 초) | 국내 제조업 경기 |
+| **무역** | 반도체 수출입액 (HS 8541) | 관세청 UNIPASS | **월간** (익월 15일) | 교역량 추이 |
+| | 발틱운임지수 (BDI) | Baltic Exchange | **일간** (영업일) | 물류비 변동 |
+| **원자재** | WTI 유가 | EIA / NYMEX | **일간** (거래일) | 제조 원가 변동 |
+| | 구리 LME 가격 | LME | **일간** (거래일) | 소재 원가 변동 |
+| **중국** | 차이신 제조업 PMI | Caixin / S&P Global | **월간** (익월 1영업일) | 최대 수요처 경기 |
+
+> **연동 주기 요약**: 일간 8개 · 주간 2개 · 월간 7개 · 비정기 2개 (총 19개 지표)
 
 ### 3.3 재고 리스크 자동 스코어링
 
@@ -178,7 +183,7 @@
 │  │ action_queue / daily_inventory_estimated       │   │
 │  └───────────────────────────────────────────────┘   │
 │  ┌─ ML 피처 ─────────────────────────────────────┐   │
-│  │ feature_store_weekly (46피처, 83K행)            │   │
+│  │ feature_store_weekly (69피처, 83K행)            │   │
 │  │ feature_store_monthly (35피처, 48K행)           │   │
 │  └───────────────────────────────────────────────┘   │
 │  ┌─ 최적화 ────────────────────────────────────────┐ │
@@ -235,8 +240,9 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | 0 | `s0_aggregation.py` | 수주, 매출, 생산 | 주별·월별 집계 4테이블 | ISO 주차 캘린더 + 다차원 집계 |
 | 1 | `s1_daily_inventory.py` | 재고, 생산, 매출 | `daily_inventory_estimated` | 월초 스냅샷 기반 일간 재고 보간 |
 | 2 | `s2_lead_time.py` | 구매발주 | `product_lead_time` | 제품별 리드타임 통계 (AVG/P90) |
-| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store_weekly` | 주간 피처 엔지니어링 (46개 피처) |
+| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store_weekly` | 주간 피처 엔지니어링 (69개 피처, v4 학습 시 74개) |
 | 4 | `s4_forecast.py` | feature_store_weekly | `forecast_result` | LightGBM Quantile 예측 (1w/2w/4w) |
+| 4L | `s4_linear_models.py` | feature_store_weekly/monthly | `forecast_result` | Ridge + SVR Linear 예측 (Conformal P10/P50/P90) |
 | 5 | `s5_risk_score.py` | 예측 + 재고 + 리드타임 | `risk_score` | 4유형 리스크 스코어링 |
 | 6 | `s6_action_queue.py` | risk_score + S7/S8 결과 | `action_queue` | C등급 이상 자동 조치 제안 (정교한 suggested_qty) |
 | 7 | `s7_production_plan.py` | 예측 + 재고 + 캐파 + 리스크 | `production_plan` | 제품별 최적 생산량 산출 |
@@ -250,8 +256,9 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | 4m | `s4m_forecast_monthly.py` | feature_store_monthly | `forecast_result` | LightGBM Quantile 예측 (1m/3m/6m) |
 
 > 주간과 월간 예측 결과는 동일한 `forecast_result` 테이블에 적재되며, `model_id`로 구분됩니다.
-> - 주간: `lgbm_q_v2` (horizon: 7/14/28일) | fallback: `moving_avg_v1`
-> - 월간: `lgbm_q_monthly_v1` (horizon: 30/90/180일) | fallback: `moving_avg_monthly_v1`
+> - 주간: `lgbm_q_v2` / `ridge_v1` / `svr_linear_v1` (horizon: 7/14/28일) | fallback: `moving_avg_v1`
+> - 월간: `lgbm_q_monthly_v1` / `ridge_monthly_v1` / `svr_linear_monthly_v1` (horizon: 30/90/180일) | fallback: `moving_avg_monthly_v1`
+> - 총 적재: **217,173건** (6개 model_id)
 
 ---
 
@@ -262,14 +269,14 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | **백엔드** | FastAPI (Python) | ML 연동, 자동 Swagger, 비동기 지원 |
 | **프론트엔드** | Next.js (React) | SSR 대시보드, Supabase 연동, Vercel 배포 |
 | **데이터베이스** | PostgreSQL (Supabase) | REST API, 실시간 구독, RLS 보안 |
-| **ML 모델** | LightGBM Quantile | 주간(46피처)+월간(35피처) 이중 파이프라인, 이동평균 fallback |
+| **ML 모델** | LightGBM Quantile + Ridge + SVR Linear | 멀티 모델 비교, 주간(69피처, v4: 74피처)+월간(35피처) 이중 파이프라인 |
 | **외부 데이터** | FRED / EIA / 관세청 API | 거시경제·에너지·무역 실시간 수집 |
 | **인증** | Supabase Auth + RBAC | JWT, 4단계 역할 (admin/manager/analyst/viewer) |
 | **배포** | Vercel + Supabase Cloud | 서버리스, 자동 스케일링 |
 
 ---
 
-## 8. DB 구조 (29개 테이블)
+## 8. DB 구조 (33개 테이블)
 
 | 구분 | 테이블 수 | 주요 테이블 | 행 수 |
 |------|----------|------------|-------|
@@ -279,6 +286,8 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | 분석 | 6 | feature_store, forecast_result, risk_score, action_queue 등 | 파이프라인 생성 |
 | ML 피처 | 2 | feature_store_weekly, feature_store_monthly | ~132,000 |
 | 최적화 | 2 | production_plan, purchase_recommendation | 파이프라인 생성 |
+| 모델 평가 | 3 | model_evaluation, feature_importance, tuning_result | 파이프라인 생성 |
+| 평가 리포트 | 1 | evaluation_report | 파이프라인 생성 |
 | 집계 | 5 | weekly/monthly_product_summary, weekly/monthly_customer_summary, calendar_week | ~347,000 |
 | 인증 | 2 | user_profile, login_history | — |
 
@@ -322,10 +331,16 @@ PJTFNL/
 │   │   ├── s3m_feature_store_monthly.py ← 월간 피처 엔지니어링 (35개)
 │   │   ├── s4_forecast.py             ← 주간 수요예측 (LightGBM)
 │   │   ├── s4m_forecast_monthly.py    ← 월간 수요예측 (LightGBM)
+│   │   ├── s4_linear_models.py        ← Ridge + SVR Linear 예측 (주간+월간)
 │   │   ├── s5_risk_score.py           ← 리스크 스코어링
 │   │   ├── s6_action_queue.py         ← 조치 큐 생성 (S7/S8 연동)
 │   │   ├── s7_production_plan.py      ← 생산 최적화 (캐파·리스크 기반)
-│   │   └── s8_purchase_optimization.py ← 발주 최적화 (BOM·EOQ·공급사)
+│   │   ├── s8_purchase_optimization.py ← 발주 최적화 (BOM·EOQ·공급사)
+│   │   ├── lgbm_cv_evaluation.py      ← 주간 LightGBM 5-Fold CV 평가
+│   │   ├── lgbm_experiments.py        ← 주간 실험 비교 프레임워크 (5건)
+│   │   ├── lgbm_experiments_monthly.py ← 월간 실험 비교 프레임워크 (5건)
+│   │   ├── executive_summary.html     ← 경영진 요약 보고서 (자동 생성)
+│   │   └── experiments/               ← 실험 결과 JSON 영구 보관 (10건)
 │   ├── 07_queries/                    ← 분석 쿼리
 │   │   └── monthly_aggregation.sql    ← 월별 집계 7종
 │   ├── 08_aggregation_ddl.sql         ← 집계 5테이블
@@ -335,12 +350,22 @@ PJTFNL/
 │   ├── 12_load_ecos.py               ← ECOS 한국은행 실데이터 적재
 │   ├── 13_feature_store_weekly_ddl.sql  ← 주간 ML 피처 테이블
 │   ├── 14_feature_store_monthly_ddl.sql ← 월간 ML 피처 테이블
+│   ├── 15_model_evaluation_ddl.sql    ← 모델 평가 3테이블
 │   ├── 16_optimization_ddl.sql        ← 생산계획 + 발주추천 테이블
+│   ├── 17_evaluation_report_ddl.sql   ← 평가 리포트 테이블
 │   └── SCHEMA_REFERENCE.md            ← DB 스키마 전체 레퍼런스
 │
 ├── forecastai/                        ← Next.js 프론트엔드 (Phase 5)
 │   ├── src/app/                       ← 라우팅 + 레이아웃
-│   ├── src/components/pages/          ← 11개 페이지 컴포넌트
+│   │   └── api/                       ← API 라우트 (8개)
+│   │       ├── dashboard/             ← 대시보드 KPI·매출·재고
+│   │       ├── production-plan/       ← 생산 권고
+│   │       ├── purchase-recommendation/ ← 구매 권고
+│   │       ├── model-evaluation/      ← 모델 평가 (종합·기간별·리포트)
+│   │       ├── model-scenario/        ← 모델 시나리오
+│   │       ├── simulation-skus/       ← 시뮬레이션 SKU
+│   │       └── forecast-weekly/confidence ← 예측 신뢰도 (주의 제품 조회)
+│   ├── src/components/pages/          ← 13개 페이지 컴포넌트
 │   ├── src/components/ui/             ← 공통 UI (Badge, Table 등)
 │   └── src/lib/data.ts                ← 테마, 목데이터, 유틸
 │
@@ -367,13 +392,14 @@ PJTFNL/
 
 ```bash
 # 1. 의존성 설치
-pip install supabase python-dotenv requests lightgbm
+pip install supabase python-dotenv requests lightgbm scikit-learn
 
 # 2. DDL 실행 (Supabase SQL Editor에서 순서대로)
 #    01_ddl.sql → 03_external_ddl.sql → 05_auth_ddl.sql
 #    → 06_analytics_ddl.sql → 08_aggregation_ddl.sql → 09_exchange_rate_ddl.sql
 #    → 13_feature_store_weekly_ddl.sql → 14_feature_store_monthly_ddl.sql
-#    → 16_optimization_ddl.sql
+#    → 15_model_evaluation_ddl.sql → 16_optimization_ddl.sql
+#    → 17_evaluation_report_ddl.sql
 
 # 3. 데이터 적재
 python DB/02_load_data.py                # ERP CSV 데이터
@@ -386,23 +412,170 @@ python DB/12_load_ecos.py               # ECOS 한국은행 실데이터
 python DB/07_pipeline/run_pipeline.py              # 주간 전체 (S0~S8)
 python DB/07_pipeline/run_pipeline.py --step=3m,4m # 월간 (피처+예측)
 python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
+python DB/07_pipeline/s4_linear_models.py          # Ridge + SVR Linear (주간+월간)
 ```
 
 ---
 
-## 11. 정량 목표
+## 11. 모델 성능 평가
 
-| 지표 | 목표 | 측정 방법 |
+### 11.1 평가 방법론
+
+| 항목 | 내용 |
+|------|------|
+| **평가 방식** | 5-Fold Time-Series CV (시간순 분할) + 앙상블 |
+| **데이터 분할** | 시간 기반 Train 80% / Test 20% |
+| **앙상블** | 5개 Fold 모델 예측값 평균 → Test set 최종 평가 |
+| **평가 지표** | MSE, RMSE, MAE, R², MAPE |
+| **과적합 지표** | Train-Val R² Gap (Fold 평균) |
+
+### 11.2 현재 모델 성능 (forecast_result 실측 기준)
+
+**주간 예측 — 3개 모델 비교 (47,909건/모델)**
+
+| 모델 | R² | MAE | RMSE | MAPE | WMAPE | ±5 적중률 | P10~P90 커버리지 |
+|------|:---:|:---:|:----:|:----:|:-----:|:---------:|:---------------:|
+| **LightGBM Quantile** | **0.61** | 357 | 772 | 179% | **53.2%** | 7.1% | **59.1%** |
+| Ridge Regression | 0.46 | 430 | 909 | 269% | 64.4% | **13.2%** | 31.2% |
+| SVR Linear | -0.15 | 539 | 1338 | **91%** | 94.3% | 11.9% | 54.8% |
+
+**월간 예측 — 3개 모델 비교 (24,482건/모델)**
+
+| 모델 | R² | MAE | RMSE | MAPE | WMAPE | ±5 적중률 | P10~P90 커버리지 |
+|------|:---:|:---:|:----:|:----:|:-----:|:---------:|:---------------:|
+| LightGBM Quantile | 0.94 | 311 | 877 | **72%** | 22.6% | 17.4% | **68.1%** |
+| **Ridge Regression** | **0.96** | **298** | **683** | 83% | **21.6%** | 14.0% | 7.7% |
+| SVR Linear | -0.13 | 1301 | 3801 | 91% | 99.1% | **22.6%** | 66.6% |
+
+**수량 구간별 최우수 모델**
+
+| 구간 | 주간 최우수 | 월간 최우수 | 근거 |
+|------|-----------|-----------|------|
+| **대량 (≥100)** | LightGBM (WMAPE 50%) | Ridge (WMAPE 21%) | 대규모 변동 설명력 최고 |
+| **중량 (10~99)** | SVR Linear (MAE 30) | SVR Linear (MAE 30) | 절대 오차 최소 |
+| **소량 (<10)** | SVR Linear (MAE 22) | SVR Linear (MAE 2.1) | ±5 적중률 36~87% |
+
+> **R²**: 모델이 실제 수주 변동의 몇 %를 설명하는지 (1에 가까울수록 우수)
+> **WMAPE**: 수량 가중 백분율 오차 — 대량 제품 중심 실질 정확도 (MAPE보다 실무적)
+> **±5 적중률**: 예측과 실제의 차이가 5개 이내인 비율
+> **상세 분석**: [MODEL_COMPARISON_REPORT.md](DB/07_pipeline/experiments/MODEL_COMPARISON_REPORT.md)
+
+### 11.3 LightGBM 실험 비교 (10건)
+
+총 5가지 접근 방식을 주간·월간 각각 적용하여 비교 평가하였습니다.
+
+| 접근 방식 | 설명 | 주간 R² | 월간 R² | 판정 |
+|-----------|------|---------|---------|------|
+| **V1: 베이스라인** | 기본 하이퍼파라미터 | 0.2642 | **0.6403 ★** | 월간 최적 |
+| **V2: Log 변환** | target에 log1p/expm1 적용 | -0.0005 | 0.2940 | ❌ 부적합 |
+| **V3: 정규화 강화** | max_depth↓, reg↑, min_child↑ | **0.2667 ★** | 0.5984 | 주간 최적 |
+| **V4: Log+정규화** | V2 + V3 결합 | -0.0016 | 0.3179 | ❌ 부적합 |
+| **V5: 종합 개선** | V4 + 파생 피처 + P99 캡핑 | 0.0001 | 0.2450 | ❌ 부적합 |
+
+**핵심 발견:**
+- **Log1p 변환은 이 데이터에 부적합** — 극단적 right-skew 분포에서 대규모 수주 예측 실패
+- **월간이 주간보다 2.4배 정확** — 월 집계 시 노이즈 감소 효과
+- **정규화 강화는 주간에만 효과** — 과적합 55% 감소 (Gap 0.20→0.09)
+
+### 11.4 멀티 모델 비교 (7개 모델 × 주간/월간)
+
+LightGBM 외 Random Forest, Linear SVR, Ridge Regression을 포함한 7개 모델 비교 평가를 수행하였습니다.
+
+| 모델 | 주간 R² | 주간 MAE | 주간 ±5 | 월간 R² | 월간 MAE | 월간 ±5 | 비고 |
+|------|---------|---------|---------|---------|---------|---------|------|
+| LightGBM 베이스라인 | 0.2635 | 52.6 | 6.7% | 0.6717 | 60.0 | 5.8% | |
+| LightGBM 정규화 강화 | **0.2749** | 50.8 | 6.5% | 0.6052 | 60.8 | 5.7% | **★ 주간 R² 1위** |
+| LightGBM 깊은 트리 | 0.2622 | 53.4 | 5.4% | 0.6651 | 64.0 | 3.9% | 과적합 심화 |
+| LightGBM 보수적 | 0.2551 | 51.1 | 6.3% | 0.5237 | 65.1 | 4.6% | R² 하락 |
+| Random Forest | 0.2700 | 50.2 | 15.4% | 0.6777 | 55.3 | 35.7% | ±5 높음 |
+| Linear SVR | 0.0249 | 39.3 | **62.6%** | 0.6791 | **49.2** | **47.8%** | R² 낮음/MAE 최저 |
+| Ridge Regression | 0.2623 | 42.3 | 60.2% | **0.6908** | 54.3 | 27.6% | **★ 월간 R² 1위** |
+
+> **±5**: 예측값과 실제값의 차이가 ±5개 이내인 비율 (정밀 예측 지표)
+
+**핵심 발견:**
+- **Ridge Regression이 월간 R² 1위 (0.6908)** — LightGBM(0.6717)보다 +2.8%p 높음
+- **Linear SVR이 월간 MAE 최저 (49.2)** — LightGBM(60.0) 대비 18% 개선
+- **±5 허용 오차와 R²는 다른 이야기를 한다:**
+  - Linear SVR: 주간 ±5 성공률 62.6%이지만 R²=0.02 → 제로 수주 예측에 강하나 대규모 수주 변동 설명 못함
+  - LightGBM: R² 높으나 ±5 성공률 5~7% → 대규모 변동 설명은 좋으나 정밀 예측은 약함
+- **R²와 ±5는 상호보완적 지표** — R²=트렌드 예측, ±5=개별 정밀 예측
+
+### 11.5-1 예측 핵심 영향 요인 (Feature Importance TOP 10)
+
+| 순위 | 요인 | 카테고리 |
 |------|------|----------|
-| 핵심 제품군 예측 오차 | MAPE 10~15% 이내 | 예측 vs 실적 비교 리포트 |
-| 예측 범위 | 주별 24주 / 월별 6개월 | 시스템 설정 |
-| 데이터 동기화 성공률 | 99% 이상 | 파이프라인 로그 모니터링 |
-| 생산계획 반영률 | 80% 이상 | 조치 큐 완료율 추적 |
-| 재고 과잉/결품 감소 | 20% 이상 개선 | 리스크 스코어 추이 |
+| 1 | 26주 수주 이동평균 | 수주 트렌드 |
+| 2 | 4주 매출 이동평균 | 매출 트렌드 |
+| 3 | 13주 수주 이동평균 | 수주 트렌드 |
+| 4 | 4주 수주 최대값 | 변동성 |
+| 5 | 직전 주 매출량 | 매출 최신 |
+| 6 | 구리 LME 가격 | 외부지표 |
+| 7 | USD/KRW 환율 변동률 | 외부지표 |
+| 8 | DRAM 가격 변동률 | 외부지표 |
+| 9 | 현재 재고량 | 재고 |
+| 10 | SOX 반도체지수 변동률 | 외부지표 |
+
+> 내부 수주/매출 데이터뿐 아니라 **외부 경제지표**(구리, 환율, DRAM, SOX)도 예측에 유의미하게 기여
+
+### 11.5 구간별 모델 선택 (Segment-based Model Selection)
+
+멀티 모델 비교 결과를 바탕으로, 제품별 수요 규모에 따라 최적 모델을 자동 선택하는 파이프라인(Step 4S)을 구축하였습니다.
+
+**수요 구간 분류** (최근 90일 일평균 수주량 기준):
+
+| 수요 구간 | 기준 | 주간 모델 | 월간 모델 | 선택 근거 |
+|-----------|------|----------|----------|----------|
+| **저수요** | < 10개/일 | SVR Linear | SVR Linear | ±5 정밀도 62.6% (LightGBM 6.7%) |
+| **중수요** | 10 ~ 99개/일 | LightGBM | Ridge | 트렌드 설명력 R² 우위 |
+| **고수요** | 100+개/일 | LightGBM | Ridge | 대규모 변동 추적, 월간 R² 0.69 |
+
+**실행 결과** (2026-03-11):
+- 구간 분류: 저수요 303개 / 중수요 1,100개 / 고수요 718개 (총 2,121개 제품)
+- 선택 결과: 11,431건 (`model_id = 'segment_best_v1'`)
+  - 주간 4,280건: LightGBM 2,783 + SVR 1,497
+  - 월간 7,151건: Ridge 3,686 + SVR 3,465
+- 하류 파이프라인(S5~S8)이 `segment_best_v1`을 우선 참조
+
+### 11.6 평가 리포트 & 실험 결과
+
+```
+DB/07_pipeline/
+├── lgbm_cv_evaluation.py               ← 주간 베이스라인 평가 스크립트
+├── lgbm_experiments.py                  ← 주간 5개 실험 비교 프레임워크
+├── lgbm_experiments_monthly.py          ← 월간 5개 실험 비교 프레임워크
+├── model_comparison.py                  ← 멀티 모델 비교 프레임워크 (7개 모델)
+├── s4s_segment_selector.py             ← 구간별 모델 선택기 (NEW)
+├── lgbm_evaluation_report.html          ← 주간 베이스라인 상세 리포트 (6탭)
+├── lgbm_comparison_report.html          ← 주간 실험 비교 대시보드 (4탭)
+├── lgbm_monthly_comparison_report.html  ← 월간 실험 비교 대시보드 (5탭)
+├── model_comparison_report.html         ← 멀티 모델 비교 대시보드 (5탭)
+├── executive_summary.html               ← 경영진 요약 보고서 (7개 섹션)
+└── experiments/                         ← 실험 결과 JSON (영구 보관)
+    ├── v1_baseline.json ~ v5_full.json              ← 주간 5건
+    ├── monthly_v1_baseline.json ~ monthly_v5_full.json  ← 월간 5건
+    ├── model_comparison.json                        ← 멀티 모델 비교 결과
+    └── MODEL_COMPARISON_REPORT.md                 ← 멀티 모델 성능 비교 분석 보고서
+```
 
 ---
 
-## 12. ERP 대비 차별점
+## 12. 정량 목표
+
+| 지표 | 현재 | 목표 | 측정 방법 |
+|------|------|------|----------|
+| 월간 예측 설명력 (R²) | **0.96** (Ridge) | 0.98+ | forecast_result 실측 R² |
+| 주간 예측 설명력 (R²) | **0.61** (LightGBM) → 구간별 선택 적용 | 0.75+ | forecast_result 실측 R² (segment_best_v1) |
+| 월간 WMAPE | **21.6%** (Ridge) | 15% 이하 | 수량 가중 백분율 오차 |
+| 주간 WMAPE | **53.2%** (LightGBM) → 구간별 선택 적용 | 40% 이하 | segment_best_v1 기반 측정 |
+| 예측 범위 | — | 주별 24주 / 월별 6개월 | 시스템 설정 |
+| 데이터 동기화 성공률 | — | 99% 이상 | 파이프라인 로그 모니터링 |
+| 생산계획 반영률 | — | 80% 이상 | 조치 큐 완료율 추적 |
+| 재고 과잉/결품 감소 | — | 20% 이상 개선 | 리스크 스코어 추이 |
+
+---
+
+## 13. ERP 대비 차별점
 
 | 구분 | 기존 ERP | 본 솔루션 |
 |------|---------|----------|
@@ -415,7 +588,7 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 
 ---
 
-## 13. 리스크 및 대응 전략
+## 14. 리스크 및 대응 전략
 
 | 리스크 | 영향 | 대응 전략 |
 |--------|------|----------|
@@ -427,12 +600,12 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 
 ---
 
-## 14. 마일스톤
+## 15. 마일스톤
 
 | Phase | 내용 | 상태 | 비고 |
 |-------|------|------|------|
 | **Phase 1** | 데이터 탐색·전처리·DB 구축 | **완료** | 27테이블, 내부+외부 데이터 적재 |
-| **Phase 2** | 수요 변동성 분석 모델 개발 | **완료** | 주간+월간 LightGBM Quantile 파이프라인 구축 완료 |
+| **Phase 2** | 수요 변동성 분석 모델 개발 | **완료** | 7개 모델 비교 평가 + 구간별 최적 모델 선택기(S4S) 구축 완료 |
 | **Phase 3** | 재고 리스크 점수화 엔진 개발 | **완료** | 4유형 리스크 스코어링 + 조치 큐 파이프라인 구축 완료 |
 | **Phase 4** | 생산·발주 최적화 알고리즘 개발 | **완료** | 생산계획(S7) + 발주추천(S8) + S6 보강 |
 | **Phase 5** | 웹 대시보드 및 API 서버 구축 | **진행중** | Next.js 프론트엔드 개발 중 |
@@ -440,7 +613,7 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 
 ---
 
-## 15. RBAC 권한 체계
+## 16. RBAC 권한 체계
 
 | 역할 | 대시보드 | 데이터 분석 | 모델 설정 | 보고서 | 사용자 관리 |
 |------|:---:|:---:|:---:|:---:|:---:|
@@ -451,7 +624,7 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 
 ---
 
-## 16. 외부 API 연동
+## 17. 외부 API 연동
 
 | 소스 | 제공 기관 | 수집 지표 | 상태 |
 |------|----------|----------|------|
@@ -463,7 +636,7 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 
 ---
 
-## 17. 기대 효과
+## 18. 기대 효과
 
 ### 정량적 효과
 
@@ -481,7 +654,7 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 
 ---
 
-## 18. 프론트엔드 개발 팀
+## 19. 프론트엔드 개발 팀
 
 ### 담당 영역
 
@@ -490,7 +663,7 @@ python DB/07_pipeline/run_pipeline.py --step=7,8   # 생산·발주 최적화만
 | **다솜** | 대시보드, 로그인, 관리 | `Dashboard.tsx`, `Login.tsx`, `Admin.tsx` |
 | **지은** | 수요예측, 외부지표 | `WeeklyForecast.tsx`, `MonthlyForecast.tsx`, `ExternalIndicators.tsx` |
 | **성민** | 재고관리 | `Inventory.tsx`, `RiskManagement.tsx`, `ActionQueue.tsx` |
-| **경아** | 최적화 | `Simulation.tsx`, `Purchase.tsx` |
+| **경아** | 최적화, 모델 평가 | `Simulation.tsx`, `Purchase.tsx`, `ModelEvaluation.tsx`, `ModelScenario.tsx` |
 
 ### 프론트엔드 구조
 
@@ -513,7 +686,9 @@ forecastai/
 │   │   │   ├── RiskManagement.tsx  ← [성민] 리스크 관리
 │   │   │   ├── ActionQueue.tsx     ← [성민] 조치 큐
 │   │   │   ├── Simulation.tsx      ← [경아] 시나리오 시뮬레이션
-│   │   │   └── Purchase.tsx        ← [경아] 발주 최적화
+│   │   │   ├── Purchase.tsx        ← [경아] 발주 최적화
+│   │   │   ├── ModelEvaluation.tsx ← [경아] 모델 평가 대시보드
+│   │   │   └── ModelScenario.tsx   ← [경아] 모델 시나리오
 │   │   └── ui/index.tsx            ← 공통 UI 컴포넌트
 │   └── lib/data.ts                 ← 테마, 목데이터, 유틸
 ├── package.json
@@ -536,3 +711,5 @@ forecastai/
 | [DB/SCHEMA_REFERENCE.md](DB/SCHEMA_REFERENCE.md) | DB 스키마, API 연동, DBML 전체 레퍼런스 |
 | [DEV_LOG.md](DEV_LOG.md) | 프로젝트 INDEX (마일스톤, 의사결정, 이슈) |
 | [DEV_LOG/](DEV_LOG/) | 개발자별 일자별 개발일지 |
+| [executive_summary.html](DB/07_pipeline/executive_summary.html) | 경영진 요약 보고서 (모델 성능, 실험 결과, 활용 방안) |
+| [MODEL_COMPARISON_REPORT.md](DB/07_pipeline/experiments/MODEL_COMPARISON_REPORT.md) | 멀티 모델 성능 비교 분석 보고서 (LightGBM vs Ridge vs SVR, 세그먼트별) |

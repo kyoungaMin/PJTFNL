@@ -7,3 +7,15 @@ body { font-family: 'Pretendard','Noto Sans KR','Apple SD Gothic Neo',sans-serif
 button:focus { outline: none; }
 input, select, textarea { font-family: inherit; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* KPI 스켈레톤 shimmer */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.shimmer-box {
+  background: linear-gradient(90deg, #eef2f7 25%, #dde4ed 50%, #eef2f7 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}

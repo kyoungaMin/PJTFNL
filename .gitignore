@@ -30,3 +30,7 @@ forecastai/.next-dev.err.log
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Codex / MCP
+playwright-mcp-profile/
+playwright-mcp-output/

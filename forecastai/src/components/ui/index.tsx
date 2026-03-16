@@ -66,7 +66,7 @@ function Sparkline({ data, color, inverse=false }) {
   );
 }
 
-function PageHeader({ title, sub, action }) {
+function PageHeader({ title, sub, action }: { title: any; sub: any; action?: any }) {
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
       <div>
@@ -94,37 +94,38 @@ function FilterBar({ children }) {
   return <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, flexWrap:"wrap" }}>{children}</div>;
 }
 
-function Select({ label=undefined, value, onChange, options }: any) {
+function Select({ label=undefined, value, onChange, options, style }: any) {
   return (
     <select value={value} onChange={e=>onChange(e.target.value)} style={{
       fontSize:12, color:T.text1, background:T.surface, border:`1px solid ${T.border}`,
       borderRadius:7, padding:"6px 28px 6px 10px", cursor:"pointer", outline:"none",
       appearance:"none", backgroundImage:`url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394A3B8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
       backgroundRepeat:"no-repeat", backgroundPosition:"right 8px center",
+      ...style,
     }}>
       {options.map(o => <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>)}
     </select>
   );
 }
 
-function SearchInput({ value, onChange, placeholder="검색..." }) {
+function SearchInput({ value, onChange, placeholder="검색...", onKeyDown, style, inputStyle }: any) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:7, background:T.surface, border:`1px solid ${T.border}`, borderRadius:7, padding:"6px 12px" }}>
+    <div style={{ display:"flex", alignItems:"center", gap:7, background:T.surface, border:`1px solid ${T.border}`, borderRadius:7, padding:"6px 12px", ...style }}>
       <span style={{ fontSize:12 }}>🔍</span>
-      <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
-        style={{ border:"none", outline:"none", fontSize:12, color:T.text1, background:"transparent", width:160 }}/>
+      <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onKeyDown={onKeyDown}
+        style={{ border:"none", outline:"none", fontSize:12, color:T.text1, background:"transparent", width:160, ...inputStyle }}/>
     </div>
   );
 }
 
-function Table({ headers, rows, onRowClick=undefined }: any) {
+function Table({ headers, rows, aligns, onRowClick=undefined }: any) {
   return (
     <div style={{ overflowX:"auto" }}>
       <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
         <thead>
           <tr style={{ background:T.surface2, borderBottom:`2px solid ${T.border}` }}>
             {headers.map((h,i) => (
-              <th key={i} style={{ padding:"10px 14px", textAlign:"left", fontSize:11, fontWeight:700, color:T.text3, letterSpacing:"0.04em", whiteSpace:"nowrap" }}>{h}</th>
+              <th key={i} style={{ padding:"10px 14px", textAlign:aligns?.[i] ?? "left", fontSize:11, fontWeight:700, color:T.text3, letterSpacing:"0.04em", whiteSpace:"nowrap" }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -135,7 +136,7 @@ function Table({ headers, rows, onRowClick=undefined }: any) {
               onMouseEnter={e=>{ if(onRowClick) e.currentTarget.style.background=T.surface2; }}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               {row.cells.map((cell,j) => (
-                <td key={j} style={{ padding:"11px 14px", color:T.text2, verticalAlign:"middle" }}>{cell}</td>
+                <td key={j} style={{ padding:"11px 14px", color:T.text2, verticalAlign:"middle", textAlign:aligns?.[j] ?? "left" }}>{cell}</td>
               ))}
             </tr>
           ))}

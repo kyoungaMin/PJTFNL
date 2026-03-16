@@ -25,12 +25,38 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     print("ERROR: .env에 SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY 필요")
     sys.exit(1)
 
+# supabase SDK 신규 키 형식 호환 패치
+# 신규 Supabase 프로젝트는 sb_secret_/sb_publishable_ 형식 키를 사용하는데
+# SDK 내부에서 JWT 형식(점 2개) 여부를 regex로 검사함 → 패치로 우회
+import re as _re
+try:
+    from supabase._sync.client import SyncClient as _SyncClient
+except ImportError:
+    from supabase._sync.client import Client as _SyncClient
+_orig_init = _SyncClient.__init__
+
+def _patched_init(self, supabase_url, supabase_key, options=None):
+    _orig = _re.match
+    def _mock_match(pattern, string, *a, **kw):
+        if (isinstance(string, str) and string.startswith("sb_")
+                and r"[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]" in str(pattern)):
+            return _re.match(r"^.+$", string)
+        return _orig(pattern, string, *a, **kw)
+    _re.match = _mock_match
+    try:
+        _orig_init(self, supabase_url, supabase_key, options)
+    finally:
+        _re.match = _orig
+
+_SyncClient.__init__ = _patched_init
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # 배치 설정
 BATCH_SIZE = 500
 BATCH_DELAY = 0.3
 MAX_RETRIES = 3
+EARLY_STOPPING_ROUNDS = 50      # LightGBM early stopping 라운드
 
 # 주간 피처 스토어 — LightGBM 학습용 피처 컬럼 목록
 WEEKLY_FEATURE_COLS = [
@@ -125,10 +151,11 @@ MONTHLY_PARAM_GRID = {
 }
 
 # ─── Walk-Forward CV 설정 ───
-WEEKLY_CV_FOLDS = 3
-MONTHLY_CV_FOLDS = 2
+WEEKLY_CV_FOLDS = 5
+MONTHLY_CV_FOLDS = 3
 TUNING_METRIC = "pinball_p50"
-TUNE_SAMPLE_PRODUCTS = 30
+TUNE_SAMPLE_PRODUCTS = 50
+OPTUNA_N_TRIALS     = 100       # Optuna 탐색 횟수 (클수록 정확, 느림)
 
 # 리스크 가중치
 RISK_WEIGHTS = {
@@ -143,7 +170,8 @@ RISK_GRADE_BOUNDS = [
     ("A", 20),
     ("B", 40),
     ("C", 60),
-    ("D", 80),
+    ("D", 75),
+    ("E", 88),
     ("F", 100),
 ]
 
@@ -160,6 +188,33 @@ SUPPLIER_WEIGHTS = {
     "unit_price": 0.35,             # 단가 낮을수록 우수
     "reliability": 0.25,            # 납기 준수율 높을수록 우수
 }
+
+# ─── 구간별 모델 선택 (Segment-based Model Selection) ───
+SEGMENT_MODEL_ID = "segment_best_v1"      # 선택 결과 model_id
+
+# 수요 구간 경계 (일평균 수주량 기준)
+SEGMENT_THRESHOLDS = {
+    "low": 10,      # < 10 → 저수요
+    "high": 100,    # >= 100 → 고수요  (10~99 → 중수요)
+}
+
+# 구간별 최적 모델 매핑
+# 주간: 저수요=SVR (±5 정확도 62.6%), 중·고수요=LightGBM (R² 0.27)
+# 월간: 저수요=SVR (MAE 최저), 중·고수요=Ridge (R² 0.69)
+SEGMENT_MODEL_MAP = {
+    "weekly": {
+        "low":  "svr_linear_v1",         # ±5 정밀도 우수
+        "mid":  "lgbm_q_v3",             # 트렌드 설명력
+        "high": "lgbm_q_v3",             # 대규모 변동 추적
+    },
+    "monthly": {
+        "low":  "svr_linear_monthly_v1", # MAE 최저
+        "mid":  "ridge_monthly_v1",      # R² 최고 (0.69)
+        "high": "ridge_monthly_v1",      # 안정적 예측
+    },
+}
+
+SEGMENT_DEMAND_LOOKBACK_DAYS = 90         # 수요 구간 판정 기준 기간 (일)
 
 
 def get_risk_grade(score: float) -> str:
