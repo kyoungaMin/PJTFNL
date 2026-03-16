@@ -148,14 +148,31 @@ export async function GET(req: NextRequest) {
 
     // Top error / accurate products
     const sorted = [...errors].sort((a, b) => b.error - a.error)
-    const topError = sorted.slice(0, 10).map(e => ({
-      product_id: e.pid, predicted: Math.round(e.pred * 10) / 10,
-      actual: Math.round(e.actual * 10) / 10, error: Math.round(e.error * 10) / 10,
-    }))
-    const topAccurate = sorted.filter(e => e.actual > 0 || e.pred > 0).slice(-10).reverse().map(e => ({
-      product_id: e.pid, predicted: Math.round(e.pred * 10) / 10,
-      actual: Math.round(e.actual * 10) / 10, error: Math.round(e.error * 10) / 10,
-    }))
+    const topErrorRaw = sorted.slice(0, 10)
+    const topAccurateRaw = sorted.filter(e => e.actual > 0 || e.pred > 0).slice(-10).reverse()
+
+    // product_master 조회 (제품명 + 규격)
+    const allPids = [...new Set([...topErrorRaw, ...topAccurateRaw].map(e => e.pid))]
+    const { data: pmRows } = await supabase
+      .from('product_master')
+      .select('product_code, product_name, product_specification')
+      .in('product_code', allPids)
+    const pmMap: Record<string, { name: string; spec: string }> = {}
+    for (const pm of pmRows ?? []) {
+      pmMap[pm.product_code] = { name: pm.product_name ?? '', spec: pm.product_specification ?? '' }
+    }
+
+    const enrichProduct = (e: typeof errors[0]) => ({
+      product_id: e.pid,
+      product_name: pmMap[e.pid]?.name ?? '',
+      product_specification: pmMap[e.pid]?.spec ?? '',
+      predicted: Math.round(e.pred * 10) / 10,
+      actual: Math.round(e.actual * 10) / 10,
+      error: Math.round(e.error * 10) / 10,
+    })
+
+    const topError = topErrorRaw.map(enrichProduct)
+    const topAccurate = topAccurateRaw.map(enrichProduct)
 
     return NextResponse.json({
       period, type, modelId,

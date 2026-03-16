@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useMemo, useEffect, useRef } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine, Cell, Legend,
@@ -178,8 +178,82 @@ type PeriodResult = {
   date_range: { start: string; end: string }
   metrics: { mae: number; rmse: number; r2: number; mape: number; wmape?: number; tolerance_5_rate: number }
   segments?: SegmentResult[]
-  top_error_products: { product_id: string; predicted: number; actual: number; error: number }[]
-  top_accurate_products: { product_id: string; predicted: number; actual: number; error: number }[]
+  top_error_products: { product_id: string; product_name: string; product_specification: string; predicted: number; actual: number; error: number }[]
+  top_accurate_products: { product_id: string; product_name: string; product_specification: string; predicted: number; actual: number; error: number }[]
+}
+
+/* ─── Month Picker Modal ──────────────────────────────────────────────────── */
+function MonthPickerModal({ periods, selectedPeriod, onSelect, onClose }: {
+  periods: { key: string; label: string; dateRange: string }[]
+  selectedPeriod: string
+  onSelect: (key: string) => void
+  onClose: () => void
+}) {
+  const availableKeys = new Set(periods.map(p => p.key))
+  const initYear = selectedPeriod && selectedPeriod !== 'all' && /^\d{4}-\d{2}$/.test(selectedPeriod)
+    ? parseInt(selectedPeriod.split('-')[0])
+    : periods.length > 0 ? parseInt(periods[0].key.split('-')[0]) : new Date().getFullYear()
+  const [year, setYear] = useState(initYear)
+  const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
+  const btnBase: React.CSSProperties = {
+    background: 'none', border: 'none', cursor: 'pointer', color: T.text2,
+    fontSize: 14, padding: '2px 8px', borderRadius: 4,
+  }
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 999 }} />
+      <div style={{
+        position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+        marginTop: 6, background: '#fff', borderRadius: 12,
+        border: `1px solid ${T.border}`, boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+        padding: '14px 16px', zIndex: 1000, minWidth: 220,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <button onClick={() => setYear(y => y - 1)} style={btnBase}>◀</button>
+          <span style={{ fontSize: 14, fontWeight: 700, color: T.text1 }}>{year}년</span>
+          <button onClick={() => setYear(y => y + 1)} style={btnBase}>▶</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
+          {monthNames.map((name, i) => {
+            const key = `${year}-${String(i + 1).padStart(2, '0')}`
+            const available = availableKeys.has(key)
+            const selected = selectedPeriod === key
+            return (
+              <button
+                key={key}
+                onClick={() => onSelect(key)}
+                title={available ? undefined : '데이터 없음 — 재생성으로 분석 가능'}
+                style={{
+                  padding: '9px 4px', borderRadius: 8,
+                  border: available ? 'none' : `1px dashed ${T.border}`,
+                  fontSize: 12, fontWeight: selected ? 700 : 500,
+                  background: selected ? T.blue : available ? T.blueSoft : 'transparent',
+                  color: selected ? '#fff' : available ? T.blue : T.text3,
+                  cursor: 'pointer',
+                  transition: 'all .12s',
+                  position: 'relative',
+                }}
+              >
+                {name}
+                {!available && !selected && (
+                  <span style={{ position:'absolute', top:2, right:3, fontSize:7, color:T.text3 }}>+</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+        {/* 범례 */}
+        <div style={{ display:'flex', gap:10, marginTop:10, fontSize:10, color:T.text3 }}>
+          <span style={{ display:'flex', alignItems:'center', gap:3 }}>
+            <span style={{ width:10, height:10, borderRadius:3, background:T.blueSoft, display:'inline-block' }}/>데이터 있음
+          </span>
+          <span style={{ display:'flex', alignItems:'center', gap:3 }}>
+            <span style={{ width:10, height:10, borderRadius:3, border:`1px dashed ${T.border}`, display:'inline-block' }}/>데이터 없음 (재생성 가능)
+          </span>
+        </div>
+      </div>
+    </>
+  )
 }
 
 /* ─── Sub-components ───────────────────────────────────────────────────────── */
@@ -216,31 +290,6 @@ export default function PageModelEvaluation() {
   const [selectedModelIdx, setSelectedModelIdx] = useState(0)
   const [showGuide, setShowGuide] = useState(true)
 
-  // Period filter state
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('all')
-  const [periods, setPeriods] = useState<{ key: string; label: string; dateRange: string }[]>([])
-  const [periodData, setPeriodData] = useState<PeriodResult | null>(null)
-  const [periodLoading, setPeriodLoading] = useState(false)
-  const [manualPeriod, setManualPeriod] = useState<string>('')
-  const [autoGenerate, setAutoGenerate] = useState(false)
-
-  // 모델 선택
-  const MODEL_OPTIONS = {
-    weekly: [
-      { id: 'lgbm_q_v4', label: 'LightGBM 2-Stage Global v4 (기본)' },
-      { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3' },
-      { id: 'lgbm_q_v2', label: 'LightGBM Quantile v2' },
-      { id: 'ridge_v1', label: 'Ridge Regression' },
-      { id: 'svr_linear_v1', label: 'SVR Linear' },
-    ],
-    monthly: [
-      { id: 'lgbm_q_monthly_v2', label: 'LightGBM Quantile v2 (기본)' },
-      { id: 'lgbm_q_monthly_v1', label: 'LightGBM Quantile v1' },
-      { id: 'ridge_monthly_v1', label: 'Ridge Regression' },
-      { id: 'svr_linear_monthly_v1', label: 'SVR Linear' },
-    ],
-  }
-  const [selectedModel, setSelectedModel] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -257,36 +306,6 @@ export default function PageModelEvaluation() {
     return () => { cancelled = true }
   }, [])
 
-  // Fetch available periods when period type changes
-  useEffect(() => {
-    setSelectedPeriod('all')
-    setPeriodData(null)
-    setSelectedModel('')
-    fetch(`/api/model-evaluation/periods?type=${period}`)
-      .then(r => r.json())
-      .then(json => {
-        if (json.periods) {
-          setPeriods(json.periods)
-          // 최신 기간을 기본 선택
-          if (json.periods.length > 0) {
-            setSelectedPeriod(json.periods[0].key)
-          }
-        }
-      })
-      .catch(() => setPeriods([]))
-  }, [period])
-
-  // Fetch period-specific data when a specific period is selected
-  useEffect(() => {
-    if (selectedPeriod === 'all') { setPeriodData(null); return }
-    setPeriodLoading(true)
-    const modelQ = selectedModel ? `&model=${selectedModel}` : ''
-    fetch(`/api/model-evaluation/by-period?type=${period}&period=${selectedPeriod}${modelQ}`)
-      .then(r => r.json())
-      .then(json => { if (!json.error) setPeriodData(json) })
-      .catch(() => {})
-      .finally(() => setPeriodLoading(false))
-  }, [selectedPeriod, period, selectedModel])
 
   const models = data ? data[period] : []
   const meta = data ? (period === 'weekly' ? data.weekly_meta : data.monthly_meta) : null
@@ -369,84 +388,7 @@ export default function PageModelEvaluation() {
             {showGuide ? '📖 가이드 닫기' : '📖 활용 가이드'}
           </button>
         </div>
-      } action={
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <PeriodToggle />
-          <span style={{ fontSize:11, color:T.text3, fontWeight:600 }}>
-            {period === 'weekly' ? '조회 주차' : '조회 월'}
-          </span>
-          <select
-            value={selectedPeriod}
-            onChange={e => setSelectedPeriod(e.target.value)}
-            style={{
-              fontSize:12, fontWeight:700, color:T.text1, background:T.surface,
-              border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
-              cursor:'pointer', outline:'none', fontFamily:"'IBM Plex Mono',monospace",
-            }}
-          >
-            {periods.length === 0 && <option value="all">기간 없음</option>}
-            {periods.map(p => <option key={p.key} value={p.key}>{p.label} ({p.key})</option>)}
-          </select>
-          {selectedPeriod !== 'all' && periods.length > 0 && (
-            <>
-              <span style={{ fontSize:11, color:T.text3, fontWeight:600 }}>모델</span>
-              <select
-                value={selectedModel}
-                onChange={e => setSelectedModel(e.target.value)}
-                style={{
-                  fontSize:12, fontWeight:700, color:T.text1, background:T.surface,
-                  border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
-                  cursor:'pointer', outline:'none',
-                }}
-              >
-                <option value="">기본 모델</option>
-                {MODEL_OPTIONS[period].map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
-            </>
-          )}
-          <button onClick={() => { setSelectedPeriod(periods.length > 0 ? periods[0].key : 'all'); setSelectedModel('') }}
-            style={{ fontSize:11, fontWeight:600, color:T.blue, background:T.blueSoft, border:`1px solid ${T.blueMid}`,
-              borderRadius:6, padding:'5px 10px', cursor:'pointer' }}>최신</button>
-
-          {/* 직접 입력 + 재생성 */}
-          <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:6, paddingLeft:10, borderLeft:`1px solid ${T.border}` }}>
-            <input
-              value={manualPeriod}
-              onChange={e => setManualPeriod(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && manualPeriod.trim()) {
-                  setSelectedPeriod(manualPeriod.trim())
-                  setActiveTab('executive')
-                  setAutoGenerate(true)
-                }
-              }}
-              placeholder={period === 'weekly' ? '예: 2026-W09' : '예: 2026-03'}
-              style={{
-                fontSize:12, fontFamily:"'IBM Plex Mono',monospace",
-                color:T.text1, background:T.surface,
-                border:`1px solid ${T.border}`, borderRadius:7,
-                padding:'6px 10px', outline:'none', width:120,
-              }}
-            />
-            <button
-              disabled={!manualPeriod.trim()}
-              onClick={() => {
-                if (!manualPeriod.trim()) return
-                setSelectedPeriod(manualPeriod.trim())
-                setActiveTab('executive')
-                setAutoGenerate(true)
-              }}
-              style={{
-                fontSize:11, fontWeight:700, color:'#fff',
-                background: manualPeriod.trim() ? T.blue : T.text3,
-                border:'none', borderRadius:7, padding:'6px 12px',
-                cursor: manualPeriod.trim() ? 'pointer' : 'default',
-                transition:'all .15s',
-              }}
-            >🔄 재생성</button>
-          </div>
-        </div>
-      } />
+      } action={<PeriodToggle />} />
 
       {/* ── User Guide ── */}
       {showGuide && <UserGuidePanel onClose={() => setShowGuide(false)} />}
@@ -473,28 +415,19 @@ export default function PageModelEvaluation() {
       </div>
 
       {/* ── Tab content ── */}
-      {activeTab === 'overview' && periodLoading && (
-        <div style={{ padding: 40, textAlign: 'center', color: T.text3 }}>
-          <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
-          <div>{selectedPeriod} 기간 데이터를 불러오는 중...</div>
-        </div>
-      )}
-      {activeTab === 'overview' && !periodLoading && periodData && (
-        <TabPeriodOverview data={periodData} loading={periodLoading} />
-      )}
-      {activeTab === 'overview' && !periodLoading && !periodData && models.length > 0 && (
+      {activeTab === 'overview' && models.length > 0 && (
         <TabOverview models={models} bestR2={bestR2} bestTol={bestTol} avgRmse={avgRmse} minGap={minGap} />
       )}
-      {activeTab === 'overview' && !periodLoading && !periodData && models.length === 0 && (
+      {activeTab === 'overview' && models.length === 0 && (
         <div style={{ padding: 40, textAlign: 'center', color: T.text3 }}>
           <div style={{ fontSize: 24, marginBottom: 8 }}>📊</div>
-          <div>조회 기간을 선택해주세요.</div>
+          <div>모델 평가 데이터가 없습니다.</div>
         </div>
       )}
       {activeTab === 'accuracy' && <TabAccuracy models={models} />}
       {activeTab === 'overfitting' && <TabOverfitting models={models} selectedModelIdx={selectedModelIdx} setSelectedModelIdx={setSelectedModelIdx} />}
       {activeTab === 'features' && <TabFeatures models={models} selectedModelIdx={selectedModelIdx} setSelectedModelIdx={setSelectedModelIdx} />}
-      {activeTab === 'executive' && <TabExecutive data={data} periodData={selectedPeriod !== 'all' ? periodData : null} selectedPeriod={selectedPeriod} periodType={period} periodLoading={periodLoading} autoGenerate={autoGenerate} onAutoGenerateDone={() => setAutoGenerate(false)} />}
+      {activeTab === 'executive' && <TabExecutive data={data} periodType={period} />}
     </div>
   )
 }
@@ -1427,31 +1360,183 @@ function InsightCard({ icon, title, items }: { icon: string; title: string; item
   )
 }
 
-function TabExecutive({ data, periodData, selectedPeriod, periodType, periodLoading, autoGenerate, onAutoGenerateDone }: {
-  data: ComparisonData
-  periodData: PeriodResult | null
-  selectedPeriod: string
+function TabExecutive({ data, periodType }: {
+  data: ComparisonData | null
   periodType: 'weekly' | 'monthly'
-  periodLoading: boolean
-  autoGenerate?: boolean
-  onAutoGenerateDone?: () => void
 }) {
-  // 기간별 보고서 모드
+  const MODEL_OPTIONS = {
+    weekly: [
+      { id: 'lgbm_q_v4', label: 'LightGBM 2-Stage Global v4 (기본)' },
+      { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3' },
+      { id: 'lgbm_q_v2', label: 'LightGBM Quantile v2' },
+      { id: 'ridge_v1', label: 'Ridge Regression' },
+      { id: 'svr_linear_v1', label: 'SVR Linear' },
+    ],
+    monthly: [
+      { id: 'lgbm_q_monthly_v2', label: 'LightGBM Quantile v2 (기본)' },
+      { id: 'lgbm_q_monthly_v1', label: 'LightGBM Quantile v1' },
+      { id: 'ridge_monthly_v1', label: 'Ridge Regression' },
+      { id: 'svr_linear_monthly_v1', label: 'SVR Linear' },
+    ],
+  }
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all')
+  const [periods, setPeriods] = useState<{ key: string; label: string; dateRange: string }[]>([])
+  const [periodData, setPeriodData] = useState<PeriodResult | null>(null)
+  const [periodLoading, setPeriodLoading] = useState(false)
+  const [selectedModel, setSelectedModel] = useState('')
+  const [autoGenerate, setAutoGenerate] = useState(false)
+  const [showMonthPicker, setShowMonthPicker] = useState(false)
+
+  useEffect(() => {
+    setSelectedPeriod('all')
+    setPeriodData(null)
+    setSelectedModel('')
+    setShowMonthPicker(false)
+    fetch(`/api/model-evaluation/periods?type=${periodType}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.periods) {
+          setPeriods(json.periods)
+          if (json.periods.length > 0) setSelectedPeriod(json.periods[0].key)
+        }
+      })
+      .catch(() => setPeriods([]))
+  }, [periodType])
+
+  useEffect(() => {
+    if (selectedPeriod === 'all') { setPeriodData(null); return }
+    setPeriodLoading(true)
+    const modelQ = selectedModel ? `&model=${selectedModel}` : ''
+    fetch(`/api/model-evaluation/by-period?type=${periodType}&period=${selectedPeriod}${modelQ}`)
+      .then(r => r.json())
+      .then(json => { if (!json.error) setPeriodData(json) })
+      .catch(() => {})
+      .finally(() => setPeriodLoading(false))
+  }, [selectedPeriod, periodType, selectedModel])
+
+  const periodSelectorUI = (
+    <div style={{ ...card, padding:'12px 20px', marginBottom:20, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+      <span style={{ fontSize:11, color:T.text3, fontWeight:600 }}>
+        {periodType === 'weekly' ? '조회 주차' : '조회 월'}
+      </span>
+
+      {periodType === 'weekly' && (
+        <select
+          value={selectedPeriod}
+          onChange={e => setSelectedPeriod(e.target.value)}
+          style={{
+            fontSize:12, fontWeight:700, color:T.text1, background:T.surface,
+            border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
+            cursor:'pointer', outline:'none', fontFamily:"'IBM Plex Mono',monospace", maxWidth:260,
+          }}
+        >
+          {periods.length === 0 && <option value="all">기간 없음</option>}
+          {periods.map(p => <option key={p.key} value={p.key}>{p.label} ({p.key})</option>)}
+        </select>
+      )}
+
+      {periodType === 'monthly' && (
+        <div style={{ position:'relative' }}>
+          <button
+            onClick={() => setShowMonthPicker(v => !v)}
+            style={{
+              fontSize:12, fontWeight:700, color:T.text1, background:T.surface,
+              border:`1px solid ${showMonthPicker ? T.blue : T.border}`,
+              borderRadius:7, padding:'6px 14px', cursor:'pointer', outline:'none',
+              display:'flex', alignItems:'center', gap:6, transition:'border .15s',
+            }}
+          >
+            {(() => {
+              const m = selectedPeriod?.match(/^(\d{4})-(\d{2})$/)
+              return m ? `${m[1]}년 ${parseInt(m[2])}월 (${selectedPeriod})` : '월 선택'
+            })()}
+            <span style={{ fontSize:9, color:T.text3 }}>▼</span>
+          </button>
+          {showMonthPicker && (
+            <MonthPickerModal
+              periods={periods}
+              selectedPeriod={selectedPeriod}
+              onSelect={key => { setSelectedPeriod(key); setShowMonthPicker(false) }}
+              onClose={() => setShowMonthPicker(false)}
+            />
+          )}
+        </div>
+      )}
+
+      {selectedPeriod !== 'all' && (
+        <>
+          <span style={{ fontSize:11, color:T.text3, fontWeight:600 }}>모델</span>
+          <select
+            value={selectedModel}
+            onChange={e => setSelectedModel(e.target.value)}
+            style={{
+              fontSize:12, fontWeight:700, color:T.text1, background:T.surface,
+              border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
+              cursor:'pointer', outline:'none',
+            }}
+          >
+            <option value="">기본 모델</option>
+            {MODEL_OPTIONS[periodType].map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </>
+      )}
+
+      <button
+        onClick={() => { setSelectedPeriod(periods.length > 0 ? periods[0].key : 'all'); setSelectedModel(''); setShowMonthPicker(false) }}
+        style={{ fontSize:11, fontWeight:600, color:T.blue, background:T.blueSoft, border:`1px solid ${T.blueMid}`, borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
+      >최신</button>
+
+      <button
+        disabled={!selectedPeriod || selectedPeriod === 'all'}
+        onClick={() => { if (selectedPeriod && selectedPeriod !== 'all') setAutoGenerate(true) }}
+        style={{
+          fontSize:11, fontWeight:700, color:'#fff',
+          background: (selectedPeriod && selectedPeriod !== 'all') ? T.blue : T.text3,
+          border:'none', borderRadius:7, padding:'6px 12px',
+          cursor: (selectedPeriod && selectedPeriod !== 'all') ? 'pointer' : 'default',
+          transition:'all .15s',
+        }}
+      >🔄 재생성</button>
+    </div>
+  )
+
+  // 기간 데이터 로딩 중
   if (periodLoading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: T.text3 }}>
-        <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
-        <div>{selectedPeriod} 기간 보고서를 생성하는 중...</div>
+      <div>
+        {periodSelectorUI}
+        <div style={{ padding: 40, textAlign: 'center', color: T.text3 }}>
+          <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
+          <div>{selectedPeriod} 기간 데이터를 불러오는 중...</div>
+        </div>
       </div>
     )
   }
 
+  // 기간별 보고서
   if (periodData && selectedPeriod !== 'all') {
-    return <TabExecutivePeriod data={periodData} comparisonData={data} periodType={periodType} autoGenerate={autoGenerate} onAutoGenerateDone={onAutoGenerateDone} />
+    return (
+      <div>
+        {periodSelectorUI}
+        <TabExecutivePeriod data={periodData} comparisonData={data} periodType={periodType} autoGenerate={autoGenerate} onAutoGenerateDone={() => setAutoGenerate(false)} />
+      </div>
+    )
   }
 
-  // ── 전체 집계 보고서 (기존) ──
-  // Best models for monthly/weekly
+  // 전체 집계 보고서 (데이터 없거나 기간 미선택 시)
+  if (!data) {
+    return (
+      <div>
+        {periodSelectorUI}
+        <div style={{ padding: 40, textAlign: 'center', color: T.text3 }}>
+          <div style={{ fontSize: 24, marginBottom: 8 }}>📊</div>
+          <div>모델 평가 데이터를 불러오는 중...</div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── 전체 집계 보고서 ──
   const bestMonthly = [...data.monthly].sort((a, b) => b.ensemble_metrics.r2 - a.ensemble_metrics.r2)[0]
   const bestWeekly = [...data.weekly].sort((a, b) => b.ensemble_metrics.r2 - a.ensemble_metrics.r2)[0]
 
@@ -1462,9 +1547,10 @@ function TabExecutive({ data, periodData, selectedPeriod, periodType, periodLoad
 
   return (
     <div>
+      {periodSelectorUI}
       {/* ── 전체 집계 안내 ── */}
       <div style={{ ...card, padding: '12px 20px', marginBottom: 20, borderLeft: `4px solid ${T.amber}`, background: '#fffbeb', fontSize: 12, color: T.text2 }}>
-        현재 <b>전체 기간 집계</b> 기준 보고서입니다. 상단 기간 셀렉터에서 특정 주차/월을 선택하면 해당 기간의 실제 예측 성과 보고서를 확인할 수 있습니다.
+        현재 <b>전체 기간 집계</b> 기준 보고서입니다. 특정 주차/월을 선택하면 해당 기간의 실제 예측 성과 보고서를 확인할 수 있습니다.
       </div>
 
       {/* ── (1) 한 줄 요약 배너 ── */}
@@ -1798,11 +1884,49 @@ function TabExecutivePeriod({ data, comparisonData, periodType, autoGenerate, on
   const tolGrade = m.tolerance_5_rate >= 50 ? 'good' : m.tolerance_5_rate >= 30 ? 'warn' : 'danger'
   const maeGrade = m.mae <= overallMAE * 1.2 ? 'good' : m.mae <= overallMAE * 2 ? 'warn' : 'danger'
 
-  // ── 오차 상위 제품 분석 ──
-  const topErrors = data.top_error_products.slice(0, 5)
-  const totalErrorSum = topErrors.reduce((s, p) => s + Math.abs(p.error), 0)
-  const hasZeroActual = topErrors.filter(p => p.actual === 0).length
-  const hasOverPredict = topErrors.filter(p => p.predicted > p.actual).length
+  // ── 오차 상위 제품 분류 ──
+  type ErrCls = { label: string; icon: string; color: string; bg: string; why: string; action: string }
+  const classifyErrType = (p: { predicted: number; actual: number }): ErrCls => {
+    if (p.actual === 0) return {
+      label: '주문 중단', icon: '🔴', color: T.red, bg: '#fef2f2',
+      why: 'AI는 과거 주문 패턴을 보고 이번에도 수요가 있을 것으로 예상했지만, 실제 주문이 없었습니다. 고객 발주가 일시 중단됐거나 계약 상황이 바뀐 것일 수 있습니다.',
+      action: '해당 제품의 주요 고객에게 연락해 다음 주문 일정을 확인하세요.',
+    }
+    if (p.predicted === 0 && p.actual > 0) return {
+      label: '예상 외 주문', icon: '🟡', color: T.amber, bg: '#fffbeb',
+      why: 'AI가 이번 기간에 주문이 없을 것으로 판단했지만, 실제로 주문이 들어왔습니다. 간헐적으로 발생하는 불규칙 주문이거나 새로운 수요가 생겼을 수 있습니다.',
+      action: '현재 재고가 충분한지 확인하고, 긴급 발주가 필요한지 검토하세요.',
+    }
+    const upRatio = p.actual / Math.max(p.predicted, 0.1)
+    if (upRatio >= 1.5) return {
+      label: '급등 미포착', icon: '🔶', color: '#f97316', bg: '#fff7ed',
+      why: `AI 예측보다 실제 주문이 ${upRatio.toFixed(1)}배 많았습니다. 갑작스러운 대량 주문이 들어왔거나, 고객사에서 재고를 대량 보충한 것일 수 있습니다.`,
+      action: '재고가 부족하지 않은지 즉시 확인하고, 필요하면 긴급 발주를 검토하세요.',
+    }
+    const downRatio = p.predicted / p.actual
+    if (downRatio >= 1.5) return {
+      label: '수요 감소', icon: '🟠', color: T.amber, bg: '#fffbeb',
+      why: `AI 예측보다 실제 주문이 ${downRatio.toFixed(1)}배 적었습니다. 최근 수요가 줄었거나 고객의 발주 패턴이 바뀐 것일 수 있습니다.`,
+      action: '재고가 과잉 쌓이지 않도록 다음 발주량을 줄이는 것을 검토하세요.',
+    }
+    return {
+      label: '수량 차이', icon: '🔵', color: T.blue, bg: '#eff6ff',
+      why: '주문 여부와 방향은 예측이 맞았지만, 정확한 수량에 차이가 있었습니다. 비교적 예측이 잘 되는 제품이며, 소폭 조정만으로 활용이 가능합니다.',
+      action: 'AI 예측값을 기준으로 ±20% 범위에서 수량을 검토하여 발주하세요.',
+    }
+  }
+  const classifiedErrors = data.top_error_products.map(p => ({ ...p, cls: classifyErrType(p) }))
+  const totalErrorSum = classifiedErrors.reduce((s, p) => s + Math.abs(p.error), 0)
+  const errorGroups = Object.entries(
+    classifiedErrors.reduce((acc, p) => {
+      if (!acc[p.cls.label]) acc[p.cls.label] = []
+      acc[p.cls.label].push(p)
+      return acc
+    }, {} as Record<string, typeof classifiedErrors>)
+  ).sort((a, b) => {
+    const order = ['주문 중단', '급등 미포착', '수요 감소', '예상 외 주문', '수량 차이']
+    return order.indexOf(a[0]) - order.indexOf(b[0])
+  })
 
   return (
     <div>
@@ -2003,43 +2127,100 @@ function TabExecutivePeriod({ data, comparisonData, periodType, autoGenerate, on
 
       {/* ── (4→5) 오차 상위 제품 분석 ── */}
       <div style={secCard}>
-        <SectionHeader num={insights ? 5 : 2} title="오차 상위 제품 분석 (Top Error Products)" />
-        <p style={{ fontSize: 13, color: T.text2, marginBottom: 16 }}>
-          이 기간에 예측 오차가 가장 큰 제품 {topErrors.length}개를 분석합니다.
-          이 제품들의 관리 방안을 수립하면 전체 예측 정확도를 크게 개선할 수 있습니다.
-        </p>
+        <SectionHeader num={insights ? 5 : 2} title="오차 상위 제품 분석" />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-          {/* 오차 제품 테이블 */}
-          <div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ borderBottom: `2px solid ${T.border}` }}>
-                  {['순위', '제품 ID(Product)', '예측값(Predicted)', '실제값(Actual)', '오차(Error)'].map(h => (
-                    <th key={h} style={{ padding: '8px 6px', textAlign: h === '순위' || h.startsWith('제품') ? 'left' : 'right', color: T.text3, fontWeight: 600, fontSize: 11 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.top_error_products.map((p, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${T.border}`, background: i < 3 ? '#fef2f2' : 'transparent' }}>
-                    <td style={{ padding: '7px 6px', fontWeight: 700, color: T.red }}>{i + 1}</td>
-                    <td style={{ padding: '7px 6px', fontFamily: mono, fontSize: 11 }}>{p.product_id}</td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{p.predicted.toFixed(1)}</td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{p.actual.toFixed(1)}</td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11, color: T.red, fontWeight: 700 }}>{p.error.toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* 요약 배너 */}
+        <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap' }}>
+          <div style={{ flex:1, minWidth:180, padding:'12px 16px', borderRadius:8, background:'#fef2f2', borderLeft:`3px solid ${T.red}` }}>
+            <div style={{ fontSize:11, color:T.red, fontWeight:700, marginBottom:2 }}>⚠ 오차 합계</div>
+            <div style={{ fontSize:22, fontWeight:800, color:T.red, fontFamily:mono }}>{totalErrorSum.toFixed(0)}<span style={{ fontSize:12, marginLeft:4 }}>개</span></div>
+            <div style={{ fontSize:11, color:T.text3, marginTop:2 }}>상위 {classifiedErrors.length}개 제품 기준</div>
           </div>
+          {errorGroups.map(([type, products]) => (
+            <div key={type} style={{ flex:1, minWidth:140, padding:'12px 16px', borderRadius:8, background: products[0].cls.bg, borderLeft:`3px solid ${products[0].cls.color}` }}>
+              <div style={{ fontSize:11, color: products[0].cls.color, fontWeight:700, marginBottom:2 }}>
+                {products[0].cls.icon} {type}
+              </div>
+              <div style={{ fontSize:22, fontWeight:800, color: products[0].cls.color, fontFamily:mono }}>{products.length}<span style={{ fontSize:12, marginLeft:4 }}>건</span></div>
+              <div style={{ fontSize:11, color:T.text3, marginTop:2 }}>
+                {type === '주문 중단' ? '발주 중단 확인 필요' :
+                 type === '급등 미포착' ? '재고 부족 가능성' :
+                 type === '수요 감소' ? '발주량 조정 검토' :
+                 type === '예상 외 주문' ? '긴급 발주 검토' : 'AI 예측 참고 활용'}
+              </div>
+            </div>
+          ))}
+        </div>
 
-          {/* 오차 패턴 분석 */}
-          <InsightCard icon="🔍" title="오차 패턴 분석" items={[
-            `상위 5개 제품의 <b>총 오차 합계: ${totalErrorSum.toFixed(0)}개</b> — 이 제품들만 관리해도 전체 MAE 크게 개선 가능`,
-            hasZeroActual > 0 ? `<b>실제 수주 0개인데 예측한 경우: ${hasZeroActual}건</b> — 수주 유무를 먼저 분류하는 2-Stage 모델이 필요` : '<b>모든 제품이 실제 수주 발생</b> — 수량 정확도 개선에 집중',
-            hasOverPredict >= topErrors.length / 2 ? '<b>과대 예측(Over-predict) 경향</b> — 재고 과잉 위험. 안전 마진을 줄이는 것이 유리' : '<b>과소 예측(Under-predict) 경향</b> — 품절 위험. 안전 재고를 높이는 것이 유리',
-          ]} />
+        {/* 테이블 */}
+        <div style={{ overflowX:'auto', marginBottom:28 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ borderBottom:`2px solid ${T.border}` }}>
+                {['순위','제품 ID','제품명','규격','AI 예측','실제 주문','차이','원인 유형'].map(h => (
+                  <th key={h} style={{ padding:'8px 6px', textAlign:['AI 예측','실제 주문','차이'].includes(h)?'right':'left', color:T.text3, fontWeight:600, fontSize:11, whiteSpace:'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {classifiedErrors.map((p, i) => (
+                <tr key={i} style={{ borderBottom:`1px solid ${T.border}`, background: i < 3 ? '#fef2f2' : 'transparent' }}>
+                  <td style={{ padding:'7px 6px', fontWeight:700, color:T.red }}>{i + 1}</td>
+                  <td style={{ padding:'7px 6px', fontFamily:mono, fontSize:10, whiteSpace:'nowrap' }}>{p.product_id}</td>
+                  <td style={{ padding:'7px 6px', fontSize:11, fontWeight:600, color:T.text1 }}>{p.product_name || '-'}</td>
+                  <td style={{ padding:'7px 6px', fontSize:10, color:T.text3 }}>{p.product_specification || '-'}</td>
+                  <td style={{ padding:'7px 6px', textAlign:'right', fontFamily:mono, fontSize:11 }}>{p.predicted.toFixed(1)}</td>
+                  <td style={{ padding:'7px 6px', textAlign:'right', fontFamily:mono, fontSize:11 }}>{p.actual.toFixed(1)}</td>
+                  <td style={{ padding:'7px 6px', textAlign:'right', fontFamily:mono, fontSize:11, color:T.red, fontWeight:700 }}>{p.error.toFixed(1)}</td>
+                  <td style={{ padding:'7px 6px' }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:p.cls.color, background:p.cls.bg, borderRadius:5, padding:'2px 7px', whiteSpace:'nowrap' }}>
+                      {p.cls.icon} {p.cls.label}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 원인 유형별 분석 카드 */}
+        <div style={{ fontSize:13, fontWeight:700, color:T.text1, marginBottom:12 }}>📋 원인 유형별 분석 및 권고사항</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:14 }}>
+          {errorGroups.map(([type, products]) => {
+            const cls = products[0].cls
+            return (
+              <div key={type} style={{ borderRadius:10, overflow:'hidden', border:`1px solid ${cls.color}33` }}>
+                {/* 카드 헤더 */}
+                <div style={{ padding:'12px 16px', background:cls.bg, display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:18 }}>{cls.icon}</span>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700, color:cls.color }}>{type}</div>
+                    <div style={{ fontSize:11, color:T.text3 }}>{products.length}건 발생</div>
+                  </div>
+                </div>
+                {/* 카드 본문 */}
+                <div style={{ padding:'14px 16px', background:'#fff' }}>
+                  {/* 해당 제품 태그 */}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:10 }}>
+                    {products.map(p => (
+                      <span key={p.product_id} style={{ fontSize:10, fontFamily:mono, background:T.surface2, border:`1px solid ${T.border}`, borderRadius:4, padding:'2px 7px', color:T.text1 }}>
+                        {p.product_name || p.product_id}
+                        <span style={{ color:T.text3, marginLeft:4 }}>({p.error.toFixed(0)}개 차이)</span>
+                      </span>
+                    ))}
+                  </div>
+                  {/* 원인 설명 */}
+                  <div style={{ fontSize:12, color:T.text2, lineHeight:1.8, marginBottom:10 }}>
+                    {cls.why}
+                  </div>
+                  {/* 권고사항 */}
+                  <div style={{ padding:'8px 12px', borderRadius:6, background:cls.bg, fontSize:12, color:cls.color, fontWeight:600, lineHeight:1.6 }}>
+                    💡 {cls.action}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -2049,32 +2230,36 @@ function TabExecutivePeriod({ data, comparisonData, periodType, autoGenerate, on
         <p style={{ fontSize: 13, color: T.text2, marginBottom: 16 }}>
           예측 오차가 가장 작은 제품들입니다. 이 제품군은 AI 예측을 신뢰하고 자동 발주/생산 계획에 즉시 반영할 수 있습니다.
         </p>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: `2px solid ${T.border}` }}>
-              {['순위', '제품 ID(Product)', '예측값(Predicted)', '실제값(Actual)', '오차(Error)', '정확도'].map(h => (
-                <th key={h} style={{ padding: '8px 6px', textAlign: h === '순위' || h.startsWith('제품') ? 'left' : 'right', color: T.text3, fontWeight: 600, fontSize: 11 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.top_accurate_products.map((p, i) => {
-              const accuracy = p.actual > 0 ? Math.max(0, 100 - (Math.abs(p.error) / p.actual * 100)) : (p.error === 0 ? 100 : 0)
-              return (
-                <tr key={i} style={{ borderBottom: `1px solid ${T.border}`, background: i < 3 ? '#f0fdf4' : 'transparent' }}>
-                  <td style={{ padding: '7px 6px', fontWeight: 700, color: T.green }}>{i + 1}</td>
-                  <td style={{ padding: '7px 6px', fontFamily: mono, fontSize: 11 }}>{p.product_id}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{p.predicted.toFixed(1)}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{p.actual.toFixed(1)}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11, color: T.green, fontWeight: 700 }}>{p.error.toFixed(1)}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'right' }}>
-                    <Badge type="good">{accuracy.toFixed(0)}%</Badge>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${T.border}` }}>
+                {['순위', '제품 ID', '제품명', '규격', '예측', '실제', '오차', '정확도'].map(h => (
+                  <th key={h} style={{ padding: '8px 6px', textAlign: ['예측','실제','오차','정확도'].includes(h) ? 'right' : 'left', color: T.text3, fontWeight: 600, fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.top_accurate_products.map((p, i) => {
+                const accuracy = p.actual > 0 ? Math.max(0, 100 - (Math.abs(p.error) / p.actual * 100)) : (p.error === 0 ? 100 : 0)
+                return (
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border}`, background: i < 3 ? '#f0fdf4' : 'transparent' }}>
+                    <td style={{ padding: '7px 6px', fontWeight: 700, color: T.green }}>{i + 1}</td>
+                    <td style={{ padding: '7px 6px', fontFamily: mono, fontSize: 10, whiteSpace: 'nowrap' }}>{p.product_id}</td>
+                    <td style={{ padding: '7px 6px', fontSize: 11, fontWeight: 600, color: T.text1 }}>{p.product_name || '-'}</td>
+                    <td style={{ padding: '7px 6px', fontSize: 10, color: T.text3 }}>{p.product_specification || '-'}</td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{p.predicted.toFixed(1)}</td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11 }}>{p.actual.toFixed(1)}</td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: mono, fontSize: 11, color: T.green, fontWeight: 700 }}>{p.error.toFixed(1)}</td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right' }}>
+                      <Badge type="good">{accuracy.toFixed(0)}%</Badge>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* ── 실무 적용 권고 ── */}
@@ -2131,8 +2316,8 @@ function TabExecutivePeriod({ data, comparisonData, periodType, autoGenerate, on
               ]
             } />
             <InsightCard icon="⚠️" title="주의 사항" items={[
-              `<b>오차 상위 ${topErrors.length}개 제품</b>은 예측을 신뢰하지 말고 담당자가 직접 관리`,
-              hasZeroActual > 0 ? `<b>실제 수주 0인 제품에 대한 과대 예측 ${hasZeroActual}건</b> — 불필요한 생산/발주 주의` : '<b>전 제품 수주 발생</b> — 수량 보정에 집중',
+              `<b>오차 상위 ${classifiedErrors.length}개 제품</b>은 예측을 신뢰하지 말고 담당자가 직접 관리`,
+              classifiedErrors.filter(p => p.actual === 0).length > 0 ? `<b>실제 수주 0인 제품에 대한 과대 예측 ${classifiedErrors.filter(p => p.actual === 0).length}건</b> — 불필요한 생산/발주 주의` : '<b>전 제품 수주 발생</b> — 수량 보정에 집중',
               `<b>MAPE ${m.mape.toFixed(0)}%</b> ${m.mape > 50 ? '— 비율 기준 오차가 크므로 소량 제품 예측 시 주의' : '— 비율 기준 오차 양호'}`,
             ]} />
           </div>
@@ -2154,7 +2339,7 @@ function TabExecutivePeriod({ data, comparisonData, periodType, autoGenerate, on
               textColor: r2Grade === 'good' ? '#059669' : r2Grade === 'warn' ? '#d97706' : '#dc2626',
             },
             {
-              q: `오차 상위 제품 관리 — 상위 ${topErrors.length}개 제품의 총 오차 ${totalErrorSum.toFixed(0)}개`,
+              q: `오차 상위 제품 관리 — 상위 ${classifiedErrors.length}개 제품의 총 오차 ${totalErrorSum.toFixed(0)}개`,
               a: '권장: 담당자 수동 관리',
               color: '#fef3c7', textColor: '#d97706',
             },
@@ -2166,7 +2351,7 @@ function TabExecutivePeriod({ data, comparisonData, periodType, autoGenerate, on
             },
             {
               q: '향후 개선 방향 — 오차 패턴 기반 모델 고도화',
-              a: hasZeroActual > 0 ? '권장: 2-Stage 모델 개발' : '권장: 피처 엔지니어링 강화',
+              a: classifiedErrors.filter(p => p.actual === 0).length > 0 ? '권장: 수주 중단 제품 목록 정기 검토' : '권장: 피처 엔지니어링 강화',
               color: '#dbeafe', textColor: '#1e40af',
             },
           ].map((item, i, arr) => (
