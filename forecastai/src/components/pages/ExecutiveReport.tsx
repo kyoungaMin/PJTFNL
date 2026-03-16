@@ -136,12 +136,23 @@ export default function ExecutiveReport() {
 
   return (
     <>
-      {/* 인쇄용 CSS — @media print에서 컨트롤 숨기고 보고서만 표시 */}
+      {/* 인쇄용 CSS — @media print에서 컨트롤·사이드바 숨기고 보고서만 표시 */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
+          @page { size: A4; margin: 20mm; }
           body * { visibility: hidden; }
-          #exec-report-print, #exec-report-print * { visibility: visible; }
-          #exec-report-print { position: absolute; top: 0; left: 0; width: 100%; padding: 24px; }
+          #exec-report-print, #exec-report-print * {
+            visibility: visible;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+          #exec-report-print {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            padding: 24px;
+            background: #ffffff;
+          }
           #exec-report-controls { display: none !important; }
         }
       ` }} />
@@ -150,8 +161,8 @@ export default function ExecutiveReport() {
 
         {/* ─── 헤더 ─── */}
         <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: T.text1, marginBottom: 4 }}>임원 주간 보고서</div>
-          <div style={{ fontSize: 13, color: T.text3 }}>주차별 실적 요약 및 AI 자연어 보고서를 생성합니다.</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: T.text1, marginBottom: 4 }}>수주 예측 기반 경영진 주간 보고서</div>
+          <div style={{ fontSize: 13, color: T.text3 }}>주차를 선택하면 AI가 수주 실적·재고 리스크·발주 현황을 자동 분석하여 경영진 보고서를 생성합니다.</div>
         </div>
 
         {/* ─── 컨트롤 영역 ─── */}
@@ -249,28 +260,41 @@ export default function ExecutiveReport() {
             {/* ─── KPI 카드 4개 ─── */}
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 20 }}>
               <KpiCard
-                label="주간 수주량"
+                label="이번 주 수주량"
                 value={`${fmt(data.kpi.weekOrderQty)} EA`}
                 sub={data.kpi.changeRate != null
-                  ? `전주 대비 ${Number(data.kpi.changeRate) >= 0 ? '+' : ''}${data.kpi.changeRate}%`
-                  : undefined}
+                  ? `전주 대비 ${Number(data.kpi.changeRate) >= 0 ? '▲ +' : '▼ '}${data.kpi.changeRate}%`
+                  : '전주 대비 데이터 없음'}
                 color={data.kpi.changeRate != null && Number(data.kpi.changeRate) < 0 ? T.red : T.blue}
               />
               <KpiCard
-                label="주간 생산량"
+                label="이번 주 생산 실적"
                 value={`${fmt(data.kpi.weekProducedQty)} EA`}
-                sub="생산 실적"
+                sub="생산 완료 수량"
               />
               <KpiCard
-                label="재고 커버리지"
+                label="재고 안전 여유"
                 value={`${data.kpi.coverageDays}일`}
-                sub={`목표 21일 · ${data.kpi.coverageStatus}`}
-                color={data.kpi.coverageDays >= 21 ? T.green : data.kpi.coverageDays >= 14 ? T.amber : T.red}
+                sub={
+                  data.kpi.coverageDays > 90
+                    ? '⚠️ 목표 21일 크게 초과 (과잉 재고 위험)'
+                    : data.kpi.coverageDays >= 21
+                    ? '✅ 목표 달성 (21일 이상)'
+                    : data.kpi.coverageDays >= 14
+                    ? '⚠️ 주의 (목표 21일 미달)'
+                    : '🚨 재고 부족 위험'
+                }
+                color={
+                  data.kpi.coverageDays > 90 ? T.red
+                    : data.kpi.coverageDays >= 21 ? T.green
+                    : data.kpi.coverageDays >= 14 ? T.amber
+                    : T.red
+                }
               />
               <KpiCard
-                label="예측 정확도"
+                label="수주 예측 정확도"
                 value={data.kpi.forecastAccuracy != null ? `${data.kpi.forecastAccuracy}%` : '-'}
-                sub="KPI 기준 70%"
+                sub={data.kpi.forecastAccuracy != null && data.kpi.forecastAccuracy >= 70 ? '✅ 목표 달성 (70% 이상)' : '목표 70% · 개선 중'}
                 color={data.kpi.forecastAccuracy != null && data.kpi.forecastAccuracy >= 70 ? T.green : T.amber}
               />
             </div>
@@ -279,14 +303,14 @@ export default function ExecutiveReport() {
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 20 }}>
 
               {/* 요약 */}
-              <SectionCard title="요약" accent={T.blue}>
+              <SectionCard title="이번 주 수주 동향 요약" accent={T.blue}>
                 <p style={{ fontSize: 13, color: T.text2, lineHeight: 1.75, margin: 0 }}>
                   {data.report.summary || '요약 내용이 없습니다.'}
                 </p>
               </SectionCard>
 
               {/* 주요 변화 */}
-              <SectionCard title="주요 변화" accent={T.purple}>
+              <SectionCard title="전주 대비 주요 변화" accent={T.purple}>
                 {data.report.changes.length > 0 ? (
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {data.report.changes.map((c, i) => (
@@ -303,7 +327,7 @@ export default function ExecutiveReport() {
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
 
               {/* 리스크 */}
-              <SectionCard title="리스크" accent={T.red}>
+              <SectionCard title="재고·수주 리스크 현황" accent={T.red}>
                 {data.report.risks.length > 0 ? (
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {data.report.risks.map((r, i) => (
@@ -317,7 +341,7 @@ export default function ExecutiveReport() {
               </SectionCard>
 
               {/* 추천 액션 */}
-              <SectionCard title="추천 액션" accent={T.green}>
+              <SectionCard title="AI 권고 — 우선 대응 사항" accent={T.green}>
                 {data.report.actions.length > 0 ? (
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {data.report.actions.map((a, i) => (
@@ -335,7 +359,7 @@ export default function ExecutiveReport() {
             {data.kpi.pendingPO > 0 && (
               <div style={{ ...card, marginTop: 14, background: T.amberSoft, border: `1px solid ${T.amberMid}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: T.amber }}>
-                  ⚠ 미처리 구매 발주 {data.kpi.pendingPO}건 — 즉시 처리 검토 필요
+                  ⚠ 미결 구매 발주 {data.kpi.pendingPO}건 — 납기 지연 방지를 위해 즉시 처리 검토 필요
                 </div>
               </div>
             )}
@@ -352,8 +376,11 @@ export default function ExecutiveReport() {
         {!data && !loading && !error && (
           <div style={{ ...card, textAlign: 'center', padding: '48px 24px', color: T.text3 }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: T.text2, marginBottom: 6 }}>보고서를 생성해 주세요</div>
-            <div style={{ fontSize: 13 }}>위에서 주차를 선택하고 "보고서 생성" 버튼을 클릭하면<br />AI가 자연어 임원 보고서를 자동으로 작성합니다.</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: T.text2, marginBottom: 6 }}>주차를 선택하고 보고서를 생성해 주세요</div>
+            <div style={{ fontSize: 13 }}>
+              AI가 해당 주차의 <strong>수주 실적 · 전주 대비 증감 · 재고 리스크 · 우선 대응 사항</strong>을<br />
+              자동으로 분석하여 경영진 보고서를 작성합니다.
+            </div>
           </div>
         )}
 

@@ -481,7 +481,7 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
 
             <div style={{ display:'flex', gap:8, marginBottom:16 }}>
               <label style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'8px 0', border:`1px dashed ${T.borderMid}`, borderRadius:7, cursor:'pointer', fontSize:12, color:T.blue }}>
-                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleCsvFile} style={{ display:'none' }}/>
+                <input ref={fileRef} type="file" accept=".csv" onChange={handleCsvFile} style={{ display:'none' }}/>
                 {csvRows.length > 0 ? `${csvRows.length}명 로드됨` : 'CSV 파일 선택'}
               </label>
               <button onClick={downloadTemplate} style={{ padding:'8px 14px', border:`1px solid ${T.border}`, borderRadius:7, fontSize:11, color:T.text2, background:T.surface2, cursor:'pointer' }}>
