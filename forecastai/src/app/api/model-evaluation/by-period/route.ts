@@ -66,8 +66,10 @@ export async function GET(req: NextRequest) {
     const rows = data ?? []
     if (rows.length === 0) {
       return NextResponse.json({
-        period, type, n_products: 0,
-        metrics: { mae: 0, rmse: 0, r2: 0, mape: 0, tolerance_5_rate: 0 },
+        period, type, n_products: 0, n_records: 0,
+        date_range: { start: startDate, end: endDate },
+        metrics: { mae: 0, rmse: 0, r2: 0, mape: 0, wmape: 0, tolerance_5_rate: 0 },
+        segments: [],
         top_error_products: [],
         top_accurate_products: [],
       })
@@ -150,7 +152,7 @@ export async function GET(req: NextRequest) {
       product_id: e.pid, predicted: Math.round(e.pred * 10) / 10,
       actual: Math.round(e.actual * 10) / 10, error: Math.round(e.error * 10) / 10,
     }))
-    const topAccurate = sorted.slice(-10).reverse().map(e => ({
+    const topAccurate = sorted.filter(e => e.actual > 0 || e.pred > 0).slice(-10).reverse().map(e => ({
       product_id: e.pid, predicted: Math.round(e.pred * 10) / 10,
       actual: Math.round(e.actual * 10) / 10, error: Math.round(e.error * 10) / 10,
     }))

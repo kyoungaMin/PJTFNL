@@ -43,17 +43,25 @@ function HighUncertaintyPanel() {
 
   return (
     <div style={{ ...card, marginBottom: 20, border: `1px solid ${T.amberMid}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>⚠ 예측 주의 제품</span>
-          <span style={{ fontSize: 11, color: T.text3 }}>
-            간헐·고변동 수요 — 예측 신뢰도가 낮아 실제와 크게 다를 수 있습니다
-          </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>⚠ 예측 주의 제품</span>
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: T.amber,
+              background: T.amberSoft, border: `1px solid ${T.amberMid}`,
+              borderRadius: 4, padding: '1px 7px',
+            }}>AI 예측 신뢰도 낮음</span>
+          </div>
+          <p style={{ fontSize: 12, color: T.text2, margin: 0, lineHeight: 1.7 }}>
+            아래 제품들은 <strong>주문이 불규칙하거나 주문량 변동이 큰</strong> 제품입니다.
+            AI가 예측하기 어려운 패턴이므로, <strong>발주 전 담당자가 직접 수요를 확인</strong>하는 것을 권장합니다.
+          </p>
         </div>
         <Btn
           variant="ghost"
           onClick={() => setOpen(o => !o)}
-          style={{ fontSize: 11, padding: '4px 8px' }}
+          style={{ fontSize: 11, padding: '4px 8px', flexShrink: 0, marginLeft: 12 }}
         >
           {open ? '접기' : '펼치기'}
         </Btn>
@@ -90,10 +98,14 @@ function HighUncertaintyPanel() {
                       {item.productId}
                     </div>
                     <div style={{ fontSize: 10, color: T.text3, lineHeight: 1.6 }}>
-                      수요 공백률 <span style={{ fontWeight: 700, color: T.text2 }}>{item.zeroRatio}%</span>
+                      주문 없던 기간{' '}
+                      <span style={{ fontWeight: 700, color: T.text2 }}>최근 13주 중 {item.zeroRatio}%</span>
                     </div>
-                    <div style={{ fontSize: 10, color: T.text3 }}>
-                      변동계수(CV) <span style={{ fontWeight: 700, color: T.text2 }}>{item.cv.toFixed(2)}</span>
+                    <div style={{ fontSize: 10, color: T.text3, lineHeight: 1.6 }}>
+                      주문량 변동성{' '}
+                      <span style={{ fontWeight: 700, color: T.text2 }}>
+                        {item.cv >= 1.5 ? '매우 높음' : item.cv >= 1.0 ? '높음' : '보통'}
+                      </span>
                     </div>
                     <div style={{
                       marginTop: 6,
@@ -101,7 +113,7 @@ function HighUncertaintyPanel() {
                       fontSize: 10, fontWeight: 700,
                       color: isHigh ? T.red : T.amber,
                     }}>
-                      {isHigh ? '⚠ 신뢰도 낮음' : '△ 신뢰도 보통'}
+                      {isHigh ? '⚠ 발주 전 직접 확인 필요' : '△ 예측값 참고 후 확인'}
                     </div>
                   </div>
                 )

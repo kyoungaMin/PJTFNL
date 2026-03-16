@@ -318,7 +318,7 @@ export async function POST(req: NextRequest) {
       actual: Math.round(e.actual * 10) / 10,
       error: Math.round(e.error * 10) / 10,
     }))
-    const topAccurate = sorted.slice(-10).reverse().map(e => ({
+    const topAccurate = sorted.filter(e => e.actual > 0 || e.pred > 0).slice(-10).reverse().map(e => ({
       product_id: e.pid,
       predicted: Math.round(e.pred * 10) / 10,
       actual: Math.round(e.actual * 10) / 10,
