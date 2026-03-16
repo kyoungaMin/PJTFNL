@@ -7,6 +7,7 @@ Step 7: 생산 최적화 (Production Plan)
 출력 테이블: production_plan
 """
 
+import math
 from datetime import date, timedelta
 from collections import defaultdict
 
@@ -15,6 +16,8 @@ from config import (
     PRODUCTION_PLAN_DAYS, PRODUCTION_CAPACITY_BUFFER, PRODUCTION_LOOKBACK_DAYS,
     SEGMENT_MODEL_ID,
 )
+
+SAFETY_STOCK_Z = 1.65  # 95% 서비스 수준 계수
 
 
 # ─── 데이터 로드 ─────────────────────────────────────────────
@@ -138,13 +141,14 @@ def load_lead_times() -> dict:
         pid = r["product_id"]
         if pid not in latest or r["calc_date"] > latest[pid]["calc_date"]:
             latest[pid] = r
-    return {
-        pid: {
-            "avg": float(r["avg_lead_days"] or 7),
-            "p90": float(r["p90_lead_days"] or 14),
-        }
-        for pid, r in latest.items()
-    }
+    result = {}
+    for pid, r in latest.items():
+        avg = float(r["avg_lead_days"] or 7)
+        p90 = float(r["p90_lead_days"] or 14)
+        # σ_lead 역산: P90 = avg + 1.28×σ → σ = (p90 - avg) / 1.28
+        std = max((p90 - avg) / 1.28, avg * 0.1)
+        result[pid] = {"avg": avg, "p90": p90, "std": std}
+    return result
 
 
 def load_open_orders() -> dict:
@@ -161,21 +165,32 @@ def load_open_orders() -> dict:
     return dict(open_orders)
 
 
-def load_daily_demand() -> dict:
-    """최근 N일 일평균 수요: {product_id: daily_avg}"""
+def load_daily_demand() -> tuple:
+    """최근 N일 일평균 수요 및 표준편차: ({product_id: daily_avg}, {product_id: daily_std})"""
     rows = fetch_all("daily_order", "product_id,order_date,order_qty")
     cutoff = (date.today() - timedelta(days=PRODUCTION_LOOKBACK_DAYS)).isoformat()
-    demand_sum = defaultdict(float)
+    demand_by_day = defaultdict(lambda: defaultdict(float))
     demand_days = defaultdict(set)
     for r in rows:
         if r.get("order_date") and r["order_date"] >= cutoff:
             pid = r["product_id"]
-            demand_sum[pid] += float(r["order_qty"] or 0)
+            demand_by_day[pid][r["order_date"]] += float(r["order_qty"] or 0)
             demand_days[pid].add(r["order_date"])
-    return {
-        pid: demand_sum[pid] / len(demand_days[pid])
-        for pid in demand_sum if demand_days[pid]
-    }
+    daily_avg = {}
+    daily_std = {}
+    for pid in demand_by_day:
+        n_order_days = len(demand_days[pid])
+        if n_order_days > 0:
+            total_qty = sum(demand_by_day[pid].values())
+            # 분모를 PRODUCTION_LOOKBACK_DAYS로 — 수주 없는 날도 포함한 진짜 일평균
+            avg = total_qty / PRODUCTION_LOOKBACK_DAYS
+            daily_avg[pid] = avg
+            # std도 zero-demand 일수를 포함한 전체 분산으로 계산
+            ss_order = sum((v - avg) ** 2 for v in demand_by_day[pid].values())
+            ss_zero = (PRODUCTION_LOOKBACK_DAYS - n_order_days) * (avg ** 2)
+            variance = (ss_order + ss_zero) / max(PRODUCTION_LOOKBACK_DAYS - 1, 1)
+            daily_std[pid] = math.sqrt(variance)
+    return daily_avg, daily_std
 
 
 # ─── 판정 함수 ───────────────────────────────────────────────
@@ -231,7 +246,7 @@ def run(weeks_back: int = 4):
     risk_data = load_risk_data()
     lead_times = load_lead_times()
     open_orders = load_open_orders()
-    daily_demand = load_daily_demand()
+    daily_demand, daily_demand_std = load_daily_demand()
 
     print(f"  예측: {len(fc_map):,}  재고: {len(inv_map):,}  "
           f"캐파: {len(capacity):,}  리스크: {len(risk_data):,}")
@@ -273,9 +288,16 @@ def run(weeks_back: int = 4):
             inv_qty = inv_map.get(pid, 0) * (1 + inv_offset)
 
             # 리드타임 & 안전재고
-            lt = lead_times.get(pid, {"avg": 7, "p90": 14})
+            lt = lead_times.get(pid, {"avg": 7, "p90": 14, "std": 2.1})
             avg_d = daily_demand.get(pid, 0)
-            safety_stock = lt["p90"] * avg_d
+            std_d = daily_demand_std.get(pid, avg_d * 0.3)
+            std_l = lt.get("std", lt["avg"] * 0.3)
+            if avg_d > 0:
+                safety_stock = SAFETY_STOCK_Z * math.sqrt(
+                    lt["avg"] * (std_d ** 2) + (avg_d ** 2) * (std_l ** 2)
+                )
+            else:
+                safety_stock = 0.0
 
             # 순소요량
             net_req = max(0, demand_p50 + safety_stock - inv_qty)
