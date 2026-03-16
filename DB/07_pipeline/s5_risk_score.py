@@ -12,10 +12,13 @@ Step 5: 리스크 스코어링
   python s5_risk_score.py --backfill            # 2026-01 ~ 2026-02 주간+월간 백필
 """
 
+import math
 from datetime import date, timedelta
 from collections import defaultdict
 
 from config import supabase, upsert_batch, RISK_WEIGHTS, get_risk_grade, SEGMENT_MODEL_ID
+
+SAFETY_STOCK_Z = 1.65  # 95% 서비스 수준 계수
 
 
 def fetch_all(table: str, select: str) -> list:
@@ -99,11 +102,19 @@ def _load_common_data():
             pass
     lead_avg = {}
     lead_p90 = {}
+    lead_std = {}
     for pid, days_list in lead_days_map.items():
         sorted_d = sorted(days_list)
-        lead_avg[pid] = sum(sorted_d) / len(sorted_d)
-        p90_idx = min(int(len(sorted_d) * 0.9), len(sorted_d) - 1)
+        n = len(sorted_d)
+        avg = sum(sorted_d) / n
+        lead_avg[pid] = avg
+        p90_idx = min(int(n * 0.9), n - 1)
         lead_p90[pid] = float(sorted_d[p90_idx])
+        if n > 1:
+            variance = sum((d - avg) ** 2 for d in sorted_d) / (n - 1)
+            lead_std[pid] = math.sqrt(variance)
+        else:
+            lead_std[pid] = avg * 0.3
     print(f"  리드타임: {len(lead_avg):,}개 제품")
 
     # 4) 수주 (전체)
@@ -147,6 +158,7 @@ def _load_common_data():
         "inv_by_date": inv_by_date,
         "lead_avg": lead_avg,
         "lead_p90": lead_p90,
+        "lead_std": lead_std,
         "all_order_rows": all_order_rows,
         "bom_cost": bom_cost,
         "avg_rev_price": avg_rev_price,
@@ -169,23 +181,32 @@ def _get_inventory_at(inv_by_date, pid, eval_d):
 
 
 def _compute_demand(all_order_rows, eval_d, lookback_days=90):
-    """eval_date 기준 과거 lookback_days 내 일평균 수요 산출"""
+    """eval_date 기준 과거 lookback_days 내 일평균 수요 및 표준편차 산출"""
     cutoff = (eval_d - timedelta(days=lookback_days)).isoformat()
     eval_str = eval_d.isoformat()
-    recent_demand = defaultdict(float)
+    demand_by_day = defaultdict(lambda: defaultdict(float))
     demand_days = defaultdict(set)
     for r in all_order_rows:
         od = r.get("order_date")
         if od and cutoff <= od <= eval_str:
             pid = r["product_id"]
-            recent_demand[pid] += float(r["order_qty"] or 0)
+            demand_by_day[pid][od] += float(r["order_qty"] or 0)
             demand_days[pid].add(od)
     daily_avg = {}
-    for pid in recent_demand:
-        n = len(demand_days[pid])
-        if n > 0:
-            daily_avg[pid] = recent_demand[pid] / n
-    return daily_avg
+    daily_std = {}
+    for pid in demand_by_day:
+        n_order_days = len(demand_days[pid])
+        if n_order_days > 0:
+            total_qty = sum(demand_by_day[pid].values())
+            # 분모를 lookback_days(90)로 — 수주 없는 날도 포함한 진짜 일평균
+            avg = total_qty / lookback_days
+            daily_avg[pid] = avg
+            # std도 zero-demand 일수를 포함한 전체 분산으로 계산
+            ss_order = sum((v - avg) ** 2 for v in demand_by_day[pid].values())
+            ss_zero = (lookback_days - n_order_days) * (avg ** 2)
+            variance = (ss_order + ss_zero) / max(lookback_days - 1, 1)
+            daily_std[pid] = math.sqrt(variance)
+    return daily_avg, daily_std
 
 
 def _compute_open_orders(all_order_rows, eval_d):
@@ -210,11 +231,12 @@ def score_risk(eval_d: date, eval_type: str = "weekly") -> list:
     inv_by_date = data["inv_by_date"]
     lead_avg = data["lead_avg"]
     lead_p90_map = data["lead_p90"]
+    lead_std_map = data["lead_std"]
     all_order_rows = data["all_order_rows"]
     bom_cost = data["bom_cost"]
     avg_rev_price = data["avg_rev_price"]
 
-    daily_avg_demand = _compute_demand(all_order_rows, eval_d)
+    daily_avg_demand, daily_std_demand = _compute_demand(all_order_rows, eval_d)
     open_orders = _compute_open_orders(all_order_rows, eval_d)
 
     # 재고 맵 (eval_date 기준)
@@ -235,7 +257,14 @@ def score_risk(eval_d: date, eval_type: str = "weekly") -> list:
         demand_p90 = fc_30.get("p90", avg_demand * 30)
 
         inv_days = inv_qty / avg_demand if avg_demand > 0 else 999
-        safety_stock = lt_p90 * avg_demand
+        std_demand = daily_std_demand.get(pid, avg_demand * 0.3)
+        std_lead = lead_std_map.get(pid, lt_mean * 0.3)
+        if avg_demand > 0 and lt_mean > 0:
+            safety_stock = SAFETY_STOCK_Z * math.sqrt(
+                lt_mean * (std_demand ** 2) + (avg_demand ** 2) * (std_lead ** 2)
+            )
+        else:
+            safety_stock = 0.0
 
         # ① 결품 리스크
         if avg_demand <= 0:
