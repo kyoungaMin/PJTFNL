@@ -90,11 +90,13 @@ async function searchGoogleNewsRSS(query: string, days: number): Promise<NewsIte
   // when:7d → 최근 7일, when:1m → 최근 1달 (Google News RSS 기간 필터)
   const when  = days <= 7 ? 'when:7d' : 'when:1m'
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' ' + when)}&hl=ko&gl=KR&ceid=KR:ko`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 4000) // 4초 타임아웃
   const res = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
-    // 캐시 없이 최신 기사 수신
     cache: 'no-store',
-  })
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timer))
   if (!res.ok) throw new Error(`Google News RSS 오류: ${res.status}`)
 
   const xml = await res.text()
@@ -181,35 +183,49 @@ async function searchTavily(query: string, days: number): Promise<NewsItem[]> {
   }))
 }
 
-// ─── GPT 요약 생성 ─────────────────────────────────────────────────────────────
-async function generateSummary(news: NewsItem[], period: string): Promise<SummaryData> {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey || news.length === 0) {
-    return {
-      keywords: ['반도체', 'AI', '공급망'],
-      insights: [{ color: 'blue', text: '뉴스 데이터를 기반으로 업계 동향을 분석 중입니다.' }],
-    }
+// ─── GPT 번역 + 요약 통합 1회 호출 ────────────────────────────────────────────
+function isEnglish(text: string): boolean {
+  const korean = (text.match(/[\uAC00-\uD7A3]/g) ?? []).length
+  const total  = text.replace(/\s/g, '').length
+  return total > 0 && korean / total < 0.15
+}
+
+interface TranslateAndSummaryResult {
+  translatedNews: NewsItem[]
+  summary: SummaryData
+}
+
+async function translateAndSummarize(news: NewsItem[], period: string): Promise<TranslateAndSummaryResult> {
+  const fallbackSummary: SummaryData = {
+    keywords: ['반도체', 'AI', '공급망'],
+    insights: [{ color: 'blue', text: '뉴스 데이터를 기반으로 업계 동향을 분석 중입니다.' }],
   }
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey || news.length === 0) return { translatedNews: news, summary: fallbackSummary }
 
   const periodLabel = period === 'month' ? '이번 달' : '이번 주'
+  const engIdx = news.map((n, i) => ({ i, n })).filter(({ n }) => isEnglish(n.title))
+  const toTranslate = engIdx.map(({ n }) => ({ title: n.title, summary: n.summary }))
+
   const newsText = news.slice(0, 10).map((n, i) =>
     `${i + 1}. [${n.category}] ${n.title} — ${n.summary}`
   ).join('\n')
 
-  const prompt = `
-당신은 반도체 부품·소재 업계 전문 애널리스트입니다.
-아래 최신 뉴스를 분석하여 ${periodLabel} 업계 핵심 동향을 요약해주세요.
+  const prompt = `당신은 반도체 부품·소재 업계 전문 애널리스트입니다.
+아래 두 가지 작업을 한 번에 처리해주세요.
 
-[뉴스 목록]
+[작업 1] 영어 뉴스 한국어 번역
+규칙: TSMC, Samsung, NVIDIA, AI, GPU 등 고유명사·브랜드명은 영어 그대로.
+번역 대상: ${JSON.stringify(toTranslate)}
+
+[작업 2] ${periodLabel} 업계 핵심 동향 요약
+아래 뉴스 목록 기반:
 ${newsText}
-
-[출력 규칙]
-- 반드시 아래 JSON 형식으로만 답변 (다른 텍스트 절대 금지)
-- keywords: ${periodLabel} 핵심 키워드 3~5개 (짧은 명사/구문)
+- keywords: 핵심 키워드 3~5개 (짧은 명사/구문)
 - insights: 핵심 인사이트 3개 (color: blue/red/amber/green/purple, text: 한국어 1문장)
 
-{"keywords":["키워드1","키워드2","키워드3"],"insights":[{"color":"blue","text":"..."},{"color":"red","text":"..."},{"color":"green","text":"..."}]}
-`.trim()
+[출력 형식 — JSON만, 다른 텍스트 금지]
+{"translations":[{"title":"번역된 제목","summary":"번역된 요약"},...],"keywords":["키워드1","키워드2"],"insights":[{"color":"blue","text":"..."}]}`
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -218,8 +234,8 @@ ${newsText}
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.4,
-        max_tokens: 400,
+        temperature: 0.2,
+        max_tokens: 4000,
         response_format: { type: 'json_object' },
       }),
     })
@@ -230,78 +246,32 @@ ${newsText}
     const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? '{}')
     const allowed = ['blue', 'red', 'amber', 'green', 'purple']
 
-    return {
+    // 번역 적용
+    const translatedNews = [...news]
+    const translations: { title: string; summary: string }[] = parsed.translations ?? []
+    engIdx.forEach(({ i }, k) => {
+      if (k >= translations.length) return
+      translatedNews[i] = {
+        ...translatedNews[i],
+        title:   translations[k]?.title   || translatedNews[i].title,
+        summary: translations[k]?.summary || translatedNews[i].summary,
+      }
+    })
+
+    // 요약 파싱
+    const summary: SummaryData = {
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 5).map(String) : ['반도체', 'AI', '공급망'],
       insights: Array.isArray(parsed.insights)
         ? parsed.insights.slice(0, 4).map((ins: { color?: string; text?: string }) => ({
             color: allowed.includes(ins.color ?? '') ? ins.color! : 'blue',
             text:  String(ins.text ?? ''),
           }))
-        : [],
+        : [{ color: 'blue', text: '업계 동향 분석 완료.' }],
     }
+
+    return { translatedNews, summary }
   } catch {
-    return {
-      keywords: ['반도체', 'AI', '공급망'],
-      insights: [{ color: 'amber', text: 'AI 요약 생성 중 오류가 발생했습니다.' }],
-    }
-  }
-}
-
-// ─── 영문 뉴스 한국어 번역 ─────────────────────────────────────────────────────
-function isEnglish(text: string): boolean {
-  const korean = (text.match(/[\uAC00-\uD7A3]/g) ?? []).length
-  const total  = text.replace(/\s/g, '').length
-  return total > 0 && korean / total < 0.15
-}
-
-async function translateEnglishNews(news: NewsItem[]): Promise<NewsItem[]> {
-  const engIdx = news.map((n, i) => ({ i, n })).filter(({ n }) => isEnglish(n.title))
-  if (engIdx.length === 0) return news
-
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return news
-
-  const input = engIdx.map(({ n }) => ({ title: n.title, summary: n.summary }))
-  const prompt = `반도체·IT 업계 전문 뉴스를 한국어로 번역하세요.
-규칙: TSMC, Samsung, NVIDIA, AI, GPU, CoWoS 등 고유명사·브랜드명은 영어 그대로.
-아래 JSON 배열을 받아 번역된 JSON으로만 답변 (다른 텍스트 금지).
-
-입력: ${JSON.stringify(input)}
-
-출력 형식 (items 키 사용):
-{"items":[{"title":"번역된 제목","summary":"번역된 요약"},...]}`
-
-  try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        max_tokens: 4000,
-        response_format: { type: 'json_object' },
-      }),
-    })
-    if (!res.ok) return news
-
-    const json = await res.json()
-    const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? '{}')
-    const translated: { title: string; summary: string }[] = parsed.items ?? []
-    if (translated.length === 0) return news
-
-    const result = [...news]
-    engIdx.forEach(({ i }, k) => {
-      if (k >= translated.length) return
-      result[i] = {
-        ...result[i],
-        title:   translated[k].title   || result[i].title,
-        summary: translated[k].summary || result[i].summary,
-      }
-    })
-    return result
-  } catch {
-    return news
+    return { translatedNews: news, summary: fallbackSummary }
   }
 }
 
@@ -354,68 +324,77 @@ const MOCK_SUMMARY: SummaryData = {
   ],
 }
 
+// ─── 뉴스 수집 + GPT 처리 (백그라운드 갱신에도 재사용) ───────────────────────
+async function fetchFreshData(period: string, days: number): Promise<{ news: NewsItem[]; summary: SummaryData }> {
+  const googlePromises = GOOGLE_NEWS_QUERIES.map(q =>
+    searchGoogleNewsRSS(q, days).catch(e => {
+      console.warn(`[Industry-News] Google News RSS 쿼리 실패: ${q}`, e)
+      return [] as NewsItem[]
+    })
+  )
+  const tavilyPromises = TAVILY_QUERIES.map(q =>
+    searchTavily(q, days).catch(e => {
+      console.warn(`[Industry-News] Tavily 쿼리 실패: ${q}`, e)
+      return [] as NewsItem[]
+    })
+  )
+
+  const results = await Promise.all([...googlePromises, ...tavilyPromises])
+
+  const allNews: NewsItem[] = []
+  const seen = new Set<string>()
+  for (const items of results) {
+    for (const item of items) {
+      if (item.url && !seen.has(item.url)) {
+        seen.add(item.url)
+        allNews.push(item)
+      }
+    }
+  }
+
+  if (allNews.length === 0) throw new Error('뉴스 검색 결과 없음')
+
+  allNews.sort((a, b) => {
+    if (!a.publishedDate) return 1
+    if (!b.publishedDate) return -1
+    return new Date(b.publishedDate).getTime() - new Date(a.publishedDate).getTime()
+  })
+
+  const filtered = selectTopNews(allNews)
+
+  // 번역 + 요약 GPT 1회 통합 호출
+  const { translatedNews, summary } = await translateAndSummarize(filtered, period)
+
+  return { news: translatedNews, summary }
+}
+
 // ─── GET 핸들러 ───────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const period = searchParams.get('period') === 'month' ? 'month' : 'week'
   const days   = period === 'month' ? 30 : 7
 
-  // 캐시 유효 시 반환
   const cached = cacheMap[period]
-  if (cached && Date.now() - cached.generatedAt < CACHE_TTL_MS) {
-    return NextResponse.json({ ...cached, source: 'cache', period })
+  const now = Date.now()
+
+  // 캐시가 있으면 즉시 반환 (신선하든 낡았든)
+  // 낡은 경우: 백그라운드에서 조용히 갱신 (다음 방문 때 새 데이터 제공)
+  if (cached) {
+    const isStale = now - cached.generatedAt >= CACHE_TTL_MS
+    if (isStale) {
+      // 백그라운드 갱신 (결과를 기다리지 않음)
+      fetchFreshData(period, days)
+        .then(data => { cacheMap[period] = { ...data, generatedAt: Date.now() } })
+        .catch(e => console.warn('[Industry-News] 백그라운드 갱신 실패:', e))
+    }
+    return NextResponse.json({ ...cached, source: isStale ? 'stale' : 'cache', period })
   }
 
+  // 캐시 없음 (최초 요청) — 동기 대기 불가피
   try {
-    const allNews: NewsItem[] = []
-    const seen = new Set<string>()
-
-    function addNews(items: NewsItem[]) {
-      for (const item of items) {
-        if (item.url && !seen.has(item.url)) {
-          seen.add(item.url)
-          allNews.push(item)
-        }
-      }
-    }
-
-    // 국내: Google News RSS (대한민국 기사 크롤링)
-    for (const query of GOOGLE_NEWS_QUERIES) {
-      try {
-        addNews(await searchGoogleNewsRSS(query, days))
-      } catch (e) {
-        console.warn(`[Industry-News] Google News RSS 쿼리 실패: ${query}`, e)
-      }
-    }
-
-    // 국외: Tavily (영문 쿼리만)
-    for (const query of TAVILY_QUERIES) {
-      try {
-        addNews(await searchTavily(query, days))
-      } catch (e) {
-        console.warn(`[Industry-News] Tavily 쿼리 실패: ${query}`, e)
-      }
-    }
-
-    if (allNews.length === 0) throw new Error('뉴스 검색 결과 없음')
-
-    // 날짜 내림차순 정렬
-    allNews.sort((a, b) => {
-      if (!a.publishedDate) return 1
-      if (!b.publishedDate) return -1
-      return new Date(b.publishedDate).getTime() - new Date(a.publishedDate).getTime()
-    })
-
-    // locale별 카테고리당 최대 3개 선별 → 최대 30건
-    const filtered = selectTopNews(allNews)
-
-    // 국외 뉴스 한국어 번역 (GPT 1회 호출)
-    const translatedNews = await translateEnglishNews(filtered)
-
-    const summary = await generateSummary(translatedNews, period)
-    cacheMap[period] = { news: translatedNews, summary, generatedAt: Date.now() }
-
-    return NextResponse.json({ news: translatedNews, summary, source: 'live', period })
+    const data = await fetchFreshData(period, days)
+    cacheMap[period] = { ...data, generatedAt: Date.now() }
+    return NextResponse.json({ ...data, source: 'live', period })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[Industry-News] 오류:', msg)
