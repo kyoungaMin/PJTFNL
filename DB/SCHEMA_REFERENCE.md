@@ -2,7 +2,7 @@
 
 > **프로젝트**: 반도체 부품·소재 수요예측 AI SaaS
 > **DB**: PostgreSQL (Supabase)
-> **최종 수정일**: 2026-03-11
+> **최종 수정일**: 2026-03-18
 
 ---
 
@@ -40,8 +40,12 @@
 | 28 | `model_evaluation` | 모델 평가 지표 | `15_model_evaluation_ddl.sql` | — | MAPE/RMSE/Coverage/Pinball |
 | 29 | `feature_importance` | 피처 중요도 | `15_model_evaluation_ddl.sql` | — | LightGBM gain/split |
 | 30 | `tuning_result` | 튜닝 결과 | `15_model_evaluation_ddl.sql` | — | Grid Search 이력 |
+| 31 | `pipeline_run` | 파이프라인 실행 이력 | — | — | 실행 상태·기간·소요시간 추적 |
+| 32 | `system_alert` | 시스템 알림 | `create_monitoring_tables.sql` | — | API 에러, 파이프라인 실패, 헬스체크 알림 |
+| 33 | `system_health_log` | 헬스체크 기록 | `create_monitoring_tables.sql` | — | DB 응답시간, 시스템 상태 이력 |
+| 34 | `api_log` | API 요청 로그 | `create_monitoring_tables.sql` | — | 라우트별 에러율/응답시간 추적 |
 
-**총 30개 테이블** | 내부 데이터 451,093행 + 외부지표 11,715건 + 환율 ~5,300건 + 분석 6테이블(risk_score ~186K행) + 집계 5테이블 + ML 2테이블 + 평가 3테이블
+**총 34개 테이블** | 내부 데이터 451,093행 + 외부지표 11,715건 + 환율 ~5,300건 + 분석 6테이블(risk_score ~186K행) + 집계 5테이블 + ML 2테이블 + 평가 3테이블 + 운영 4테이블
 
 ---
 
@@ -387,7 +391,61 @@
 | created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
 | | | **UNIQUE** | (model_id, horizon_key, eval_date, params_json) |
 
-### 2.7 집계 테이블 (주별·월별)
+### 2.7 운영/모니터링 테이블
+
+#### pipeline_run — 파이프라인 실행 이력
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT | PK (IDENTITY) | 자동 증가 |
+| pipeline_id | VARCHAR | NOT NULL | 파이프라인 식별자 (forecast-weekly, ml-batch-weekly 등) |
+| pipeline_name | VARCHAR | | 표시용 이름 |
+| started_at | TIMESTAMPTZ | | 실행 시작 |
+| finished_at | TIMESTAMPTZ | | 실행 종료 |
+| status | VARCHAR | | success / failed / running |
+| duration_sec | INT | | 소요 시간(초) |
+| message | TEXT | | 실행 결과 메시지 |
+| date_from | DATE | | 대상 기간 시작 |
+| date_to | DATE | | 대상 기간 종료 |
+
+#### system_alert — 시스템 알림
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | UUID | PK (gen_random_uuid) | 알림 ID |
+| alert_type | TEXT | NOT NULL | system / pipeline / api / health |
+| severity | TEXT | DEFAULT 'medium' | critical / high / medium / low |
+| title | TEXT | NOT NULL | 알림 제목 |
+| message | TEXT | | 알림 상세 내용 |
+| source | TEXT | | 발생 원천 (evaluate_rules, data_pipeline 등) |
+| target_page | TEXT | | 클릭 시 이동할 페이지 key |
+| metadata | JSONB | DEFAULT '{}' | 추가 정보 (pipeline_id, route 등) |
+| is_read | BOOLEAN | DEFAULT FALSE | 읽음 여부 |
+| is_dismissed | BOOLEAN | DEFAULT FALSE | 해제 여부 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 생성일 |
+| resolved_at | TIMESTAMPTZ | | 해결일 |
+
+#### system_health_log — 헬스체크 기록
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT | PK (IDENTITY) | 자동 증가 |
+| checked_at | TIMESTAMPTZ | DEFAULT NOW() | 체크 시각 |
+| service | TEXT | NOT NULL | 서비스명 (overall, supabase 등) |
+| status | TEXT | NOT NULL | healthy / degraded / down |
+| latency_ms | INT | | 응답 시간(ms) |
+| message | TEXT | | 상태 메시지 |
+| metadata | JSONB | DEFAULT '{}' | 상세 정보 |
+
+#### api_log — API 요청 로그
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | BIGINT | PK (IDENTITY) | 자동 증가 |
+| route | TEXT | NOT NULL | API 경로 (/api/health 등) |
+| method | TEXT | DEFAULT 'GET' | HTTP 메서드 |
+| status_code | INT | NOT NULL | HTTP 상태 코드 |
+| duration_ms | INT | | 응답 시간(ms) |
+| error_message | TEXT | | 에러 메시지 (5xx 시) |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 기록 시각 |
+
+### 2.8 집계 테이블 (주별·월별)
 
 #### calendar_week — 주차 캘린더 (차원 테이블)
 | 컬럼 | 타입 | 제약조건 | 설명 |

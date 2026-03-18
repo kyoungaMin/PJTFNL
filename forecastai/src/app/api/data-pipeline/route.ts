@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { alertPipelineFailure } from '@/lib/apiLogger'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +77,7 @@ const PIPELINE_NAMES: Record<string, string> = {
   'model-eval':       '모델 평가',
   'ext-indicators':   '외부지표 수집',
   'industry-news':    '뉴스 수집',
+  'ml-batch-weekly':  'ML 배치 (S0→S8)',
 }
 
 /* 각 파이프라인의 실제 실행 로직 — 기존 API 라우트 재활용 + 기간 파라미터 전달 */
@@ -151,6 +153,10 @@ async function executePipeline(
           ? { status: 'success', message: `뉴스 수집 완료${periodLabel}` }
           : { status: 'failed', message: `API 호출 실패: ${res.status}` }
       }
+      case 'ml-batch-weekly':
+        // ML 배치는 서버에서 Python으로 직접 실행해야 함
+        // 프론트에서 트리거 시 안내 메시지 반환 (batch_weekly.py 또는 run_batch.bat 사용)
+        return { status: 'success', message: 'ML 배치는 서버에서 run_batch.bat으로 실행하세요. 마지막 실행 결과는 이 페이지에서 확인됩니다.' }
       default:
         return { status: 'failed', message: `알 수 없는 파이프라인: ${pipelineId}` }
     }
@@ -197,6 +203,11 @@ export async function POST(req: NextRequest) {
       if (!error && data) logEntry = data
     } catch {
       // pipeline_run 테이블 미존재 — 로그 기록 생략
+    }
+
+    // 실패 시 모니터링 알림 자동 생성
+    if (result.status === 'failed') {
+      alertPipelineFailure(pipelineId, pipelineName, result.message).catch(() => {})
     }
 
     const log = logEntry ? {

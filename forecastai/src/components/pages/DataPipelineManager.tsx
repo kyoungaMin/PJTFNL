@@ -68,6 +68,7 @@ const PIPELINES: PipelineItem[] = [
   { id:'model-eval',       name:'모델 평가',        description:'R², MAE, MAPE 등 예측 정확도 평가', category:'보고서', schedule:'매주 월 08:00',     lastRunAt:null, lastStatus:'never', lastDurationSec:null, dependsOn:['forecast-weekly'],         periodType:'monthly' },
   { id:'ext-indicators',   name:'외부지표 수집',    description:'환율·원자재·글로벌 지표 갱신',       category:'수집',   schedule:'매일 08:00',        lastRunAt:null, lastStatus:'never', lastDurationSec:null, dependsOn:[],                          periodType:'daily' },
   { id:'industry-news',    name:'뉴스 수집',        description:'네이버·해외 반도체 뉴스 수집',       category:'수집',   schedule:'6시간마다',          lastRunAt:null, lastStatus:'never', lastDurationSec:null, dependsOn:[],                          periodType:'none' },
+  { id:'ml-batch-weekly',  name:'ML 배치 (S0→S8)', description:'전체 ML 파이프라인 순차 실행 (집계→예측→리스크→최적화)', category:'예측', schedule:'매주 월 06:00', lastRunAt:null, lastStatus:'never', lastDurationSec:null, dependsOn:[], periodType:'none' },
 ]
 
 /* ──────── 스타일 헬퍼 ──────── */

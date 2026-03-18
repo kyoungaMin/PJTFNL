@@ -1134,8 +1134,86 @@
 
 </div>
 
+  <!-- ═══════ Layer 8: Operations / Monitoring ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 8 &mdash; Operations &amp; Monitoring (운영 &middot; 모니터링)</div>
+    <div class="tables-row">
+
+      <!-- pipeline_run -->
+      <div class="table-card group-auth">
+        <div class="table-header">
+          <span class="table-name">pipeline_run</span>
+          <span class="table-rows">파이프라인 실행 이력</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">pipeline_id</span><span class="col-type">VARCHAR</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">pipeline_name</span><span class="col-type">VARCHAR</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">started_at / finished_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status</span><span class="col-type">VARCHAR</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">duration_sec</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">message</span><span class="col-type">TEXT</span></div>
+        </div>
+        <div class="table-footer">Pipeline execution history &mdash; DataPipelineManager</div>
+      </div>
+
+      <!-- system_alert -->
+      <div class="table-card group-auth" style="border-color:#f9731644;">
+        <div class="table-header" style="background:linear-gradient(135deg, #ea580c22, #fbbf2411);">
+          <span class="table-name">system_alert</span>
+          <span class="table-rows">시스템 알림</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">UUID</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">alert_type</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">severity</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">title / message</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">source / target_page</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">is_read / is_dismissed</span><span class="col-type">BOOLEAN</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">metadata</span><span class="col-type">JSONB</span></div>
+        </div>
+        <div class="table-footer">Pipeline failure / DB down / API error alerts (6h dedup)</div>
+      </div>
+
+      <!-- system_health_log -->
+      <div class="table-card group-auth">
+        <div class="table-header">
+          <span class="table-name">system_health_log</span>
+          <span class="table-rows">헬스체크 기록</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">checked_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">service</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">latency_ms</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">metadata</span><span class="col-type">JSONB</span></div>
+        </div>
+        <div class="table-footer">DB latency + system status snapshots</div>
+      </div>
+
+      <!-- api_log -->
+      <div class="table-card group-auth">
+        <div class="table-header">
+          <span class="table-name">api_log</span>
+          <span class="table-rows">API 요청 로그</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">route</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">method</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status_code</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">duration_ms</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">error_message</span><span class="col-type">TEXT</span></div>
+        </div>
+        <div class="table-footer">API error rate &amp; response time tracking</div>
+      </div>
+
+    </div>
+  </div>
+
 <footer style="padding:20px 40px;border-top:1px solid #334155;text-align:center;font-size:11px;color:#475569;">
-  ForecastAI ERD &mdash; 30 Tables &mdash; PostgreSQL (Supabase) &mdash; Last updated 2026-03-12
+  ForecastAI ERD &mdash; 34 Tables &mdash; PostgreSQL (Supabase) &mdash; Last updated 2026-03-18
 </footer>
 
 </body>

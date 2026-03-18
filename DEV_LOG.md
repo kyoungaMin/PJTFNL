@@ -2,7 +2,7 @@
 
 > **프로젝트명**: 반도체 부품·소재 수요 변동성 분석 및 재고 리스크 최적화 AI SaaS
 > **프로젝트 시작일**: 2026-02-27
-> **최종 수정일**: 2026-03-16
+> **최종 수정일**: 2026-03-18
 
 ---
 
@@ -127,6 +127,10 @@ DEV_LOG/
 | 2026-03-16 | kyoungaMin | 기간의 의미 | 입력 데이터 범위 / 반복 실행 | 입력 데이터 범위 | 비개발자 사용자에게 "이 기간의 데이터로 결과 생성"이 직관적 |
 | 2026-03-16 | kyoungaMin | 주차 선택 UI | 최근 N주 리스트 / 년월→주차 2단계 | 년월→주차 2단계 | 월 선택 달력과 동일한 패턴으로 사용자 학습 부담 감소 |
 | 2026-03-16 | kyoungaMin | 외부지표 기간 | 즉시 실행(기간 없음) / 일자 선택 | 일자 선택 | 과거 데이터 재수집 필요성 있음 |
+| 2026-03-18 | kyoungaMin | 모니터링 구현 방식 | 외부 서비스(Sentry/DataDog) / 자체 구현 | 자체 구현 | Vercel+Supabase 스택 내에서 비용 없이 구현 가능 |
+| 2026-03-18 | kyoungaMin | 알림 중복 방지 | 시간 윈도우 / 키 기반 / 없음 | 6시간 윈도우 | 동일 제목 알림의 과다 생성 방지, 운영 피로도 감소 |
+| 2026-03-18 | kyoungaMin | ML 배치 실행 방식 | Vercel Cron / Windows 작업 스케줄러 / 수동 | Windows 작업 스케줄러 | Python ML 파이프라인은 서버에서 직접 실행 필요 |
+| 2026-03-18 | kyoungaMin | 배치 결과 기록 | 로그 파일만 / DB만 / 둘 다 | 둘 다 | 파일은 디버깅용, DB는 대시보드 표시용 |
 
 ---
 
@@ -209,3 +213,7 @@ DEV_LOG/
 | 2026-03-15 | kyoungaMin | /api/forecast-weekly/confidence 신규 API 라우트 생성 (feature_store_weekly 기반 불확실성 점수) |
 | 2026-03-16 | kyoungaMin | 데이터 생성 관리 페이지 신규: DataPipelineManager.tsx + /api/data-pipeline + pipeline_run 테이블 |
 | 2026-03-16 | kyoungaMin | 파이프라인별 맞춤 기간 선택기: 주차(년월→주차 2단계 달력), 월(달력 모달), 일(date picker), 즉시 |
+| 2026-03-18 | kyoungaMin | 모니터링/알림 시스템 전체 구현: DB 3테이블 + API 6개 + Monitoring.tsx (4탭) |
+| 2026-03-18 | kyoungaMin | ML 배치 자동화: batch_weekly.py (S0→S8 배치 실행기) + run_batch.bat (Windows 스케줄러) |
+| 2026-03-18 | kyoungaMin | 파이프라인 실패 시 자동 알림 연동 (data-pipeline → system_alert) |
+| 2026-03-18 | kyoungaMin | 브랜치 통합: dev/jieun 머지 + origin/main 동기화 |
