@@ -5,12 +5,14 @@ import { Badge, Btn } from '@/components/ui'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
 export function Sidebar({ page, setPage, collapsed, currentUser }: { page:string, setPage:(p:string)=>void, collapsed:boolean, currentUser?: import('@/lib/data').Member|null }) {
-  const [openGroups, setOpenGroups] = useState({"재고 관리":true,"수요예측":true,"최적화":true,"외부 지표":true});
-  const groups = Array.from(new Set(NAV_STRUCTURE.filter(n=>n.parent).map(n=>n.parent)));
+  const [openGroups, setOpenGroups] = useState<Record<string,boolean>>({"재고 관리":true,"수요예측":true,"최적화":true,"외부 지표":true,"보고서":true,"관리자":true});
+  const allGroups = Array.from(new Set(NAV_STRUCTURE.filter(n=>n.parent).map(n=>n.parent)));
   const grouped = {
-    top:    NAV_STRUCTURE.filter(n=>!n.parent && n.id!=="admin" && n.id!=="executive-report" && n.id!=="data-pipeline"),
-    groups: groups.map(g=>({ name:g, items:NAV_STRUCTURE.filter(n=>n.parent===g) })),
-    bottom: currentUser?.role === 'Admin' ? NAV_STRUCTURE.filter(n=>n.id==="admin" || n.id==="data-pipeline") : [],
+    top:        NAV_STRUCTURE.filter(n=>!n.parent),
+    groups:     allGroups.filter(g=>g!=='관리자').map(g=>({ name:g, items:NAV_STRUCTURE.filter(n=>n.parent===g) })),
+    adminGroup: currentUser?.role === 'Admin'
+      ? { name:'관리자', items: NAV_STRUCTURE.filter(n=>n.parent==='관리자') }
+      : null,
   };
 
   const NavItem = ({ item }) => {
@@ -56,9 +58,18 @@ export function Sidebar({ page, setPage, collapsed, currentUser }: { page:string
             {(collapsed || openGroups[g.name]) && g.items.map(item=><NavItem key={item.id} item={item}/>)}
           </div>
         ))}
-        <div style={{ height:1, background:T.sidebarBd, margin:"8px 16px" }}/>
-        {NAV_STRUCTURE.filter(n=>n.id==="executive-report").map(item=><NavItem key={item.id} item={item}/>)}
-        {grouped.bottom.map(item=><NavItem key={item.id} item={item}/>)}
+        {grouped.adminGroup && (
+          <div>
+            <div style={{ height:1, background:T.sidebarBd, margin:"8px 16px" }}/>
+            {!collapsed && (
+              <div onClick={()=>setOpenGroups(p=>({...p,'관리자':!p['관리자']}))} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 22px 4px", cursor:"pointer" }}>
+                <span style={{ fontSize:10, fontWeight:700, color:T.sidebarSub, letterSpacing:"0.07em", textTransform:"uppercase" }}>관리자</span>
+                <span style={{ fontSize:9, color:T.sidebarSub }}>{openGroups['관리자']?"▲":"▼"}</span>
+              </div>
+            )}
+            {(collapsed || openGroups['관리자']) && grouped.adminGroup.items.map(item=><NavItem key={item.id} item={item}/>)}
+          </div>
+        )}
       </nav>
 
       {!collapsed && (

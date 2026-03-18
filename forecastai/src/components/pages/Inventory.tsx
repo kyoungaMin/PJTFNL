@@ -360,6 +360,15 @@ export default function PageInventory() {
   }, [])
 
   useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('dashRefWeek')
+      if (raw) {
+        const ref = JSON.parse(raw)
+        // yearMonth: '2026-02' → '202602' (inventory API 형식)
+        const ym = ref.yearMonth?.replace('-', '')
+        if (ym) { loadDashboard(ym); return }
+      }
+    } catch {}
     loadDashboard()
   }, [loadDashboard])
 

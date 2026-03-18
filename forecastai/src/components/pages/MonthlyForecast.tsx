@@ -1024,7 +1024,7 @@ export default function PageMonthlyForecast() {
 
       {/* ─── 하단 메타 ───────────────────────────────────────────────────────── */}
       <div style={{ marginTop: 12, fontSize: 11, color: T.text3 }}>
-        ⓘ 모델: LightGBM Quantile (lgbm_q_monthly_v2) · Ridge Regression | horizon: 30/90/180일
+        ⓘ 모델: LightGBM Quantile (lgbm_q_v3) | horizon: 28/56/91일 (4W/8W/13W)
         {customerId ? ` · 고객사: ${customers.find(c => c.id === customerId)?.name ?? customerId}` : ' · 전체 고객사'}
         {meta.live && meta.date ? ` · 예측 기준일: ${meta.date}` : ''}
         {selectedDate ? ' · 과거 월 조회' : ''}

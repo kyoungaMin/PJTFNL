@@ -46,12 +46,12 @@ export async function GET(request: Request) {
         .from('forecast_result')
         .select('forecast_date')
         .eq('product_id', productId)
-        .eq('model_id', 'lgbm_q_monthly_v2')
+        .eq('model_id', 'lgbm_q_v3')
         .order('forecast_date', { ascending: false })
         .limit(1)
 
       if (latestErr || !latestRows?.length) {
-        return NextResponse.json({ items: [], historyItems: [], source: 'no_forecast', model: 'lgbm_q_monthly_v2' })
+        return NextResponse.json({ items: [], historyItems: [], source: 'no_forecast', model: 'lgbm_q_v3' })
       }
       forecastDate = latestRows[0].forecast_date
     }
@@ -61,15 +61,15 @@ export async function GET(request: Request) {
       .from('forecast_result')
       .select('horizon_days, p10, p50, p90')
       .eq('product_id', productId)
-      .eq('model_id', 'lgbm_q_monthly_v2')
+      .eq('model_id', 'lgbm_q_v3')
       .eq('forecast_date', forecastDate)
-      .in('horizon_days', [30, 90, 180])
+      .in('horizon_days', [28, 56, 91])
       .order('horizon_days', { ascending: true })
 
     if (forecastErr) throw forecastErr
 
-    // horizon → months 필터링 (1m=30일, 3m=90일, 6m=180일)
-    const horizonLimit = months <= 1 ? [30] : months <= 3 ? [30, 90] : [30, 90, 180]
+    // horizon → months 필터링 (1m=28일, 2m=56일, 3m=91일)
+    const horizonLimit = months <= 1 ? [28] : months <= 2 ? [28, 56] : [28, 56, 91]
     // Bug1 fix: deduplicate by horizon_days (DB may have multiple rows per horizon)
     const seenHorizons = new Set<number>()
     const uniqueForecastRows = (forecastRows ?? []).filter(r => {
@@ -134,7 +134,7 @@ export async function GET(request: Request) {
         .from('model_evaluation')
         .select('mape, mae, coverage_rate')
         .eq('product_id', productId)
-        .eq('model_id', 'ridge_monthly_v1')
+        .eq('model_id', 'lgbm_q_v3')
         .order('eval_date', { ascending: false })
         .limit(1)
         .single()
@@ -156,7 +156,7 @@ export async function GET(request: Request) {
       items,
       historyItems,
       forecastDate,
-      model: 'lgbm_q_monthly_v2',
+      model: 'lgbm_q_v3',
       source: 'database',
       customerItems,
       evaluation,

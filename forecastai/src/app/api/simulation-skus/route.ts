@@ -181,7 +181,7 @@ export async function GET() {
       .eq('model_id', 'segment_best_v1')
       .limit(1)
     const forecastModel = modelCheck && modelCheck.length > 0
-      ? 'segment_best_v1' : 'lgbm_q_v4'
+      ? 'segment_best_v1' : 'lgbm_q_v3'
 
     return NextResponse.json({
       skus,

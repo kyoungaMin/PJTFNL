@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       .from('forecast_result')
       .select('forecast_date')
       .eq('product_id', productId)
-      .eq('model_id', 'lgbm_q_v4')
+      .eq('model_id', 'lgbm_q_v3')
       .order('forecast_date', { ascending: false })
       .limit(48) // horizon 4개 * 최대 12주
 

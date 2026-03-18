@@ -1366,15 +1366,13 @@ function TabExecutive({ data, periodType }: {
 }) {
   const MODEL_OPTIONS = {
     weekly: [
-      { id: 'lgbm_q_v4', label: 'LightGBM 2-Stage Global v4 (기본)' },
-      { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3' },
+      { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3 (현재 운영)' },
       { id: 'lgbm_q_v2', label: 'LightGBM Quantile v2' },
       { id: 'ridge_v1', label: 'Ridge Regression' },
       { id: 'svr_linear_v1', label: 'SVR Linear' },
     ],
     monthly: [
-      { id: 'lgbm_q_monthly_v2', label: 'LightGBM Quantile v2 (기본)' },
-      { id: 'lgbm_q_monthly_v1', label: 'LightGBM Quantile v1' },
+      { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3 (현재 운영)' },
       { id: 'ridge_monthly_v1', label: 'Ridge Regression' },
       { id: 'svr_linear_monthly_v1', label: 'SVR Linear' },
     ],

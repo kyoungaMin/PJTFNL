@@ -205,7 +205,16 @@ export default function PageRiskManagement() {
         if (d.categories) setAvailCategories(d.categories)
         if (d.dates && d.dates.length > 0) {
           setAvailDates(d.dates)
-          setSelDate(d.dates[0]) // 기본: 최신 날짜
+          // dashRefWeek의 evalDate가 있으면 대시보드 기준일 우선 사용, 없으면 최신 날짜
+          let targetDate = d.dates[0]
+          try {
+            const raw = sessionStorage.getItem('dashRefWeek')
+            if (raw) {
+              const ref = JSON.parse(raw)
+              if (ref.evalDate && d.dates.includes(ref.evalDate)) targetDate = ref.evalDate
+            }
+          } catch {}
+          setSelDate(targetDate)
         } else {
           setAvailDates([])
           setSelDate('')

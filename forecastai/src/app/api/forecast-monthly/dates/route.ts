@@ -21,9 +21,9 @@ export async function GET(request: Request) {
       .from('forecast_result')
       .select('forecast_date')
       .eq('product_id', productId)
-      .eq('model_id', 'lgbm_q_monthly_v2')
+      .eq('model_id', 'lgbm_q_v3')
       .order('forecast_date', { ascending: false })
-      .limit(36) // horizon 3개(30/90/180) × 최대 12개월
+      .limit(36) // horizon 3개(28/56/91) × 최대 12개월
 
     if (error) throw error
 
