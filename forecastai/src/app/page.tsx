@@ -150,7 +150,7 @@ export default function Home() {
   }
 
   return (
-    <div style={{ display:'flex', height:'100vh', background:T.pageBg,
+    <div style={{ display:'flex', height:'100vh', minWidth:1280, background:T.pageBg,
       fontFamily:"'Pretendard','Noto Sans KR','Apple SD Gothic Neo',sans-serif",
       color:T.text1, overflow:'hidden' }}>
       <Sidebar page={page} setPage={setPage} collapsed={collapsed} currentUser={currentUser} />
