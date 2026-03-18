@@ -61,7 +61,7 @@ function RangeBar({ value, min, max, color }: { value:number, min:number, max:nu
 }
 
 /* ────── Pie label ────── */
-function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, value }: any) {
+function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, value }: { cx: number; cy: number; midAngle: number; innerRadius: number; outerRadius: number; value: number }) {
   const RADIAN = Math.PI / 180
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5
   const x = cx + radius * Math.cos(-midAngle * RADIAN)
@@ -311,12 +311,12 @@ export default function PageActionQueue() {
               <div style={{ fontSize:12, color:T.text2, lineHeight:1.8, background:T.surface2, borderRadius:10, padding:'14px 16px', border:`1px solid ${T.border}` }}>
                 <b>1단계. 과거 데이터 수집</b><br/>
                 <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
-                  최근 수주량, 생산량, 재고 변동, 환율, 반도체 시황 등 <b style={{ color:T.text1 }}>46가지 요인</b>을 자동으로 수집합니다.
+                  최근 수주량, 생산량, 재고 변동, 환율, 반도체 시황 등 <b style={{ color:T.text1 }}>69가지 피처 + 5개 메타 피처</b>를 자동으로 수집합니다.
                 </span><br/>
-                <b>2단계. AI 모델이 수요를 예측</b><br/>
+                <b>2단계. AI 2-Stage 글로벌 모델이 수요를 예측</b><br/>
                 <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
-                  3종의 머신러닝 모델(LightGBM · Ridge · SVR)이 각각 수요를 예측한 뒤,<br/>
-                  <span style={{ paddingLeft:16 }}>제품의 수요 규모(소량 · 중량 · 대량)에 따라 <b style={{ color:T.text1 }}>가장 정확한 모델을 자동 선택</b>합니다.</span>
+                  전 제품 데이터를 통합 학습한 <b style={{ color:T.text1 }}>글로벌 2-Stage 모델(v4)</b>이 수요를 예측합니다.<br/>
+                  <span style={{ paddingLeft:16 }}>① 수주 유무 분류(LightGBM 이진분류) → ② 수량 예측(Quantile Regression, log1p 변환)</span>
                 </span><br/>
                 <b>3단계. 예측 결과를 세 가지 시나리오로 제공</b><br/>
                 <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>

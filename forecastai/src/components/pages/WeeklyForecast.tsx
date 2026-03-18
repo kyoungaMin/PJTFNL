@@ -305,6 +305,44 @@ function SegmentBtn<TV extends string>({
   )
 }
 
+// ─── 예측 신뢰도 배지 ─────────────────────────────────────────────────────────
+
+/** 예측 구간(P10~P90)의 평균 폭 비율로 신뢰도 산출 (future rows 기준) */
+function computeConfidence(data: ForecastRow[]): 'low' | 'medium' | 'good' | null {
+  const rows = data.filter(
+    d => d.actual == null && d.p10 != null && d.p90 != null && d.p50 > 0
+  )
+  if (rows.length === 0) return null
+  const avgBandRatio =
+    rows.reduce((sum, d) => sum + (d.p90! - d.p10!) / (d.p50 + 1), 0) / rows.length
+  if (avgBandRatio >= 1.5) return 'low'
+  if (avgBandRatio >= 0.7) return 'medium'
+  return 'good'
+}
+
+const CONFIDENCE_STYLE = {
+  low:    { label: '예측 신뢰도 낮음', icon: '⚠', color: '#DC2626', bg: '#FEF2F2', border: '#FEE2E2' },
+  medium: { label: '예측 신뢰도 보통', icon: '△', color: '#D97706', bg: '#FFFBEB', border: '#FEF3C7' },
+  good:   { label: '예측 신뢰도 양호', icon: '✓', color: '#059669', bg: '#ECFDF5', border: '#D1FAE5' },
+}
+
+function ForecastConfidenceBadge({ data, live }: { data: ForecastRow[]; live: boolean }) {
+  if (!live) return null
+  const level = computeConfidence(data)
+  if (!level) return null
+  const s = CONFIDENCE_STYLE[level]
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 5,
+      padding: '5px 10px', borderRadius: 7,
+      background: s.bg, border: `1px solid ${s.border}`,
+    }}>
+      <span style={{ fontSize: 13 }}>{s.icon}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color: s.color }}>{s.label}</span>
+    </div>
+  )
+}
+
 // ─── 리스크 등급 배지 ──────────────────────────────────────────────────────────
 
 function RiskGradeBadge({ risk }: { risk: RiskData }) {
@@ -860,7 +898,8 @@ export default function PageWeeklyForecast() {
               {skuMeta?.spec} · 단위: EA · 예측 {horizon} · 실적 {historyWeeks}주 · P10/P50/P90 밴드
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+            {!loading && <ForecastConfidenceBadge data={data} live={meta.live} />}
             {risk && !loading && <RiskGradeBadge risk={risk} />}
             {loading && (
               <div style={{ fontSize: 12, color: T.text3, padding: '6px 12px', background: T.surface2, borderRadius: 7, border: `1px solid ${T.border}` }}>

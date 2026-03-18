@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-// GET /api/model-scenario?model=lgbm_q_v3&product=ALL&weeks=8
+// GET /api/model-scenario?model=lgbm_q_v4&product=ALL&weeks=8
 export async function GET(req: NextRequest) {
   const modelId = req.nextUrl.searchParams.get('model') ?? 'segment_best_v1'
   const productId = req.nextUrl.searchParams.get('product') ?? ''
@@ -162,6 +162,7 @@ export async function GET(req: NextRequest) {
         tables: usedTables,
         modelDesc: ({
           'segment_best_v1': '구간별 최적 모델 (저수요=SVR, 중·고수요=LightGBM/Ridge)',
+          'lgbm_q_v4': 'LightGBM 2-Stage 글로벌 주간 수요예측 모델 v4',
           'lgbm_q_v3': 'LightGBM 주간 수요예측 모델 v3',
           'lgbm_q_monthly_v2': 'LightGBM 월간 수요예측 모델 v2',
           'svr_linear_v1': 'SVR Linear 주간 모델 v1 (저수요 특화)',

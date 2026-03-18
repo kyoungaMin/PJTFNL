@@ -2,7 +2,7 @@
 
 > **프로젝트명**: 반도체 부품·소재 수요 변동성 분석 및 재고 리스크 최적화 AI SaaS
 > **프로젝트 시작일**: 2026-02-27
-> **최종 수정일**: 2026-03-13
+> **최종 수정일**: 2026-03-16
 
 ---
 
@@ -119,6 +119,14 @@ DEV_LOG/
 | 2026-03-13 | kyoungaMin | 개별 모델 비교 범위 | 주간/월간 2종만 / 5종 전체 | 5종 전체 | 사용자가 segment_best 외 개별 모델도 직접 비교 가능하도록 |
 | 2026-03-13 | kyoungaMin | 월간 모델 ID 기준 | monthly_v2 (데이터 없음) / monthly_v1 (24,482건) | monthly_v1 | 실제 forecast_result 데이터가 v1에만 존재 |
 | 2026-03-13 | kyoungaMin | 모델평가 기본 화면 | 전체 집계 / 최신 기간 자동 선택 | 최신 기간 자동 선택 | 기간별 추이를 먼저 보는 것이 실무적으로 유용 |
+| 2026-03-15 | kyoungaMin | 신뢰도 배지 계산 기준 | meta.coverageRate(과거 정확도) / 밴드폭 비율(미래 불확실성) | 밴드폭 비율 | 과거 정확도와 미래 불확실성은 다른 개념 — 현재 예측의 불확실성을 직접 표시 |
+| 2026-03-15 | kyoungaMin | 주의 제품 데이터 출처 | 정적 하드코딩 / feature_store_weekly / model_evaluation WMAPE | feature_store_weekly | 실시간 반영, 최신 데이터 기반, 추가 파이프라인 불필요 |
+| 2026-03-15 | kyoungaMin | 주의 제품 UI 위치 | 별도 페이지 / WeeklyForecast 배지만 / RiskManagement 패널만 / 배지+패널 병행 | 배지+패널 병행 | 예측·리스크 양쪽 맥락에서 정보 제공, 클릭 없이 바로 확인 |
+| 2026-03-16 | kyoungaMin | 데이터 생성 위치 | 각 화면에서 개별 생성 / 별도 관리 화면 | 별도 관리 화면 1개 | 의존성 순서 보장, 권한 관리, 일괄 갱신 편의성 |
+| 2026-03-16 | kyoungaMin | 기간 선택 방식 | 글로벌 기간 1개 / 파이프라인별 맞춤 | 파이프라인별 맞춤 | 주/월/일 주기가 다른데 동일 선택기는 혼란 유발 |
+| 2026-03-16 | kyoungaMin | 기간의 의미 | 입력 데이터 범위 / 반복 실행 | 입력 데이터 범위 | 비개발자 사용자에게 "이 기간의 데이터로 결과 생성"이 직관적 |
+| 2026-03-16 | kyoungaMin | 주차 선택 UI | 최근 N주 리스트 / 년월→주차 2단계 | 년월→주차 2단계 | 월 선택 달력과 동일한 패턴으로 사용자 학습 부담 감소 |
+| 2026-03-16 | kyoungaMin | 외부지표 기간 | 즉시 실행(기간 없음) / 일자 선택 | 일자 선택 | 과거 데이터 재수집 필요성 있음 |
 
 ---
 
@@ -144,6 +152,7 @@ DEV_LOG/
 | mc_svr | 2026-03-07 | kyoungaMin | 주간+월간 | Linear SVR (scaled) | C=1.0, epsilon=0.1, StandardScaler | 주간 R²=0.02/MAE=39.3/±5=62.6%, 월간 R²=0.68/MAE=49.2/±5=47.8% | **±5 최고** |
 | mc_ridge | 2026-03-07 | kyoungaMin | 주간+월간 | Ridge Regression (scaled) | alpha=1.0, StandardScaler | 주간 R²=0.26/MAE=42.3/±5=60.2%, 월간 R²=0.69/MAE=54.3/±5=27.6% | **월간 R² 최고** |
 | segment_v1 | 2026-03-11 | kyoungaMin | 주간+월간 | 구간별 모델 선택기 | low<10→SVR, mid/high→LightGBM(주간)/Ridge(월간) | 11,431건 선택 (주간4,280+월간7,151) | 저수요303/중수요1,100/고수요718제품 |
+| global_v4_2stage | 2026-03-14 | kyoungaMin | 주간 (6호라이즌) | 2-Stage 글로벌 LightGBM (분류+회귀) | max_depth=8, lr=0.03, num_leaves=63, log1p변환, 5메타피처 | WMAPE 39.7~71.4%, Coverage 80%+ (4W~) | **★ v3 대비 22% 개선, 80,065건** |
 
 ---
 
@@ -195,3 +204,8 @@ DEV_LOG/
 | 2026-03-07 | kyoungaMin | 생산권고 UI 개선: 가이드 모달 배경 수정, 알고리즘 산식 추가, 로딩 UX |
 | 2026-03-07 | kyoungaMin | S8 파이프라인 주차별 재고/PO 보정 계수 강화 (3%→15%/10%), product_master 배치 조인 |
 | 2026-03-07 | kyoungaMin | 대시보드 구성 검토 보고서 작성 (DB 연동 가능 여부 + 사용자 유의미성 분석) |
+| 2026-03-15 | kyoungaMin | 분석 리포트 2종 교차검증 및 오류 수정: zero_target(4건), top_error(2건) |
+| 2026-03-15 | kyoungaMin | ForecastConfidenceBadge(WeeklyForecast), HighUncertaintyPanel(RiskManagement) 신규 기능 구현 |
+| 2026-03-15 | kyoungaMin | /api/forecast-weekly/confidence 신규 API 라우트 생성 (feature_store_weekly 기반 불확실성 점수) |
+| 2026-03-16 | kyoungaMin | 데이터 생성 관리 페이지 신규: DataPipelineManager.tsx + /api/data-pipeline + pipeline_run 테이블 |
+| 2026-03-16 | kyoungaMin | 파이프라인별 맞춤 기간 선택기: 주차(년월→주차 2단계 달력), 월(달력 모달), 일(date picker), 즉시 |

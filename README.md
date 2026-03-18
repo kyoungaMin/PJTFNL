@@ -65,7 +65,7 @@
 |------|------|
 | **예측 단위** | 고객사별, 제품별, 주차별/월별 선택 |
 | **예측 범위** | 주간: 1w/2w/4w (최대 28일) / 월간: 1m/3m/6m (최대 180일) |
-| **예측 모델** | LightGBM Quantile + Ridge + SVR Linear (멀티 모델, 주간 46피처, 월간 35피처) |
+| **예측 모델** | LightGBM Quantile + Ridge + SVR Linear (멀티 모델, 주간 69피처 (v4: 74피처), 월간 35피처) |
 | **출력** | P10(낙관) / P50(중앙) / P90(비관) 밴드 |
 
 ```
@@ -118,7 +118,26 @@
 | 변동성 과다 | 안전재고 상향 / 단계적 대응 | Medium |
 | 특정 고객사 집중 리스크 | 우선 대응 품목 알림 | High |
 
-### 3.5 다차원 집계 대시보드
+### 3.5 데이터 생성 관리 (Admin)
+
+9개 파이프라인의 실행 상태를 중앙에서 관리하고, 수동 트리거할 수 있습니다.
+
+| 파이프라인 | 기간 선택 방식 | 설명 |
+|-----------|--------------|------|
+| 주간 수요예측 | 년월 → 주차 선택 (달력) | 해당 주 데이터 기반 예측 생성 |
+| 월간 수요예측 | 월 선택 (달력 모달) | 해당 월 데이터 기반 예측 생성 |
+| 리스크 분석 | 주차 선택 | 수요예측 완료 후 연쇄 실행 |
+| 재고 동기화 | 일자 선택 (date picker) | ERP 재고 데이터 연동 |
+| 구매 추천 / 생산 계획 | 주차 선택 | 리스크 분석 완료 후 연쇄 실행 |
+| 모델 평가 | 월 선택 (달력 모달) | 예측 정확도 평가 |
+| 외부지표 수집 | 일자 선택 | 환율·원자재·글로벌 지표 갱신 |
+| 뉴스 수집 | 즉시 실행 | 기간 선택 불필요 |
+
+- **전체 갱신**: 의존성 순서대로 자동 실행 (독립 → 종속)
+- **실행 이력**: 최근 50건, 대상 기간·소요 시간·상태 추적
+- **Admin 전용**: 관리자 권한만 접근 가능
+
+### 3.6 다차원 집계 대시보드
 
 | 집계 단위 | 내용 |
 |-----------|------|
@@ -183,12 +202,15 @@
 │  │ action_queue / daily_inventory_estimated       │   │
 │  └───────────────────────────────────────────────┘   │
 │  ┌─ ML 피처 ─────────────────────────────────────┐   │
-│  │ feature_store_weekly (46피처, 83K행)            │   │
+│  │ feature_store_weekly (69피처, 83K행)            │   │
 │  │ feature_store_monthly (35피처, 48K행)           │   │
 │  └───────────────────────────────────────────────┘   │
 │  ┌─ 최적화 ────────────────────────────────────────┐ │
 │  │ production_plan / purchase_recommendation       │ │
 │  └─────────────────────────────────────────────────┘ │
+│  ┌─ 파이프라인 ──────────────────────────────────┐   │
+│  │ pipeline_run (실행 이력·기간·상태 추적)         │   │
+│  └───────────────────────────────────────────────┘   │
 │  ┌─ 집계 ────────────────────────────────────────┐   │
 │  │ weekly/monthly_product_summary                 │   │
 │  │ weekly/monthly_customer_summary                │   │
@@ -240,7 +262,7 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | 0 | `s0_aggregation.py` | 수주, 매출, 생산 | 주별·월별 집계 4테이블 | ISO 주차 캘린더 + 다차원 집계 |
 | 1 | `s1_daily_inventory.py` | 재고, 생산, 매출 | `daily_inventory_estimated` | 월초 스냅샷 기반 일간 재고 보간 |
 | 2 | `s2_lead_time.py` | 구매발주 | `product_lead_time` | 제품별 리드타임 통계 (AVG/P90) |
-| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store_weekly` | 주간 피처 엔지니어링 (46개 피처) |
+| 3 | `s3_feature_store.py` | 전체 ERP + 외부지표 | `feature_store_weekly` | 주간 피처 엔지니어링 (69개 피처, v4 학습 시 74개) |
 | 4 | `s4_forecast.py` | feature_store_weekly | `forecast_result` | LightGBM Quantile 예측 (1w/2w/4w) |
 | 4L | `s4_linear_models.py` | feature_store_weekly/monthly | `forecast_result` | Ridge + SVR Linear 예측 (Conformal P10/P50/P90) |
 | 5 | `s5_risk_score.py` | 예측 + 재고 + 리드타임 | `risk_score` | 4유형 리스크 스코어링 |
@@ -269,14 +291,14 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | **백엔드** | FastAPI (Python) | ML 연동, 자동 Swagger, 비동기 지원 |
 | **프론트엔드** | Next.js (React) | SSR 대시보드, Supabase 연동, Vercel 배포 |
 | **데이터베이스** | PostgreSQL (Supabase) | REST API, 실시간 구독, RLS 보안 |
-| **ML 모델** | LightGBM Quantile + Ridge + SVR Linear | 멀티 모델 비교, 주간(46피처)+월간(35피처) 이중 파이프라인 |
+| **ML 모델** | LightGBM Quantile + Ridge + SVR Linear | 멀티 모델 비교, 주간(69피처, v4: 74피처)+월간(35피처) 이중 파이프라인 |
 | **외부 데이터** | FRED / EIA / 관세청 API | 거시경제·에너지·무역 실시간 수집 |
 | **인증** | Supabase Auth + RBAC | JWT, 4단계 역할 (admin/manager/analyst/viewer) |
 | **배포** | Vercel + Supabase Cloud | 서버리스, 자동 스케일링 |
 
 ---
 
-## 8. DB 구조 (33개 테이블)
+## 8. DB 구조 (34개 테이블)
 
 | 구분 | 테이블 수 | 주요 테이블 | 행 수 |
 |------|----------|------------|-------|
@@ -288,6 +310,7 @@ python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
 | 최적화 | 2 | production_plan, purchase_recommendation | 파이프라인 생성 |
 | 모델 평가 | 3 | model_evaluation, feature_importance, tuning_result | 파이프라인 생성 |
 | 평가 리포트 | 1 | evaluation_report | 파이프라인 생성 |
+| 파이프라인 | 1 | pipeline_run (실행 이력·기간·상태 추적) | 파이프라인 생성 |
 | 집계 | 5 | weekly/monthly_product_summary, weekly/monthly_customer_summary, calendar_week | ~347,000 |
 | 인증 | 2 | user_profile, login_history | — |
 
@@ -357,14 +380,18 @@ PJTFNL/
 │
 ├── forecastai/                        ← Next.js 프론트엔드 (Phase 5)
 │   ├── src/app/                       ← 라우팅 + 레이아웃
-│   │   └── api/                       ← API 라우트 (7개)
+│   │   └── api/                       ← API 라우트 (9개)
 │   │       ├── dashboard/             ← 대시보드 KPI·매출·재고
 │   │       ├── production-plan/       ← 생산 권고
 │   │       ├── purchase-recommendation/ ← 구매 권고
 │   │       ├── model-evaluation/      ← 모델 평가 (종합·기간별·리포트)
 │   │       ├── model-scenario/        ← 모델 시나리오
-│   │       └── simulation-skus/       ← 시뮬레이션 SKU
-│   ├── src/components/pages/          ← 13개 페이지 컴포넌트
+│   │       ├── simulation-skus/       ← 시뮬레이션 SKU
+│   │       ├── forecast-weekly/confidence ← 예측 신뢰도 (주의 제품 조회)
+│   │       └── data-pipeline/         ← 데이터 파이프라인 실행/이력 관리 (Admin)
+│   ├── sql/                           ← DB 마이그레이션 SQL
+│   │   └── create_pipeline_run.sql    ← 파이프라인 실행 이력 테이블
+│   ├── src/components/pages/          ← 14개 페이지 컴포넌트
 │   ├── src/components/ui/             ← 공통 UI (Badge, Table 등)
 │   └── src/lib/data.ts                ← 테마, 목데이터, 유틸
 │
@@ -399,6 +426,7 @@ pip install supabase python-dotenv requests lightgbm scikit-learn
 #    → 13_feature_store_weekly_ddl.sql → 14_feature_store_monthly_ddl.sql
 #    → 15_model_evaluation_ddl.sql → 16_optimization_ddl.sql
 #    → 17_evaluation_report_ddl.sql
+#    → forecastai/sql/create_pipeline_run.sql
 
 # 3. 데이터 적재
 python DB/02_load_data.py                # ERP CSV 데이터
@@ -662,7 +690,7 @@ DB/07_pipeline/
 | **다솜** | 대시보드, 로그인, 관리 | `Dashboard.tsx`, `Login.tsx`, `Admin.tsx` |
 | **지은** | 수요예측, 외부지표 | `WeeklyForecast.tsx`, `MonthlyForecast.tsx`, `ExternalIndicators.tsx` |
 | **성민** | 재고관리 | `Inventory.tsx`, `RiskManagement.tsx`, `ActionQueue.tsx` |
-| **경아** | 최적화, 모델 평가 | `Simulation.tsx`, `Purchase.tsx`, `ModelEvaluation.tsx`, `ModelScenario.tsx` |
+| **경아** | 최적화, 모델 평가, 데이터 관리 | `Simulation.tsx`, `Purchase.tsx`, `ModelEvaluation.tsx`, `ModelScenario.tsx`, `DataPipelineManager.tsx` |
 
 ### 프론트엔드 구조
 
@@ -687,7 +715,8 @@ forecastai/
 │   │   │   ├── Simulation.tsx      ← [경아] 시나리오 시뮬레이션
 │   │   │   ├── Purchase.tsx        ← [경아] 발주 최적화
 │   │   │   ├── ModelEvaluation.tsx ← [경아] 모델 평가 대시보드
-│   │   │   └── ModelScenario.tsx   ← [경아] 모델 시나리오
+│   │   │   ├── ModelScenario.tsx   ← [경아] 모델 시나리오
+│   │   │   └── DataPipelineManager.tsx ← [경아] 데이터 생성 관리 (Admin)
 │   │   └── ui/index.tsx            ← 공통 UI 컴포넌트
 │   └── lib/data.ts                 ← 테마, 목데이터, 유틸
 ├── package.json

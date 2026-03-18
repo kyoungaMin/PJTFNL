@@ -8,10 +8,10 @@ export async function GET(req: NextRequest) {
   const modelParam = req.nextUrl.searchParams.get('model') ?? ''
 
   // 모델 ID 결정: 파라미터 지정 → 기본값 (주간: lgbm_q_v3, 월간: lgbm_q_monthly_v1)
-  const defaultModel = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
+  const defaultModel = type === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v4'
   const VALID_MODELS = [
-    'lgbm_q_v3', 'lgbm_q_v2', 'ridge_v1', 'svr_linear_v1',
-    'lgbm_q_monthly_v1', 'ridge_monthly_v1', 'svr_linear_monthly_v1',
+    'lgbm_q_v4', 'lgbm_q_v3', 'lgbm_q_v2', 'ridge_v1', 'svr_linear_v1',
+    'lgbm_q_monthly_v2', 'lgbm_q_monthly_v1', 'ridge_monthly_v1', 'svr_linear_monthly_v1',
   ]
   const modelId = modelParam && VALID_MODELS.includes(modelParam) ? modelParam : defaultModel
 
@@ -66,8 +66,10 @@ export async function GET(req: NextRequest) {
     const rows = data ?? []
     if (rows.length === 0) {
       return NextResponse.json({
-        period, type, n_products: 0,
-        metrics: { mae: 0, rmse: 0, r2: 0, mape: 0, tolerance_5_rate: 0 },
+        period, type, n_products: 0, n_records: 0,
+        date_range: { start: startDate, end: endDate },
+        metrics: { mae: 0, rmse: 0, r2: 0, mape: 0, wmape: 0, tolerance_5_rate: 0 },
+        segments: [],
         top_error_products: [],
         top_accurate_products: [],
       })
@@ -146,14 +148,31 @@ export async function GET(req: NextRequest) {
 
     // Top error / accurate products
     const sorted = [...errors].sort((a, b) => b.error - a.error)
-    const topError = sorted.slice(0, 10).map(e => ({
-      product_id: e.pid, predicted: Math.round(e.pred * 10) / 10,
-      actual: Math.round(e.actual * 10) / 10, error: Math.round(e.error * 10) / 10,
-    }))
-    const topAccurate = sorted.slice(-10).reverse().map(e => ({
-      product_id: e.pid, predicted: Math.round(e.pred * 10) / 10,
-      actual: Math.round(e.actual * 10) / 10, error: Math.round(e.error * 10) / 10,
-    }))
+    const topErrorRaw = sorted.slice(0, 10)
+    const topAccurateRaw = sorted.filter(e => e.actual > 0 || e.pred > 0).slice(-10).reverse()
+
+    // product_master 조회 (제품명 + 규격)
+    const allPids = [...new Set([...topErrorRaw, ...topAccurateRaw].map(e => e.pid))]
+    const { data: pmRows } = await supabase
+      .from('product_master')
+      .select('product_code, product_name, product_specification')
+      .in('product_code', allPids)
+    const pmMap: Record<string, { name: string; spec: string }> = {}
+    for (const pm of pmRows ?? []) {
+      pmMap[pm.product_code] = { name: pm.product_name ?? '', spec: pm.product_specification ?? '' }
+    }
+
+    const enrichProduct = (e: typeof errors[0]) => ({
+      product_id: e.pid,
+      product_name: pmMap[e.pid]?.name ?? '',
+      product_specification: pmMap[e.pid]?.spec ?? '',
+      predicted: Math.round(e.pred * 10) / 10,
+      actual: Math.round(e.actual * 10) / 10,
+      error: Math.round(e.error * 10) / 10,
+    })
+
+    const topError = topErrorRaw.map(enrichProduct)
+    const topAccurate = topAccurateRaw.map(enrichProduct)
 
     return NextResponse.json({
       period, type, modelId,

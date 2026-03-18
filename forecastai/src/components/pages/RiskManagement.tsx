@@ -10,6 +10,121 @@ type RiskItem = {
   stock: number; safeStock: number; leadTime: number; customer: string;
 }
 
+// ─── 예측 주의 제품 패널 ───────────────────────────────────────────────────────
+
+type ConfidenceItem = {
+  productId: string
+  zeroRatio: number  // 0~100 (수요 공백률 %)
+  cv: number         // 변동계수
+  level: 'high' | 'medium'
+}
+
+function useHighUncertaintySkus(limit = 6) {
+  const [items, setItems] = useState<ConfidenceItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/forecast-weekly/confidence?limit=${limit}`)
+      .then(r => r.json())
+      .then(d => setItems(d.items ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [limit])
+
+  return { items, loading }
+}
+
+function HighUncertaintyPanel() {
+  const [open, setOpen] = useState(true)
+  const { items, loading } = useHighUncertaintySkus(6)
+
+  // 로드 완료 후 데이터 없으면 패널 숨김
+  if (!loading && items.length === 0) return null
+
+  return (
+    <div style={{ ...card, marginBottom: 20, border: `1px solid ${T.amberMid}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>⚠ 예측 주의 제품</span>
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: T.amber,
+              background: T.amberSoft, border: `1px solid ${T.amberMid}`,
+              borderRadius: 4, padding: '1px 7px',
+            }}>AI 예측 신뢰도 낮음</span>
+          </div>
+          <p style={{ fontSize: 12, color: T.text2, margin: 0, lineHeight: 1.7 }}>
+            아래 제품들은 <strong>주문이 불규칙하거나 주문량 변동이 큰</strong> 제품입니다.
+            AI가 예측하기 어려운 패턴이므로, <strong>발주 전 담당자가 직접 수요를 확인</strong>하는 것을 권장합니다.
+          </p>
+        </div>
+        <Btn
+          variant="ghost"
+          onClick={() => setOpen(o => !o)}
+          style={{ fontSize: 11, padding: '4px 8px', flexShrink: 0, marginLeft: 12 }}
+        >
+          {open ? '접기' : '펼치기'}
+        </Btn>
+      </div>
+
+      {open && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+          gap: 10,
+          marginTop: 14,
+        }}>
+          {loading
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{
+                  height: 78, borderRadius: 8,
+                  background: T.surface2, border: `1px solid ${T.border}`,
+                  animation: 'pulse 1.5s ease-in-out infinite',
+                }} />
+              ))
+            : items.map(item => {
+                const isHigh = item.level === 'high'
+                return (
+                  <div key={item.productId} style={{
+                    padding: '10px 14px', borderRadius: 8,
+                    background: isHigh ? T.redSoft : T.amberSoft,
+                    border: `1px solid ${isHigh ? T.redMid : T.amberMid}`,
+                  }}>
+                    <div style={{
+                      fontSize: 12, fontWeight: 700, color: T.text1,
+                      fontFamily: "'IBM Plex Mono',monospace",
+                      marginBottom: 4,
+                    }}>
+                      {item.productId}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.text3, lineHeight: 1.6 }}>
+                      주문 없던 기간{' '}
+                      <span style={{ fontWeight: 700, color: T.text2 }}>최근 13주 중 {item.zeroRatio}%</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: T.text3, lineHeight: 1.6 }}>
+                      주문량 변동성{' '}
+                      <span style={{ fontWeight: 700, color: T.text2 }}>
+                        {item.cv >= 1.5 ? '매우 높음' : item.cv >= 1.0 ? '높음' : '보통'}
+                      </span>
+                    </div>
+                    <div style={{
+                      marginTop: 6,
+                      display: 'inline-block',
+                      fontSize: 10, fontWeight: 700,
+                      color: isHigh ? T.red : T.amber,
+                    }}>
+                      {isHigh ? '⚠ 발주 전 직접 확인 필요' : '△ 예측값 참고 후 확인'}
+                    </div>
+                  </div>
+                )
+              })
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SourceBadge({ source }: { source: string }) {
   if (source === 'database')
     return <Badge color={T.green} bg={T.greenSoft} border={T.greenMid} size={10}>DB 실데이터</Badge>
@@ -279,6 +394,8 @@ export default function PageRiskManagement() {
             : `총 ${filtered.length}건`}
         </span>
       </FilterBar>
+
+      <HighUncertaintyPanel />
 
       {filtered.some(r => ['E','F'].includes(r.grade)) && (
         <div style={{ padding: '10px 14px', background: T.redSoft, border: `1px solid ${T.redMid}`, borderRadius: 8, fontSize: 12, color: T.red, fontWeight: 500, marginBottom: 16 }}>

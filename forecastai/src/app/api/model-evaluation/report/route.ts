@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 
 /* ─── 인사이트 자동 생성 ──────────────────────────────────────────────────── */
 
-interface TopProduct { product_id: string; predicted: number; actual: number; error: number }
+interface TopProduct { product_id: string; product_name?: string; product_specification?: string; predicted: number; actual: number; error: number }
 
 interface Metrics { mae: number; rmse: number; r2: number; mape: number; wmape: number; tolerance_5_rate: number }
 
@@ -96,7 +96,7 @@ function generateInsights(
 
   const zero_actual_comment = zeroActualCount > 0
     ? `또한 실제 수주가 0건인데 예측한 경우가 ${zeroActualCount}건 있습니다. `
-      + '수주 유무를 먼저 분류하는 2단계 모델(수주 여부 → 수량 예측) 도입을 검토할 필요가 있습니다.'
+      + 'v4 글로벌 모델의 2-Stage 분류(수주 유무 → 수량 예측)가 이 문제를 개선하고 있으며, 분류 임계값 조정으로 추가 개선이 가능합니다.'
     : ''
 
   // ── 제품군 분석 ──
@@ -169,9 +169,9 @@ function generateInsights(
   if (zeroActualCount > 0) {
     recommendations.push({
       area: '모델 개선',
-      action: '수주 유무를 먼저 분류하는 2-Stage 모델(분류→회귀) 도입을 검토하세요',
+      action: 'v4 2-Stage 모델의 분류 임계값(ZERO_THRESHOLDS)을 제품 세그먼트별로 미세 조정하세요',
       priority: 'medium',
-      reason: `실제 수주 0인데 예측한 건 ${zeroActualCount}건 — 불필요한 생산/발주 위험`,
+      reason: `실제 수주 0인데 예측한 건 ${zeroActualCount}건 — 분류 단계 임계값 최적화로 추가 개선 가능`,
     })
   }
 
@@ -226,7 +226,7 @@ function parsePeriodToDateRange(type: string, period: string) {
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? 'weekly'
   const period = req.nextUrl.searchParams.get('period') ?? ''
-  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
+  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v4'
 
   if (!period) {
     return NextResponse.json({ error: 'period parameter required' }, { status: 400 })
@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const type = body.type ?? 'weekly'
     const period = body.period ?? ''
-    const modelId = type === 'monthly' ? 'lgbm_q_monthly_v1' : 'lgbm_q_v3'
+    const modelId = type === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v4'
 
     if (!period) {
       return NextResponse.json({ error: 'period required' }, { status: 400 })
@@ -312,18 +312,31 @@ export async function POST(req: NextRequest) {
     const uniqueProducts = new Set(errors.map(e => e.pid))
 
     const sorted = [...errors].sort((a, b) => b.error - a.error)
-    const topError = sorted.slice(0, 10).map(e => ({
+    const topErrorRaw = sorted.slice(0, 10)
+    const topAccurateRaw = sorted.filter(e => e.actual > 0 || e.pred > 0).slice(-10).reverse()
+
+    // product_master 조회 (제품명 + 규격)
+    const allPids = [...new Set([...topErrorRaw, ...topAccurateRaw].map(e => e.pid))]
+    const { data: pmRows } = await supabase
+      .from('product_master')
+      .select('product_code, product_name, product_specification')
+      .in('product_code', allPids)
+    const pmMap: Record<string, { name: string; spec: string }> = {}
+    for (const pm of pmRows ?? []) {
+      pmMap[pm.product_code] = { name: pm.product_name ?? '', spec: pm.product_specification ?? '' }
+    }
+
+    const enrichProduct = (e: typeof errors[0]) => ({
       product_id: e.pid,
+      product_name: pmMap[e.pid]?.name ?? '',
+      product_specification: pmMap[e.pid]?.spec ?? '',
       predicted: Math.round(e.pred * 10) / 10,
       actual: Math.round(e.actual * 10) / 10,
       error: Math.round(e.error * 10) / 10,
-    }))
-    const topAccurate = sorted.slice(-10).reverse().map(e => ({
-      product_id: e.pid,
-      predicted: Math.round(e.pred * 10) / 10,
-      actual: Math.round(e.actual * 10) / 10,
-      error: Math.round(e.error * 10) / 10,
-    }))
+    })
+
+    const topError = topErrorRaw.map(enrichProduct)
+    const topAccurate = topAccurateRaw.map(enrichProduct)
 
     const metrics = {
       mae: Math.round(mae * 100) / 100,

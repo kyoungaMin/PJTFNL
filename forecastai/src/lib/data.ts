@@ -594,20 +594,23 @@ export const ROLE_LABEL: Record<RoleType,string> = {
 
 export const NAV_STRUCTURE = [
   {id:'dashboard',       label:'대시보드',     dot:'#93C5FD'},
-  {id:'inventory',       label:'재고 현황',    parent:'재고 관리', dot:'#93C5FD'},
-  {id:'risk',            label:'리스크 관리',  parent:'재고 관리', dot:'#FCA5A5'},
   {id:'weekly-forecast', label:'주간 예측',    parent:'수요예측',  dot:'#93C5FD'},
   {id:'monthly-forecast',label:'월간 예측',    parent:'수요예측',  dot:'#93C5FD'},
   {id:'model-eval',      label:'모델 평가',    parent:'수요예측',  dot:'#93C5FD'},
+  {id:'inventory',       label:'재고 현황',    parent:'재고 관리', dot:'#93C5FD'},
+  {id:'risk',            label:'리스크 관리',  parent:'재고 관리', dot:'#FCA5A5'},
   {id:'action-queue',    label:'생산 권고',    parent:'최적화',    dot:'#93C5FD'},
   {id:'purchase',        label:'구매 권고',    parent:'최적화',    dot:'#93C5FD'},
   {id:'simulation',      label:'시나리오 분석',parent:'최적화',    dot:'#93C5FD'},
   {id:'model-scenario',  label:'AI 시나리오', parent:'최적화',    dot:'#93C5FD'},
+  {id:'industry-news',   label:'업계 동향',    parent:'외부 지표', dot:'#93C5FD'},
   {id:'ext-semi',        label:'산업 지표',    parent:'외부 지표', dot:'#93C5FD'},
   {id:'ext-global',      label:'글로벌 수요',  parent:'외부 지표', dot:'#93C5FD'},
   {id:'ext-fx',          label:'환율 / 금리',  parent:'외부 지표', dot:'#93C5FD'},
   {id:'ext-supply',      label:'물류',         parent:'외부 지표', dot:'#93C5FD'},
   {id:'ext-raw',         label:'원자재',       parent:'외부 지표', dot:'#93C5FD'},
+  {id:'executive-report',label:'임원 보고서',  dot:'#A78BFA'},
+  {id:'data-pipeline',   label:'데이터 관리',  dot:'#F59E0B'},
   {id:'admin',           label:'관리자',       dot:'#93C5FD'},
 ]
 

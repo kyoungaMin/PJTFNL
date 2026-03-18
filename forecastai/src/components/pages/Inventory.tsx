@@ -602,7 +602,6 @@ export default function PageInventory() {
                 value={search}
                 onChange={(value: string) => setSearch(value)}
                 placeholder="SKU / 품목명 검색"
-                // @ts-ignore
                 onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && handleSearchSubmit()}
                 style={{ minWidth: 260, height: 38, borderRadius: 10, padding: '8px 12px' }}
                 inputStyle={{ width: 220, fontSize: 13 }}

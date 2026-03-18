@@ -277,10 +277,10 @@ export default function PagePurchase() {
             <div style={{ marginBottom:20 }}>
               <h3 style={{ fontSize:14, fontWeight:700, color:T.blue, marginBottom:8 }}>머신러닝 수요예측은 구매 권고에 어떻게 반영되나요?</h3>
               <div style={{ fontSize:12, color:T.text2, lineHeight:1.8, background:T.surface2, borderRadius:10, padding:'14px 16px', border:`1px solid ${T.border}` }}>
-                <b>1단계. AI가 완제품 수요를 예측</b><br/>
+                <b>1단계. AI 2-Stage 글로벌 모델이 완제품 수요를 예측</b><br/>
                 <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>
-                  수주 이력, 재고, 환율, 반도체 시황 등 <b style={{ color:T.text1 }}>46가지 요인</b>을 학습한 머신러닝 모델이<br/>
-                  <span style={{ paddingLeft:16 }}>제품별로 향후 7일 · 14일 · 28일간 수요를 예측합니다.</span>
+                  수주 이력, 재고, 환율, 반도체 시황 등 <b style={{ color:T.text1 }}>69가지 피처 + 5개 메타 피처</b>를 학습한 글로벌 2-Stage 모델(v4)이<br/>
+                  <span style={{ paddingLeft:16 }}>① 수주 유무를 분류한 뒤 ② 향후 7일 · 14일 · 28일 · 56일 · 91일간 수요를 예측합니다.</span>
                 </span><br/>
                 <b>2단계. 예측 수요로 생산계획 수립</b><br/>
                 <span style={{ color:T.text3, paddingLeft:16, display:'inline-block' }}>

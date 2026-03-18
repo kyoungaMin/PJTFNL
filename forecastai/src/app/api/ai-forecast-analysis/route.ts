@@ -23,7 +23,7 @@ interface AnalysisResult {
 // ─── 데이터 수집 ──────────────────────────────────────────────────────────────
 
 async function collectForecastData(productId: string, model: 'weekly' | 'monthly') {
-  const modelId = model === 'weekly' ? 'lgbm_q_v2' : 'lgbm_q_monthly_v1'
+  const modelId = model === 'weekly' ? 'lgbm_q_v4' : 'lgbm_q_monthly_v2'
   const horizons = model === 'weekly' ? [7, 14, 28] : [30, 90, 180]
 
   // 1. 최신 예측 날짜
