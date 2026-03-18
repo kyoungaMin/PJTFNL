@@ -36,6 +36,9 @@ export const INDICATOR_META: Record<string, { source: string; freq: string }> = 
   DRAM_DDR4:    { source: 'DRAMeXchange',         freq: '주간' },
   NAND_TLC:     { source: 'TrendForce',            freq: '주간' },
   SILICON_WAFER:{ source: '업계 조사',              freq: '월간' },
+  MU_CLOSE:     { source: 'Yahoo Finance (MU)',    freq: '월간' },
+  WDC_CLOSE:    { source: 'Yahoo Finance (WDC)',   freq: '월간' },
+  SEMI_PPI:     { source: 'FRED (PCU33443344)',    freq: '월간' },
   INDPRO:       { source: 'FRED',                 freq: '월간' },
   IPMAN:        { source: 'FRED',                 freq: '월간' },
   CN_PMI_MFG:   { source: 'Caixin / S&P Global',  freq: '월간' },
@@ -115,12 +118,12 @@ async function fetchFromApiRoute(path: string, months: number, freq: Freq = 'mon
 // ── 산업지표: SOX / DRAM / NAND ───────────────────────────────────────────────
 
 export async function fetchSemiData(months = 12, freq: Freq = 'month') {
-  // 1순위: Supabase
+  // 1순위: Supabase (유료 DRAM/NAND + 무료 대리지표 모두 조회)
   if (supabase) {
     const { data, error } = await supabase
       .from('economic_indicator')
       .select('date, indicator_code, value')
-      .in('indicator_code', ['SOX', 'DRAM_DDR4', 'NAND_TLC', 'SILICON_WAFER'])
+      .in('indicator_code', ['SOX', 'DRAM_DDR4', 'NAND_TLC', 'SILICON_WAFER', 'MU_CLOSE', 'WDC_CLOSE', 'SEMI_PPI'])
       .gte('date', startOfMonths(months))
       .order('date', { ascending: true })
 
@@ -140,12 +143,15 @@ export async function fetchSemiData(months = 12, freq: Freq = 'month') {
           dram: vals['DRAM_DDR4'] ?? 0,
           nand: vals['NAND_TLC'] ?? 0,
           silicon_wafer: vals['SILICON_WAFER'] ?? 0,
+          mu: vals['MU_CLOSE'] ?? 0,
+          wdc: vals['WDC_CLOSE'] ?? 0,
+          semi_ppi: vals['SEMI_PPI'] ?? 0,
         }))
-      if (series.filter(r => r.sox || r.dram || r.nand).length >= 2) return series
+      if (series.filter(r => r.sox || r.dram || r.nand || r.mu).length >= 2) return series
     }
   }
 
-  // 2순위: /api/ext-semi (Yahoo Finance SOX)
+  // 2순위: /api/ext-semi (Yahoo Finance SOX + MU/WDC + FRED PPI)
   const apiData = await fetchFromApiRoute('/api/ext-semi', months, freq)
   if (apiData) return apiData
 

@@ -101,6 +101,10 @@ COMMENT ON TABLE forecast_result IS '예측 결과 — P10/P50/P90 분위 예측
 CREATE INDEX IF NOT EXISTS idx_fr_product  ON forecast_result(product_id);
 CREATE INDEX IF NOT EXISTS idx_fr_target   ON forecast_result(target_date);
 CREATE INDEX IF NOT EXISTS idx_fr_forecast ON forecast_result(forecast_date);
+-- 모델+제품 조합 조회 최적화 (model-scenario API)
+CREATE INDEX IF NOT EXISTS idx_fr_model_product ON forecast_result(model_id, product_id);
+-- 모델+날짜 범위 스캔 최적화 (제품 목록 조회)
+CREATE INDEX IF NOT EXISTS idx_fr_model_target  ON forecast_result(model_id, target_date);
 
 -- 5. 리스크 스코어 (Risk Score)
 CREATE TABLE IF NOT EXISTS risk_score (

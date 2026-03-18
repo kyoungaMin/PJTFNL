@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid } from 'recharts'
 import { T, card, sectionTitle, PURCHASE_PLAN_DATA, PURCHASE_SUPPLIER_CHART,
-  PURCHASE_URGENCY_DIST, ORDER_METHOD_LABELS, URGENCY_STYLE } from '@/lib/data'
+  PURCHASE_URGENCY_DIST, ORDER_METHOD_LABELS, URGENCY_STYLE, formatWeekLabel } from '@/lib/data'
 import { Badge, PageHeader, Btn, FilterBar, Select, SearchInput } from '@/components/ui'
 
 /* ────── types ────── */
@@ -459,7 +459,7 @@ export default function PagePurchase() {
               border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
               cursor:'pointer', outline:'none', fontFamily:"'IBM Plex Mono',monospace" }}>
             {availableWeeks.map(w => (
-              <option key={w.date} value={w.date}>{w.label} ({w.date})</option>
+              <option key={w.date} value={w.date}>{formatWeekLabel(w.date)}</option>
             ))}
             {availableWeeks.length === 0 && <option value="">주차 없음</option>}
           </select>

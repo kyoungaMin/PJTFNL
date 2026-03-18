@@ -237,6 +237,29 @@ export async function GET() {
       evalDataRow = fallbackEval?.[0] ?? null
     }
 
+    // ─── 4-b. weekly용 eval_date 조회 (리스크관리 주간 연동용) ──────────────
+    let weeklyEvalDate = ''
+    if (planDate && planDateEnd) {
+      const { data: wEval } = await supabase
+        .from('risk_score')
+        .select('eval_date')
+        .eq('eval_type', 'weekly')
+        .gte('eval_date', planDate)
+        .lte('eval_date', planDateEnd)
+        .order('eval_date', { ascending: false })
+        .limit(1)
+      weeklyEvalDate = wEval?.[0]?.eval_date ? String(wEval[0].eval_date) : ''
+    }
+    if (!weeklyEvalDate) {
+      const { data: wFallback } = await supabase
+        .from('risk_score')
+        .select('eval_date')
+        .eq('eval_type', 'weekly')
+        .order('eval_date', { ascending: false })
+        .limit(1)
+      weeklyEvalDate = wFallback?.[0]?.eval_date ? String(wFallback[0].eval_date) : ''
+    }
+
     // ─── 헤더 표시용 기준 주차 계산 ─────────────────────────────────────────
     // ML plan_date(월요일)가 있으면 그 전날(일요일)을 헤더 기준으로 사용
     // → 구매·생산권고 상세화면과 동일한 ML 주차를 표시 (날짜 일치)
@@ -390,6 +413,7 @@ export async function GET() {
         mlPlanDate: planDate,
         // 리스크 관리 페이지 날짜 연계: risk_score.eval_date 실제값
         evalDate: evalDataRow?.eval_date ? String(evalDataRow.eval_date) : '',
+        weeklyEvalDate,
       },
       source: 'database',
     })

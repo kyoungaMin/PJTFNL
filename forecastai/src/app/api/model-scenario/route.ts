@@ -11,10 +11,16 @@ export async function GET(req: NextRequest) {
     // 1) 제품 목록 조회 (product 파라미터가 없거나 ALL이면)
     if (!productId || productId === 'ALL') {
       // forecast_result에서 해당 모델의 고유 product_id 목록
+      // 최근 90일 데이터만 스캔하여 타임아웃 방지
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - 90)
+      const cutoffStr = cutoff.toISOString().slice(0, 10)
+
       const { data: prodRows, error: prodErr } = await supabase
         .from('forecast_result')
         .select('product_id')
         .eq('model_id', modelId)
+        .gte('target_date', cutoffStr)
 
       if (prodErr) throw prodErr
 
@@ -44,11 +50,17 @@ export async function GET(req: NextRequest) {
     }
 
     // 2) 특정 제품의 예측 시계열 조회
+    // 필요한 주수 + 여유분만 조회하여 타임아웃 방지
+    const dateCutoff = new Date()
+    dateCutoff.setDate(dateCutoff.getDate() - (weeks + 4) * 7)
+    const dateCutoffStr = dateCutoff.toISOString().slice(0, 10)
+
     const { data: rows, error } = await supabase
       .from('forecast_result')
       .select('target_date, p10, p50, p90, actual_qty')
       .eq('model_id', modelId)
       .eq('product_id', productId)
+      .gte('target_date', dateCutoffStr)
       .order('target_date', { ascending: true })
 
     if (error) throw error

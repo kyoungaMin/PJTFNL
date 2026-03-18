@@ -7,14 +7,15 @@ import { Freq, groupRowsByFreq, labelFor } from '@/lib/freqUtils'
  *
  * 데이터 소스:
  *   1순위: Supabase DB (economic_indicator 테이블)
- *      - SOX: source=MARKET, indicator_code=SOX (15_load_realtime_indices.py 적재)
- *      - DRAM_DDR4: source=MARKET (앵커 보간)
- *      - NAND_TLC: source=MARKET (앵커 보간)
- *   2순위: Yahoo Finance 비공식 API (SOX만 실데이터 가능)
- *      - DRAM/NAND: 무료 공개 API 없음 → 0 반환 (프론트에서 MOCK 처리)
+ *      - SOX, DRAM_DDR4, NAND_TLC, SEMI_PPI
+ *   2순위: Yahoo Finance + FRED (무료 대리지표)
+ *      - SOX: Yahoo Finance (^SOX)
+ *      - DRAM 대리: Micron(MU) 주가 — DRAM/NAND 매출 비중 90%+, 메모리 가격과 높은 상관관계
+ *      - NAND 대리: Western Digital(WDC) 주가 — NAND 중심 기업
+ *      - 반도체 PPI: FRED PCU33443344 — 반도체 생산자물가지수 (월간)
  *
- * 응답: externalData.ts fetchSemiData() 반환 형식과 동일
- *   [{ d: 'N월', sox, dram, nand }]
+ * 응답 형식:
+ *   [{ d: 'N월', sox, dram, nand, silicon_wafer, mu, wdc, semi_ppi }]
  */
 
 function toMonthLabel(dateStr: string): string {
@@ -77,6 +78,52 @@ async function fetchYahooMonthly(
   }
 }
 
+/**
+ * FRED API — 월간 시계열 데이터
+ * API Key가 없으면 빈 배열 반환 (필수 아님)
+ */
+async function fetchFredMonthly(
+  seriesId: string,
+  months: number
+): Promise<{ ym: string; value: number }[]> {
+  const apiKey = process.env.FRED_API_KEY
+  if (!apiKey) return []
+
+  const start = startDate(months)
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&file_type=json&observation_start=${start}&frequency=m`
+
+  try {
+    const res = await fetch(url, { next: { revalidate: 86400 } }) // 24시간 캐시
+    if (!res.ok) return []
+
+    const json = await res.json()
+    const observations: { date: string; value: string }[] = json?.observations ?? []
+
+    return observations
+      .filter(o => o.value !== '.')
+      .map(o => ({
+        ym: o.date.slice(0, 7),
+        value: Math.round(Number(o.value) * 100) / 100,
+      }))
+  } catch {
+    return []
+  }
+}
+
+/** 여러 시계열을 ym 기준으로 병합 */
+function mergeByYm(
+  ...sources: { name: string; rows: { ym: string; value: number }[] }[]
+): Map<string, Record<string, number>> {
+  const map = new Map<string, Record<string, number>>()
+  for (const { name, rows } of sources) {
+    for (const { ym, value } of rows) {
+      if (!map.has(ym)) map.set(ym, {})
+      map.get(ym)![name] = value
+    }
+  }
+  return map
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const months = parseInt(searchParams.get('months') ?? '12', 10)
@@ -88,7 +135,7 @@ export async function GET(request: Request) {
     const { data, error } = await supabase
       .from('economic_indicator')
       .select('date, indicator_code, value')
-      .in('indicator_code', ['SOX', 'DRAM_DDR4', 'NAND_TLC'])
+      .in('indicator_code', ['SOX', 'DRAM_DDR4', 'NAND_TLC', 'SILICON_WAFER', 'MU_CLOSE', 'WDC_CLOSE', 'SEMI_PPI'])
       .gte('date', start)
       .order('date', { ascending: true })
       .limit(10000)
@@ -107,8 +154,12 @@ export async function GET(request: Request) {
           sox: vals['SOX'] ?? 0,
           dram: vals['DRAM_DDR4'] ?? 0,
           nand: vals['NAND_TLC'] ?? 0,
+          silicon_wafer: vals['SILICON_WAFER'] ?? 0,
+          mu: vals['MU_CLOSE'] ?? 0,
+          wdc: vals['WDC_CLOSE'] ?? 0,
+          semi_ppi: vals['SEMI_PPI'] ?? 0,
         }))
-      if (items.filter(r => r.sox || r.dram || r.nand).length >= 2) {
+      if (items.filter(r => r.sox || r.dram || r.nand || r.mu).length >= 2) {
         return NextResponse.json({ items, source: 'supabase' })
       }
     }
@@ -116,21 +167,39 @@ export async function GET(request: Request) {
     // DB 실패 시 다음 단계로
   }
 
-  // ── 2순위: Yahoo Finance (SOX만 실데이터, 월별 fallback) ────────────
-  const soxRows = await fetchYahooMonthly('^SOX', months)
+  // ── 2순위: Yahoo Finance + FRED (무료 대리지표) ────────────
+  const [soxRows, muRows, wdcRows, ppiRows] = await Promise.all([
+    fetchYahooMonthly('^SOX', months),
+    fetchYahooMonthly('MU', months),
+    fetchYahooMonthly('WDC', months),
+    fetchFredMonthly('PCU33443344', months),
+  ])
 
-  if (soxRows.length >= 2) {
-    const items = soxRows.map(({ ym, value }) => ({
-      d: toMonthLabel(ym + '-01'),
-      sox: value,
-      dram: 0,  // TrendForce 유료 → DB에서 앵커 보간 데이터 활용
-      nand: 0,
-    }))
+  const merged = mergeByYm(
+    { name: 'sox', rows: soxRows },
+    { name: 'mu', rows: muRows },
+    { name: 'wdc', rows: wdcRows },
+    { name: 'semi_ppi', rows: ppiRows },
+  )
+
+  if (merged.size >= 2) {
+    const items = [...merged.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([ym, vals]) => ({
+        d: toMonthLabel(ym + '-01'),
+        sox: vals.sox ?? 0,
+        dram: 0,           // 유료 소스 — DB 적재 시에만 사용
+        nand: 0,           // 유료 소스 — DB 적재 시에만 사용
+        silicon_wafer: 0,
+        mu: vals.mu ?? 0,          // Micron 주가 (DRAM 대리지표)
+        wdc: vals.wdc ?? 0,        // WDC 주가 (NAND 대리지표)
+        semi_ppi: vals.semi_ppi ?? 0,  // FRED 반도체 PPI
+      }))
+
     return NextResponse.json({
       items,
-      source: 'yahoo_finance',
-      dramMock: true,
-      nandMock: true,
+      source: 'yahoo_fred',
+      proxyNote: 'DRAM→Micron(MU) 주가, NAND→WDC 주가, PPI→FRED PCU33443344',
     })
   }
 

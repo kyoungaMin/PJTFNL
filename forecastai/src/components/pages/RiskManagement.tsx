@@ -1,8 +1,8 @@
 'use client'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { T, card } from '@/lib/data'
+import { T, card, formatPeriodLabel } from '@/lib/data'
 import { StatusBadge, GradeBadge, RiskTypeBadge, ScoreBar,
-  PageHeader, Btn, FilterBar, Select, SearchInput, Table, Badge } from '@/components/ui'
+  PageHeader, Btn, Select, SearchInput, Table, Badge } from '@/components/ui'
 
 type RiskItem = {
   id: number; sku: string; name: string; score: number; grade: string;
@@ -138,14 +138,13 @@ function SourceBadge({ source }: { source: string }) {
 export default function PageRiskManagement() {
   const [riskItems,     setRiskItems]     = useState<RiskItem[]>([])
   const [dataSource,    setDataSource]    = useState<string>('loading')
-  const [evalDate,      setEvalDate]      = useState<string>('')
   const [gradeSummary,  setGradeSummary]  = useState<Record<string, number>>({})
   const [totalCount,    setTotalCount]    = useState<number>(0)
   const [hasMore,       setHasMore]       = useState<boolean>(false)
   const [page,          setPage]          = useState<number>(1)
   const [loadingMore,   setLoadingMore]   = useState<boolean>(false)
 
-  const [periodType, setPeriodType] = useState<'weekly' | 'monthly'>('monthly')
+  const [periodType, setPeriodType] = useState<'weekly' | 'monthly'>('weekly')
   const [search,  setSearch]  = useState('')
   const [gradeF,  setGradeF]  = useState('전체')
   const [typeF,   setTypeF]   = useState('전체') // 마진, 납기, 결품 등 위기상황
@@ -161,40 +160,37 @@ export default function PageRiskManagement() {
   const [filtersLoaded, setFiltersLoaded] = useState<boolean>(false)
   const requestRef = useRef(0)
 
-  // ─── 날짜 표시 형식 변환 유틸 ───────────────────────────────────────────────
-  const getWeekOfMonth = (date: Date) => {
-    const day = date.getDate();
-    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-    return Math.ceil((day + firstDay) / 7);
-  };
-
-  const formatDateDisplay = (dateStr: string, type: 'weekly' | 'monthly') => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-
-    const year = d.getFullYear();
-    const month = d.getMonth() + 1;
-    
-    if (type === 'monthly') {
-      return `${year}년 ${String(month).padStart(2, '0')}월`;
-    } else {
-      const shortYear = String(year).slice(2);
-      const week = getWeekOfMonth(d);
-      return `${shortYear}년 ${String(month).padStart(2, '0')}월 ${week}주차`;
-    }
-  };
-
   // Select 컴포넌트용 옵션 생성
   const dateOptions: { value: string, label: string }[] = [];
   const seenLabels = new Set();
   availDates.forEach(d => {
-    const label = formatDateDisplay(d, periodType);
+    const label = formatPeriodLabel(d, periodType);
     if (!seenLabels.has(label)) {
       dateOptions.push({ value: d, label });
       seenLabels.add(label);
     }
   });
+
+  /* ── 대시보드에서 진입 시 weekly 강제 전환 ── */
+  const dashInitRef = useRef(false)
+  useEffect(() => {
+    if (dashInitRef.current) return
+    try {
+      const raw = sessionStorage.getItem('dashRefWeek')
+      if (raw) {
+        const ref = JSON.parse(raw)
+        if (ref.fromDashboard) {
+          dashInitRef.current = true
+          ref.fromDashboard = false
+          sessionStorage.setItem('dashRefWeek', JSON.stringify(ref))
+          if (periodType !== 'weekly') {
+            setPeriodType('weekly')  // weekly 필터 로드 트리거
+            return                   // periodType 변경으로 아래 effect가 재실행됨
+          }
+        }
+      }
+    } catch {}
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── 초기 필터 정보 로드 (periodType 변경 시 재로드) ── */
   useEffect(() => {
@@ -205,13 +201,26 @@ export default function PageRiskManagement() {
         if (d.categories) setAvailCategories(d.categories)
         if (d.dates && d.dates.length > 0) {
           setAvailDates(d.dates)
-          // dashRefWeek의 evalDate가 있으면 대시보드 기준일 우선 사용, 없으면 최신 날짜
           let targetDate = d.dates[0]
           try {
             const raw = sessionStorage.getItem('dashRefWeek')
             if (raw) {
               const ref = JSON.parse(raw)
-              if (ref.evalDate && d.dates.includes(ref.evalDate)) targetDate = ref.evalDate
+              // 주간 모드: weeklyEvalDate 우선, 월간 모드: evalDate 우선
+              const primaryDate = periodType === 'weekly' ? (ref.weeklyEvalDate || ref.evalDate) : ref.evalDate
+              // 1순위: 해당 주기의 evalDate 정확 매칭
+              if (primaryDate && d.dates.includes(primaryDate)) {
+                targetDate = primaryDate
+              }
+              // 2순위: weekStart 기준 가장 가까운 날짜
+              else if (ref.weekStart) {
+                const ws = new Date(ref.weekStart).getTime()
+                let minDiff = Infinity
+                for (const dt of d.dates) {
+                  const diff = Math.abs(new Date(dt).getTime() - ws)
+                  if (diff < minDiff) { minDiff = diff; targetDate = dt }
+                }
+              }
             }
           } catch {}
           setSelDate(targetDate)
@@ -264,7 +273,6 @@ export default function PageRiskManagement() {
         if (requestId !== requestRef.current) return
         if (data.source === 'database') {
           setRiskItems(prev => append ? [...prev, ...(data.items ?? [])] : (data.items ?? []))
-          setEvalDate(data.evalDate ?? '')
           setDataSource('database')
           setGradeSummary(data.gradeSummary ?? {})
           setTotalCount(data.totalCount ?? 0)
@@ -272,7 +280,6 @@ export default function PageRiskManagement() {
         } else if (data.source === 'empty') {
           if (!append) {
             setRiskItems([])
-            setEvalDate(data.evalDate ?? date ?? '')
             setGradeSummary({})
             setTotalCount(0)
             setHasMore(false)
@@ -323,7 +330,6 @@ export default function PageRiskManagement() {
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <SourceBadge source={dataSource}/>
-            {evalDate && <span style={{ fontSize: 10, color: T.text3 }}>기준일: {evalDate}</span>}
             <Btn variant="secondary" onClick={() => {
                const query = new URLSearchParams();
                if (selDate) query.set('date', selDate);
@@ -334,14 +340,87 @@ export default function PageRiskManagement() {
         }
       />
 
-      {/* ── 경영진 · 생산관리팀장 요약 대시보드 ────────────────────────────────── */}
+      {/* ── 조회조건 ─────────────────────────────────────────────────────────── */}
+      <div style={{ ...card, padding: '14px 20px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          {/* 주간/월간 토글 */}
+          <div style={{ display: 'flex', background: T.surface2, borderRadius: 8, padding: 3, gap: 2 }}>
+            <button
+              onClick={() => setPeriodType('weekly')}
+              style={{
+                padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                background: periodType === 'weekly' ? T.surface : 'transparent',
+                color: periodType === 'weekly' ? T.text1 : T.text3,
+                boxShadow: periodType === 'weekly' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.2s'
+              }}>주간</button>
+            <button
+              onClick={() => setPeriodType('monthly')}
+              style={{
+                padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                background: periodType === 'monthly' ? T.surface : 'transparent',
+                color: periodType === 'monthly' ? T.text1 : T.text3,
+                boxShadow: periodType === 'monthly' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.2s'
+              }}>월간</button>
+          </div>
 
-      {/* KPI 4종 */}
+          <div style={{ width: 1, height: 24, background: T.border }} />
+
+          {/* 조회 주차 / 조회월 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>
+              {periodType === 'weekly' ? '조회 주차' : '조회월'}
+            </span>
+            <Select
+              value={selDate}
+              onChange={setSelDate}
+              options={dateOptions.length > 0 ? dateOptions : [{ value: selDate, label: formatPeriodLabel(selDate, periodType) }]}
+            />
+          </div>
+
+          <div style={{ width: 1, height: 24, background: T.border }} />
+
+          {/* 분류 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>분류</span>
+            <Select value={selCategory} onChange={setSelCategory} options={['전체', ...availCategories]}/>
+          </div>
+
+          {/* 등급 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>등급</span>
+            <Select value={gradeF} onChange={setGradeF} options={['전체','A','B','C','D','E','F']}/>
+          </div>
+
+          {/* 위험유형 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>위험유형</span>
+            <Select value={typeF} onChange={setTypeF} options={['전체','결품','과잉','납기','마진']}/>
+          </div>
+
+          {/* SKU / 품목명 검색 */}
+          <SearchInput value={search} onChange={setSearch} placeholder="SKU / 품목명 검색"/>
+
+          <Btn variant="secondary" onClick={() => {
+            setSearch(''); setGradeF('전체'); setTypeF('전체'); setSelCategory('전체');
+            if (availDates.length > 0) setSelDate(availDates[0])
+          }}>초기화</Btn>
+
+          <span style={{ fontSize: 11, color: T.text3, marginLeft: 'auto' }}>
+            {riskItems.length > 0 && totalCount > 0
+              ? `${riskItems.length.toLocaleString()} / ${totalCount.toLocaleString()}건`
+              : `총 ${filtered.length}건`}
+          </span>
+        </div>
+      </div>
+
+      {/* ── KPI 4종 ──────────────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 14 }}>
         {([
-          { label: '즉시 조치 필요',   value: criticalCount,   sub: 'E · F 등급 — 이번 주 내 조치 필수',    color: T.red,           bg: T.redSoft,               border: T.redMid },
+          { label: '즉시 조치 필요',   value: criticalCount,   sub: `E · F 등급 — ${periodType === 'weekly' ? '이번 주' : '이번 달'} 내 조치 필수`,    color: T.red,           bg: T.redSoft,               border: T.redMid },
           { label: '주의 필요',        value: warningCount,    sub: 'D 등급 — 조기 대응 권고',                color: gradeColors['D'], bg: `${gradeColors['D']}12`, border: `${gradeColors['D']}40` },
-          { label: '전체 관리 품목',   value: totalCount,      sub: '현재 기준일 기준 전체 품목 수',          color: T.text2,          bg: T.surface2,              border: T.border },
+          { label: '전체 관리 품목',   value: totalCount,      sub: `${formatPeriodLabel(selDate, periodType) || '선택된 기간'} 기준 전체 품목 수`,          color: T.text2,          bg: T.surface2,              border: T.border },
           { label: '미처리 (E·F 중)', value: pendingCritical, sub: '즉시 조치 필요 중 아직 미실시',          color: T.blue,           bg: T.blueSoft,              border: T.blueMid },
         ] as { label: string; value: number; sub: string; color: string; bg: string; border: string }[]).map(({ label, value, sub, color, bg, border }) => (
           <div key={label} style={{ ...card, padding: '16px 20px', background: bg, border: `1px solid ${border}`, borderLeftWidth: 4, borderLeftColor: color, borderLeftStyle: 'solid' }}>
@@ -433,7 +512,7 @@ export default function PageRiskManagement() {
           <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 3 }}>🚨 즉시 조치 필요 TOP 5</div>
           <div style={{ fontSize: 11, color: T.text3, marginBottom: 14, lineHeight: 1.6 }}>
             E·F 등급 중 리스크 점수 최상위<br/>
-            <span style={{ color: T.red, fontWeight: 600 }}>이번 주 내 반드시 확인이 필요한 품목입니다</span>
+            <span style={{ color: T.red, fontWeight: 600 }}>{periodType === 'weekly' ? '이번 주' : '이번 달'} 내 반드시 확인이 필요한 품목입니다</span>
           </div>
           <div style={{ flex: 1 }}>
             {dataSource === 'loading'
@@ -479,71 +558,6 @@ export default function PageRiskManagement() {
           </div>
         </div>
       </div>
-
-      <FilterBar>
-        {/* 주간/월간 전환 */}
-        <div style={{ display: 'flex', background: T.surface2, borderRadius: 8, padding: 3, gap: 2, marginRight: 10 }}>
-          <button 
-            onClick={() => setPeriodType('monthly')}
-            style={{ 
-              padding: '6px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              background: periodType === 'monthly' ? T.surface : 'transparent',
-              color: periodType === 'monthly' ? T.text1 : T.text3,
-              boxShadow: periodType === 'monthly' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-              transition: 'all 0.2s'
-            }}>월간</button>
-          <button 
-            onClick={() => setPeriodType('weekly')}
-            style={{ 
-              padding: '6px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              background: periodType === 'weekly' ? T.surface : 'transparent',
-              color: periodType === 'weekly' ? T.text1 : T.text3,
-              boxShadow: periodType === 'weekly' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-              transition: 'all 0.2s'
-            }}>주간</button>
-        </div>
-
-        {/* 기준일 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>기준일</span>
-          <Select
-            value={selDate}
-            onChange={setSelDate}
-            options={dateOptions.length > 0 ? dateOptions : [{ value: selDate, label: formatDateDisplay(selDate, periodType) }]}
-          />
-        </div>
-
-        {/* 분류 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>분류</span>
-          <Select value={selCategory} onChange={setSelCategory} options={['전체', ...availCategories]}/>
-        </div>
-
-        {/* SKU / 품목명 */}
-        <SearchInput value={search} onChange={setSearch} placeholder="SKU / 품목명 검색"/>
-
-        {/* 등급 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>등급</span>
-          <Select value={gradeF} onChange={setGradeF} options={['전체','A','B','C','D','E','F']}/>
-        </div>
-
-        {/* 위험유형 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>위험유형</span>
-          <Select value={typeF} onChange={setTypeF} options={['전체','결품','과잉','납기','마진']}/>
-        </div>
-
-        <Btn variant="secondary" onClick={() => {
-          setSearch(''); setGradeF('전체'); setTypeF('전체'); setSelCategory('전체');
-          if (availDates.length > 0) setSelDate(availDates[0])
-        }}>초기화</Btn>
-        <span style={{ fontSize: 11, color: T.text3, marginLeft: 'auto' }}>
-          {riskItems.length > 0 && totalCount > 0
-            ? `${riskItems.length.toLocaleString()} / ${totalCount.toLocaleString()}건 로드`
-            : `총 ${filtered.length}건`}
-        </span>
-      </FilterBar>
 
       <HighUncertaintyPanel />
 

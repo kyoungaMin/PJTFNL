@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { T, card, sectionTitle, PRODUCTION_PLAN_DATA,
-  PLAN_TYPE_LABELS, PRIORITY_STYLE } from '@/lib/data'
+  PLAN_TYPE_LABELS, PRIORITY_STYLE, formatWeekLabel } from '@/lib/data'
 import { Badge, GradeBadge, RiskTypeBadge, PageHeader, Btn, FilterBar, Select, SearchInput } from '@/components/ui'
 
 /* ────── types ────── */
@@ -484,7 +484,7 @@ export default function PageActionQueue() {
               border:`1px solid ${T.border}`, borderRadius:7, padding:'6px 12px',
               cursor:'pointer', outline:'none', fontFamily:"'IBM Plex Mono',monospace" }}>
             {availableWeeks.map(w => (
-              <option key={w.date} value={w.date}>{w.label} ({w.date})</option>
+              <option key={w.date} value={w.date}>{formatWeekLabel(w.date)}</option>
             ))}
             {availableWeeks.length === 0 && <option value="">주차 없음</option>}
           </select>

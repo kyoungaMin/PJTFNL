@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { T, card, sectionTitle } from '@/lib/data'
+import { T, card, sectionTitle, getMonday, getWeekOfMonth } from '@/lib/data'
 import { Badge, PageHeader, Btn, Table } from '@/components/ui'
 
 /* ──────── 타입 ──────── */
@@ -32,6 +32,7 @@ interface RunLog {
 
 /* ──────── 날짜 헬퍼 ──────── */
 const toISO = (d: Date) => d.toISOString().slice(0, 10)
+const pad2 = (n: number) => String(n).padStart(2, '0')
 const today = () => toISO(new Date())
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return toISO(d) }
 const monthsAgo = (n: number) => { const d = new Date(); d.setMonth(d.getMonth() - n); return toISO(d) }
@@ -117,39 +118,33 @@ const formatDateTime = (iso: string | null) => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
-/* ──────── 주차 헬퍼 ──────── */
+/* ──────── 주차 헬퍼 (공통 유틸 활용) ──────── */
 function getWeeksInMonth(year: number, month: number) {
-  // 해당 월에 걸치는 주차 목록 (월~일 기준)
   const firstDay = new Date(year, month - 1, 1)
   const lastDay = new Date(year, month, 0)
-
-  // 첫 번째 월요일 찾기
-  const startMon = new Date(firstDay)
-  const dow = (startMon.getDay() + 6) % 7 // 0=월 ~ 6=일
-  startMon.setDate(startMon.getDate() - dow)
+  const startMon = getMonday(firstDay)
 
   const weeks: { week: number; from: string; to: string; label: string }[] = []
   const cursor = new Date(startMon)
-  let weekNum = 1
+  let safety = 0
 
-  while (cursor <= lastDay || cursor.getTime() === startMon.getTime()) {
+  while ((cursor <= lastDay || safety === 0) && safety < 6) {
     const mon = new Date(cursor)
     const sun = new Date(cursor)
     sun.setDate(sun.getDate() + 6)
 
-    // 이 주가 해당 월과 겹치는지 확인
     if (sun >= firstDay && mon <= lastDay) {
+      const wom = getWeekOfMonth(mon)
       weeks.push({
-        week: weekNum,
+        week: wom,
         from: toISO(mon),
         to: toISO(sun),
-        label: `${weekNum}주차 (${toISO(mon).slice(5)} ~ ${toISO(sun).slice(5)})`,
+        label: `${pad2(mon.getMonth()+1)}월 ${wom}주차 (${pad2(mon.getMonth()+1)}/${pad2(mon.getDate())} ~ ${pad2(sun.getMonth()+1)}/${pad2(sun.getDate())})`,
       })
-      weekNum++
     }
 
     cursor.setDate(cursor.getDate() + 7)
-    if (weekNum > 6) break // 안전 장치
+    safety++
   }
 
   return weeks
@@ -259,10 +254,7 @@ function WeekPicker({ pipeline, onRun, onClose }: {
               border:sel?`1px solid ${T.blueMid}`:`1px solid ${T.border}`,
               opacity:isFutureWeek?0.4:1,
             }}>
-              <span>{w.week}주차 {isCurrentWeek ? '(이번 주)' : ''}</span>
-              <span style={{ fontSize:11, color:sel?T.blue:T.text3, fontFamily:"'IBM Plex Mono',monospace" }}>
-                {w.from.slice(5)} ~ {w.to.slice(5)}
-              </span>
+              <span>{w.label} {isCurrentWeek ? '(이번 주)' : ''}</span>
             </button>
           )
         })}
@@ -271,7 +263,7 @@ function WeekPicker({ pipeline, onRun, onClose }: {
       {/* 선택 결과 */}
       {selectedWeek && (
         <div style={{ fontSize:12, color:T.text2, marginBottom:12, padding:'8px 10px', background:T.blueSoft, border:`1px solid ${T.blueMid}`, borderRadius:7, textAlign:'center', fontWeight:600 }}>
-          {viewYear}년 {selMonth}월 {selectedWeek.week}주차 ({selectedWeek.from} ~ {selectedWeek.to})
+          {selectedWeek.label}
         </div>
       )}
 

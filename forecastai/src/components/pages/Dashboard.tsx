@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { ComposedChart, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell, PieChart, Pie, CartesianGrid,
   ReferenceLine, Area, Line } from 'recharts'
-import { T, card, sectionTitle, KPI_DATA, ORDER_FORECAST, RISK_DONUT, ACTION_ITEMS_FULL } from '@/lib/data'
+import { T, card, sectionTitle, KPI_DATA, ORDER_FORECAST, RISK_DONUT, ACTION_ITEMS_FULL, getWeekOfMonth, getMonday } from '@/lib/data'
 import { Badge, RiskTypeBadge, PageHeader, Btn } from '@/components/ui'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
@@ -48,23 +48,6 @@ interface DashApiResponse {
     evalDate?: string    // risk_score 실제 eval_date (리스크관리 연계)
   }
   source: string
-}
-
-// ─── 주차 계산 헬퍼 ──────────────────────────────────────────────────────────
-// 이번 주 월요일 기준으로 "N월 N주차" + 날짜 범위 반환
-function getWeekInfo(date: Date): { year: number; month: number; week: number; start: string; end: string } {
-  const d = new Date(date)
-  const day = d.getDay() || 7   // 일=7, 월=1
-  d.setDate(d.getDate() - day + 1)  // 이번 주 월요일
-  const year  = d.getFullYear()
-  const month = d.getMonth() + 1
-  const week  = Math.ceil(d.getDate() / 7)
-  // toISOString()은 UTC 기준이라 한국(UTC+9)에서 하루 밀림 → 로컬 날짜 직접 계산
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const toLocal = (dt: Date) => `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`
-  const start = toLocal(d)
-  d.setDate(d.getDate() + 4)        // 이번 주 금요일 (주중 Mon~Fri)
-  return { year, month, week, start, end: toLocal(d) }
 }
 
 // 도넛 등급별 색상 (A~F)
@@ -551,7 +534,10 @@ export default function PageDashboard({
             const displayStart = ref.planDate || ref.weekStart
             const labelAnchor = new Date(displayStart + 'T00:00:00')
             if (labelAnchor.getDay() === 0) labelAnchor.setDate(labelAnchor.getDate() + 1) // 일→월
-            const { year, month, week } = getWeekInfo(labelAnchor)
+            const mon = getMonday(labelAnchor)
+            const year = mon.getFullYear()
+            const month = mon.getMonth() + 1
+            const week = getWeekOfMonth(mon)
             const weekEndStr = ref.planDate
               ? (() => { const d = new Date(ref.planDate + 'T00:00:00'); d.setDate(d.getDate() + 6); return toL(d) })()
               : ref.weekEnd || ref.weekStart
@@ -647,7 +633,18 @@ export default function PageDashboard({
           )}
           {!loading && efCount > 0 ? (
             <div
-              onClick={() => setPage?.('risk')}
+              onClick={() => {
+                // 대시보드 주차 기준으로 리스크관리 주간 조회 연동
+                try {
+                  const raw = sessionStorage.getItem('dashRefWeek')
+                  if (raw) {
+                    const ref = JSON.parse(raw)
+                    ref.fromDashboard = true
+                    sessionStorage.setItem('dashRefWeek', JSON.stringify(ref))
+                  }
+                } catch {}
+                setPage?.('risk')
+              }}
               style={{
                 marginTop: 12, padding: '8px 11px',
                 background: T.redSoft, border: `1px solid ${T.redMid}`,

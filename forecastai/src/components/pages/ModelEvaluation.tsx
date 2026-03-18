@@ -6,7 +6,7 @@ import {
   ScatterChart, Scatter, ZAxis,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts'
-import { T, card } from '@/lib/data'
+import { T, card, formatWeekLabel, formatMonthLabel } from '@/lib/data'
 import { PageHeader, Select } from '@/components/ui'
 
 /* ─── Helpers ──────────────────────────────────────────────────────────────── */
@@ -1067,23 +1067,12 @@ function TabPeriodOverview({ data, loading }: { data: PeriodResult; loading: boo
 
   // Parse period label
   const isWeekly = data.type === 'weekly'
-  const weekMatch = data.period.match(/^(\d{4})-W(\d{2})$/)
-  const monthMatch = data.period.match(/^(\d{4})-(\d{2})$/)
-
-  let periodTitle = data.period
-  let periodSub = ''
-  if (weekMatch) {
-    periodTitle = `${weekMatch[1]}년 제${parseInt(weekMatch[2])}주차`
-    const s = new Date(data.date_range.start)
-    const e = new Date(data.date_range.end)
-    e.setDate(e.getDate() - 1) // end is exclusive
-    const dayNames = ['일', '월', '화', '수', '목', '금', '토']
-    periodSub = `${data.date_range.start} (${dayNames[s.getDay()]}) ~ ${e.toISOString().slice(0, 10)} (${dayNames[e.getDay()]})`
-  } else if (monthMatch) {
-    const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
-    periodTitle = `${monthMatch[1]}년 ${monthNames[parseInt(monthMatch[2]) - 1]}`
-    periodSub = `${data.date_range.start} ~ ${data.date_range.end}`
-  }
+  const periodTitle = isWeekly
+    ? formatWeekLabel(data.date_range.start)
+    : formatMonthLabel(data.date_range.start)
+  const periodSub = data.date_range
+    ? `${data.date_range.start} ~ ${data.date_range.end}`
+    : ''
 
   return (
     <div>
@@ -1429,7 +1418,7 @@ function TabExecutive({ data, periodType }: {
           }}
         >
           {periods.length === 0 && <option value="all">기간 없음</option>}
-          {periods.map(p => <option key={p.key} value={p.key}>{p.label} ({p.key})</option>)}
+          {periods.map(p => <option key={p.key} value={p.key}>{formatWeekLabel(p.dateRange?.split(' ~ ')[0] ?? '') || p.label}</option>)}
         </select>
       )}
 
@@ -1444,10 +1433,9 @@ function TabExecutive({ data, periodType }: {
               display:'flex', alignItems:'center', gap:6, transition:'border .15s',
             }}
           >
-            {(() => {
-              const m = selectedPeriod?.match(/^(\d{4})-(\d{2})$/)
-              return m ? `${m[1]}년 ${parseInt(m[2])}월 (${selectedPeriod})` : '월 선택'
-            })()}
+            {selectedPeriod && selectedPeriod !== 'all'
+              ? formatMonthLabel(selectedPeriod + '-01')
+              : '월 선택'}
             <span style={{ fontSize:9, color:T.text3 }}>▼</span>
           </button>
           {showMonthPicker && (
@@ -1845,26 +1833,12 @@ function TabExecutivePeriod({ data, comparisonData, periodType, autoGenerate, on
   const secCard: React.CSSProperties = { ...card, padding: '24px 28px', marginBottom: 24 }
 
   // ── 기간 라벨 파싱 ──
-  const weekMatch = data.period.match(/^(\d{4})-W(\d{2})$/)
-  const monthMatch = data.period.match(/^(\d{4})-(\d{2})$/)
-  let periodTitle = data.period
-  let periodSub = ''
-  if (weekMatch) {
-    periodTitle = `${weekMatch[1]}년 제${parseInt(weekMatch[2])}주차`
-    if (data.date_range?.start) {
-      const s = new Date(data.date_range.start)
-      const e = new Date(data.date_range.end)
-      e.setDate(e.getDate() - 1)
-      const dayNames = ['일', '월', '화', '수', '목', '금', '토']
-      periodSub = `${data.date_range.start} (${dayNames[s.getDay()]}) ~ ${e.toISOString().slice(0, 10)} (${dayNames[e.getDay()]})`
-    }
-  } else if (monthMatch) {
-    const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
-    periodTitle = `${monthMatch[1]}년 ${monthNames[parseInt(monthMatch[2]) - 1]}`
-    if (data.date_range?.start) {
-      periodSub = `${data.date_range.start} ~ ${data.date_range.end}`
-    }
-  }
+  const periodTitle = data.type === 'weekly'
+    ? formatWeekLabel(data.date_range?.start ?? '')
+    : formatMonthLabel(data.date_range?.start ?? '')
+  const periodSub = data.date_range?.start
+    ? `${data.date_range.start} ~ ${data.date_range.end}`
+    : ''
 
   // ── 전체 집계 기준 지표 (비교용) ──
   const overallList = periodType === 'monthly'
