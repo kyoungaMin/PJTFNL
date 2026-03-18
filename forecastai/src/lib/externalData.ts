@@ -308,7 +308,7 @@ export async function fetchRawData(months = 12, freq: Freq = 'month') {
     const { data, error } = await supabase
       .from('economic_indicator')
       .select('date, indicator_code, value')
-      .in('indicator_code', ['COPPER_LME', 'WTI_MONTHLY'])
+      .in('indicator_code', ['COPPER_LME', 'WTI_MONTHLY', 'GOLD_LBMA'])
       .gte('date', startOfMonths(months))
       .order('date', { ascending: true })
 
@@ -326,10 +326,11 @@ export async function fetchRawData(months = 12, freq: Freq = 'month') {
           _key: key,
           copper: vals['COPPER_LME'] ?? 0,
           wti: vals['WTI_MONTHLY'] ?? 0,
-          gold: 0,
+          gold: vals['GOLD_LBMA'] ?? 0,
         }))
-      const merged = mergeGoldMock(series)
-      if (merged.filter(r => r.copper || r.wti).length >= 2) return merged
+      // DB에 Gold 없으면 MOCK으로 보완
+      const merged = series.every(r => r.gold === 0) ? mergeGoldMock(series) : series
+      if (merged.filter(r => r.copper || r.wti || r.gold).length >= 2) return merged
     }
   }
 

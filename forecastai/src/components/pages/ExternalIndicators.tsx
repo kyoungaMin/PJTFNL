@@ -200,15 +200,32 @@ function TickerCard({ label, value, unit, changePct, chartData, dataKey, source,
   )
 }
 
-function PeriodTable({ data, keys, labels, units }: {
+function PeriodTable({ data, keys, labels, units, freq }: {
   data: Record<string, unknown>[];
   keys: string[]; labels: string[]; units: string[];
+  freq?: Freq;
 }) {
   if (data.length < 2) return null
   const last = data[data.length - 1]
   const prev1 = data[data.length - 2] ?? data[0]
-  const prev4 = data.length >= 5 ? data[data.length - 5] : data[0]
-  const prev12 = data[0]
+
+  // 4주 전: 일간은 ~20영업일, 주간/월간은 4포인트
+  const prev4Offset = freq === 'day' ? 21 : 5
+  const prev4 = data.length >= prev4Offset ? data[data.length - prev4Offset] : data[0]
+
+  // 연초 대비: 현재 연도의 첫 번째 데이터 포인트
+  const curYear = new Date().getFullYear().toString()
+  const yearStartRow = data.find(row => {
+    const dk = ((row['_key'] ?? row['d']) as string | undefined) ?? ''
+    return dk.startsWith(curYear)
+  })
+  const prev12 = yearStartRow ?? data[0]
+
+  // freq에 따른 동적 컬럼 레이블
+  const col1 = freq === 'day' ? '전일 대비' : freq === 'week' ? '전주 대비' : '전월 대비'
+  const col2 = freq === 'month' ? '4개월 전 대비' : '4주 전 대비'
+  const col3 = '연초 대비'
+
   const Chg = ({ v }: { v: string }) => {
     const n = parseFloat(v)
     return <span style={{ color: n >= 0 ? T.green : T.red, fontWeight: 700, fontFamily: "'IBM Plex Mono',monospace" }}>{n >= 0 ? '▲' : '▼'}{Math.abs(n).toFixed(2)}%</span>
@@ -218,7 +235,7 @@ function PeriodTable({ data, keys, labels, units }: {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ background: T.surface2, borderBottom: `2px solid ${T.border}` }}>
-            {['지표', '현재값', '전월 대비', '4주 전 대비', '연초 대비'].map(h => (
+            {['지표', '현재값', col1, col2, col3].map(h => (
               <th key={h} style={{ padding: '9px 14px', textAlign: h === '지표' ? 'left' : 'right', fontSize: 11, fontWeight: 700, color: T.text3, whiteSpace: 'nowrap' }}>{h}</th>
             ))}
           </tr>
@@ -307,20 +324,41 @@ function DataListTable({
   )
 }
 
-function ExtChartCard({ title, data, lineKeys, colors, height = 155, mockKeys }: {
+function ExtChartCard({ title, data, lineKeys, colors, height = 155, mockKeys, dualAxis, lineLabels }: {
   title: string; data: Record<string, unknown>[]; lineKeys: string[]; colors: string[]; height?: number; mockKeys?: string[];
+  dualAxis?: boolean; lineLabels?: string[];
 }) {
+  const fmt = (v: number) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v)
+
+  const computeDomain = (keys: string[]): [number, number] => {
+    const vals = data.flatMap(row => keys.map(k => row[k] as number).filter(v => v != null && !isNaN(v) && isFinite(v)))
+    if (!vals.length) return [0, 100]
+    const min = Math.min(...vals)
+    const max = Math.max(...vals)
+    const range = max - min
+    const pad = range > 0 ? range * 0.12 : Math.abs(min) * 0.05 || 1
+    return [parseFloat((min - pad).toFixed(4)), parseFloat((max + pad).toFixed(4))]
+  }
+
+  const domainLeft = computeDomain(dualAxis ? [lineKeys[0]] : lineKeys)
+  const domainRight = dualAxis ? computeDomain(lineKeys.slice(1)) : undefined
+
   return (
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 12 }}>{title}</div>
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={data} margin={{ top: 2, right: 4, left: 0, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 2, right: dualAxis ? 40 : 4, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
           <XAxis dataKey="d" tick={{ fontSize: 9, fill: T.text3 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 9, fill: T.text3 }} axisLine={false} tickLine={false} width={38} tickFormatter={v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v} />
+          <YAxis yAxisId="left" tick={{ fontSize: 9, fill: T.text3 }} axisLine={false} tickLine={false} width={38}
+            domain={domainLeft} tickFormatter={fmt} />
+          {dualAxis && domainRight && (
+            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 9, fill: T.text3 }} axisLine={false} tickLine={false} width={38}
+              domain={domainRight} tickFormatter={fmt} />
+          )}
           <Tooltip contentStyle={{ fontSize: 11, border: `1px solid ${T.border}`, borderRadius: 8 }} />
           {lineKeys.map((k, i) => (
-            <Line key={k} type="monotone" dataKey={k} stroke={colors[i]} strokeWidth={2.2} dot={false}
+            <Line key={k} yAxisId={dualAxis && i > 0 ? 'right' : 'left'} type="monotone" dataKey={k} stroke={colors[i]} strokeWidth={2.2} dot={false}
               strokeDasharray={mockKeys?.includes(k) ? '5 3' : undefined}
               activeDot={{ r: 4, fill: colors[i], stroke: 'white', strokeWidth: 2 }} />
           ))}
@@ -330,7 +368,7 @@ function ExtChartCard({ title, data, lineKeys, colors, height = 155, mockKeys }:
         {lineKeys.map((k, i) => (
           <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: T.text2 }}>
             <div style={{ width: 14, height: mockKeys?.includes(k) ? 0 : 2, borderTop: mockKeys?.includes(k) ? `2px dashed ${colors[i]}` : undefined, background: mockKeys?.includes(k) ? undefined : colors[i], borderRadius: 1 }} />
-            {k.toUpperCase()}{mockKeys?.includes(k) ? ' (MOCK)' : ''}
+            {(lineLabels?.[i] ?? k).toUpperCase()}{mockKeys?.includes(k) ? ' (MOCK)' : ''}
           </div>
         ))}
       </div>
@@ -373,9 +411,9 @@ function FreqFilter({ freq, onChange, options }: {
   )
 }
 
-function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, tableData, tableKeys, tableLabels, tableUnits, filename, freqOptions, freq, onFreqChange, indicatorType }: {
+function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, chartExtra, tableData, tableKeys, tableLabels, tableUnits, filename, freqOptions, freq, onFreqChange, indicatorType }: {
   title: string; sub: string; isLive: boolean; loading: boolean;
-  tickerItems: React.ReactNode; chartL: React.ReactNode; chartR?: React.ReactNode;
+  tickerItems: React.ReactNode; chartL: React.ReactNode; chartR?: React.ReactNode; chartExtra?: React.ReactNode;
   tableData: Record<string, unknown>[]; tableKeys: string[]; tableLabels: string[]; tableUnits: string[];
   filename: string;
   freqOptions?: Freq[]; freq?: Freq; onFreqChange?: (f: Freq) => void;
@@ -458,12 +496,12 @@ function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, t
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 12, marginBottom: 20 }}>
         {loading ? [1, 2, 3].map(i => <LoadingCard key={i} />) : tickerItems}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: chartR ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 16 }}>
-        {chartL}{chartR}
+      <div style={{ display: 'grid', gridTemplateColumns: chartExtra ? '1fr 1fr 1fr' : chartR ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 16 }}>
+        {chartL}{chartR}{chartExtra}
       </div>
       <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 14 }}>기간별 변동률</div>
-        <PeriodTable data={tableData} keys={tableKeys} labels={tableLabels} units={tableUnits} />
+        <PeriodTable data={tableData} keys={tableKeys} labels={tableLabels} units={tableUnits} freq={freq} />
       </div>
       {!loading && tableData.length > 0 && (
         <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', marginTop: 16, boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
@@ -515,7 +553,8 @@ export function PageExtSemi() {
         source={INDICATOR_META.SILICON_WAFER.source} freq={INDICATOR_META.SILICON_WAFER.freq} isMock={!isLive} />,
     ]}
     chartL={<ExtChartCard title="SOX 지수 추이" data={data} lineKeys={['sox']} colors={[T.blue]} />}
-    chartR={<ExtChartCard title="DRAM / NAND / 실리콘웨이퍼" data={data} lineKeys={['dram', 'nand', 'silicon_wafer']} colors={[T.purple, '#0D9488', T.amber]} />}
+    chartR={<ExtChartCard title="DRAM / NAND 현물가" data={data} lineKeys={['dram', 'nand']} colors={[T.purple, '#0D9488']} />}
+    chartExtra={<ExtChartCard title="실리콘웨이퍼 가격" data={data} lineKeys={['silicon_wafer']} colors={[T.amber]} />}
     tableData={data} tableKeys={['sox', 'dram', 'nand', 'silicon_wafer']}
     tableLabels={['SOX 지수', 'DRAM', 'NAND', '실리콘웨이퍼']} tableUnits={['pt', '$/Gb', '$/GB', '$/inch²']}
     filename="ext_semi.csv"
@@ -545,8 +584,8 @@ export function PageExtGlobal() {
       <TickerCard key="hs8541" label="반도체 수출 (HS8541)" value={hs8541.value as number} unit="$M" changePct={hs8541.pct} chartData={data} dataKey="hs8541"
         source={INDICATOR_META.HS8541.source} freq={INDICATOR_META.HS8541.freq} isMock={!isLive} />,
     ]}
-    chartL={<ExtChartCard title="미국 산업/제조업생산지수" data={data} lineKeys={['ipi', 'ipman']} colors={[T.blue, T.purple]} />}
-    chartR={<ExtChartCard title="중국 PMI · HS8541 수출" data={data} lineKeys={['pmi', 'hs8541']} colors={[T.red, T.green]} />}
+    chartL={<ExtChartCard title="미국 산업/제조업생산지수" data={data} lineKeys={['ipi', 'ipman']} colors={[T.blue, T.purple]} lineLabels={['산업생산(IPI)', '제조업생산']} />}
+    chartR={<ExtChartCard title="중국 PMI · HS8541 수출" data={data} lineKeys={['pmi', 'hs8541']} colors={[T.red, T.green]} lineLabels={['중국PMI(좌)', 'HS8541 $M(우)']} dualAxis />}
     tableData={data} tableKeys={['ipi', 'ipman', 'pmi', 'hs8541']}
     tableLabels={['IPI', '제조업생산', '중국PMI', 'HS8541수출']} tableUnits={['', '', '', '$M']}
     filename="ext_global.csv"
@@ -708,6 +747,7 @@ export function PageExtFX() {
           keys={['usd', 'eur', 'jpy', 'cny', 'rate', 'us_rate', 'kr_ipi', 'kr_bsi']}
           labels={['USD/KRW', 'EUR/KRW', 'JPY/KRW', 'CNY/KRW', '한국 기준금리', '미국 기준금리', '한국 제조업생산', '한국 경기전망BSI']}
           units={['원', '원', '원', '원', '%', '%', '', '']}
+          freq={freq}
         />
       </div>
 

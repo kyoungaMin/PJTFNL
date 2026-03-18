@@ -19,6 +19,7 @@ import { PageExtSemi, PageExtGlobal, PageExtFX, PageExtSupply, PageExtRaw } from
 import PageAdmin from '@/components/pages/Admin'
 import PageExecutiveReport from '@/components/pages/ExecutiveReport'
 import PageIndustryNews from '@/components/pages/IndustryNews'
+import PageDataPipeline from '@/components/pages/DataPipelineManager'
 
 const ROLE_GRAD: Record<RoleType, string> = {
   Admin:   'linear-gradient(135deg,#7C3AED,#EC4899)',
@@ -118,6 +119,15 @@ export default function Home() {
     'ext-raw':          <PageExtRaw />,
     'executive-report': <PageExecutiveReport />,
     'industry-news':    <PageIndustryNews />,
+    'data-pipeline': currentUser.role === 'Admin'
+      ? <PageDataPipeline />
+      : (
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:12 }}>
+            <div style={{ fontSize:48, color:T.border }}>🔒</div>
+            <div style={{ fontSize:16, fontWeight:700, color:T.text1 }}>접근 권한이 없습니다</div>
+            <div style={{ fontSize:13, color:T.text3 }}>데이터 관리 페이지는 Admin 역할만 접근 가능합니다.</div>
+          </div>
+        ),
     admin: currentUser.role === 'Admin'
       ? <PageAdmin currentUser={currentUser} />
       : (

@@ -1,0 +1,35 @@
+name: 월간 배치 - 외부지표 일괄
+
+on:
+  schedule:
+    - cron: '0 18 1 * *'   # 매월 2일 03:00 KST (1일 UTC 18:00)
+  workflow_dispatch:         # 수동 실행 버튼
+
+jobs:
+  batch:
+    name: 외부지표 월간 적재
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: forecastai/package-lock.json
+
+      - name: 패키지 설치
+        run: npm ci
+        working-directory: forecastai
+
+      - name: 월간 배치 실행
+        run: node scripts/batch-monthly.mjs
+        working-directory: forecastai
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}

@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
 /**
  * /api/ext-global — 글로벌 수요 외부 API 프록시
  *
  * 데이터 소스:
- *   - FRED API: INDPRO (미국 산업생산지수, 월간)
+ *   1순위: Supabase DB
+ *      - CN_PMI_MFG: NBS 스크래핑 적재 (seed-indicators)
+ *   2순위: FRED API: INDPRO (미국 산업생산지수, 월간)
  *   - 관세청 UNIPASS: HS8541 수출통계 (월간) — UNIPASS_API_KEY 필요
- *   - CN_PMI_MFG: 공식 무료 API 없음 → 0 반환 (프론트에서 MOCK 처리)
  *
  * 환경변수:
  *   - FRED_API_KEY: FRED API 키
@@ -80,9 +82,15 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [indproRows, hs8541Map] = await Promise.all([
+    const [indproRows, hs8541Map, pmiRes] = await Promise.all([
       fetchIndpro(fredKey, months),
       unipassKey ? fetchHs8541(unipassKey, months) : Promise.resolve({} as Record<string, number>),
+      supabase
+        .from('economic_indicator')
+        .select('date, value')
+        .eq('indicator_code', 'CN_PMI_MFG')
+        .gte('date', startDate(months))
+        .order('date', { ascending: true }),
     ])
 
     // INDPRO 월별 맵
@@ -93,24 +101,33 @@ export async function GET(request: Request) {
       if (!isNaN(v)) indproMap[ym] = v
     }
 
+    // PMI 월별 맵 (DB)
+    const pmiMap: Record<string, number> = {}
+    for (const r of pmiRes.data ?? []) {
+      pmiMap[(r.date as string).slice(0, 7)] = Number(r.value)
+    }
+
     // 전체 월 집합
-    const allYms = Array.from(new Set([...Object.keys(indproMap), ...Object.keys(hs8541Map)])).sort()
+    const allYms = Array.from(new Set([
+      ...Object.keys(indproMap),
+      ...Object.keys(hs8541Map),
+      ...Object.keys(pmiMap),
+    ])).sort()
 
     const items = allYms.map(ym => ({
       d: toMonthLabel(ym),
       ipi: indproMap[ym] ?? 0,
-      pmi: 0,              // 공식 무료 API 없음 → MOCK 유지
+      pmi: pmiMap[ym] ?? 0,
       hs8541: hs8541Map[ym] ?? 0,
     }))
 
-    if (items.filter(r => r.ipi || r.hs8541).length < 2) {
+    if (items.filter(r => r.ipi || r.hs8541 || r.pmi).length < 2) {
       return NextResponse.json({ items: [], source: 'insufficient_data' })
     }
 
     return NextResponse.json({
       items,
       source: unipassKey ? 'fred_unipass' : 'fred',
-      pmiMock: true, // PMI는 MOCK임을 명시
     })
   } catch (err: any) {
     console.error('[API] ext-global error:', err)
