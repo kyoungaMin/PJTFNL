@@ -1,3 +1,7 @@
+# 일회성 관리 스크립트 (비밀 키 포함 가능, 로컬 전용)
+setup-supabase-url.mjs
+update-user-emails.mjs
+
 # OS
 Thumbs.db
 Desktop.ini
