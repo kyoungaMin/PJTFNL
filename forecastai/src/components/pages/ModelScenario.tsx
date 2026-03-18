@@ -59,9 +59,7 @@ type TabId = typeof TABS[number]['id']
 
 const MODELS = [
   { id: 'segment_best_v1', label: '구간별 최적 모델 (추천)' },
-  { id: 'lgbm_q_v4', label: '주간 LightGBM 2-Stage v4' },
-  { id: 'lgbm_q_v3', label: '주간 LightGBM v3' },
-  { id: 'lgbm_q_monthly_v2', label: '월간 LightGBM v2' },
+  { id: 'lgbm_q_v3', label: 'LightGBM Quantile v3 (현재 운영 모델)' },
   { id: 'svr_linear_v1', label: '주간 SVR (저수요 특화)' },
   { id: 'ridge_monthly_v1', label: '월간 Ridge (중·고수요)' },
 ]
@@ -269,8 +267,8 @@ export default function PageModelScenario({ setPage }: { setPage?: (p: string) =
     if (!compProduct) return
     setCompLoading(true)
     Promise.all([
-      fetch(`/api/model-scenario?model=lgbm_q_v4&product=${encodeURIComponent(compProduct)}&weeks=8`).then(r => r.json()),
-      fetch(`/api/model-scenario?model=lgbm_q_monthly_v2&product=${encodeURIComponent(compProduct)}&weeks=8`).then(r => r.json()),
+      fetch(`/api/model-scenario?model=lgbm_q_v3&product=${encodeURIComponent(compProduct)}&weeks=8`).then(r => r.json()),
+      fetch(`/api/model-scenario?model=lgbm_q_v3&product=${encodeURIComponent(compProduct)}&weeks=8`).then(r => r.json()),
     ]).then(([weekly, monthly]) => {
       setWeeklyPreds(weekly.predictions ?? [])
       setMonthlyPreds(monthly.predictions ?? [])

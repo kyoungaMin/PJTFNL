@@ -23,8 +23,8 @@ interface AnalysisResult {
 // ─── 데이터 수집 ──────────────────────────────────────────────────────────────
 
 async function collectForecastData(productId: string, model: 'weekly' | 'monthly') {
-  const modelId = model === 'weekly' ? 'lgbm_q_v4' : 'lgbm_q_monthly_v2'
-  const horizons = model === 'weekly' ? [7, 14, 28] : [30, 90, 180]
+  const modelId = 'lgbm_q_v3'
+  const horizons = model === 'weekly' ? [7, 14, 28] : [28, 56, 91]
 
   // 1. 최신 예측 날짜
   const { data: dateRow } = await supabase

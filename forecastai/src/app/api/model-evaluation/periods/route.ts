@@ -28,7 +28,7 @@ function fmtShort(d: Date) {
 // GET /api/model-evaluation/periods?type=weekly|monthly
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? 'weekly'
-  const modelId = type === 'monthly' ? 'lgbm_q_monthly_v2' : 'lgbm_q_v4'
+  const modelId = 'lgbm_q_v3'
 
   try {
     const { data, error } = await supabase
