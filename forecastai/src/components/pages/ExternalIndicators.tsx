@@ -200,15 +200,32 @@ function TickerCard({ label, value, unit, changePct, chartData, dataKey, source,
   )
 }
 
-function PeriodTable({ data, keys, labels, units }: {
+function PeriodTable({ data, keys, labels, units, freq }: {
   data: Record<string, unknown>[];
   keys: string[]; labels: string[]; units: string[];
+  freq?: Freq;
 }) {
   if (data.length < 2) return null
   const last = data[data.length - 1]
   const prev1 = data[data.length - 2] ?? data[0]
-  const prev4 = data.length >= 5 ? data[data.length - 5] : data[0]
-  const prev12 = data[0]
+
+  // 4주 전: 일간은 ~20영업일, 주간/월간은 4포인트
+  const prev4Offset = freq === 'day' ? 21 : 5
+  const prev4 = data.length >= prev4Offset ? data[data.length - prev4Offset] : data[0]
+
+  // 연초 대비: 현재 연도의 첫 번째 데이터 포인트
+  const curYear = new Date().getFullYear().toString()
+  const yearStartRow = data.find(row => {
+    const dk = ((row['_key'] ?? row['d']) as string | undefined) ?? ''
+    return dk.startsWith(curYear)
+  })
+  const prev12 = yearStartRow ?? data[0]
+
+  // freq에 따른 동적 컬럼 레이블
+  const col1 = freq === 'day' ? '전일 대비' : freq === 'week' ? '전주 대비' : '전월 대비'
+  const col2 = freq === 'month' ? '4개월 전 대비' : '4주 전 대비'
+  const col3 = '연초 대비'
+
   const Chg = ({ v }: { v: string }) => {
     const n = parseFloat(v)
     return <span style={{ color: n >= 0 ? T.green : T.red, fontWeight: 700, fontFamily: "'IBM Plex Mono',monospace" }}>{n >= 0 ? '▲' : '▼'}{Math.abs(n).toFixed(2)}%</span>
@@ -218,7 +235,7 @@ function PeriodTable({ data, keys, labels, units }: {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ background: T.surface2, borderBottom: `2px solid ${T.border}` }}>
-            {['지표', '현재값', '전월 대비', '4주 전 대비', '연초 대비'].map(h => (
+            {['지표', '현재값', col1, col2, col3].map(h => (
               <th key={h} style={{ padding: '9px 14px', textAlign: h === '지표' ? 'left' : 'right', fontSize: 11, fontWeight: 700, color: T.text3, whiteSpace: 'nowrap' }}>{h}</th>
             ))}
           </tr>
@@ -484,7 +501,7 @@ function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, c
       </div>
       <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 14 }}>기간별 변동률</div>
-        <PeriodTable data={tableData} keys={tableKeys} labels={tableLabels} units={tableUnits} />
+        <PeriodTable data={tableData} keys={tableKeys} labels={tableLabels} units={tableUnits} freq={freq} />
       </div>
       {!loading && tableData.length > 0 && (
         <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', marginTop: 16, boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
@@ -730,6 +747,7 @@ export function PageExtFX() {
           keys={['usd', 'eur', 'jpy', 'cny', 'rate', 'us_rate', 'kr_ipi', 'kr_bsi']}
           labels={['USD/KRW', 'EUR/KRW', 'JPY/KRW', 'CNY/KRW', '한국 기준금리', '미국 기준금리', '한국 제조업생산', '한국 경기전망BSI']}
           units={['원', '원', '원', '원', '%', '%', '', '']}
+          freq={freq}
         />
       </div>
 
