@@ -294,6 +294,18 @@ export default function PageRiskManagement() {
     A: '#10B981', B: '#84CC16', C: '#F59E0B', D: '#F97316', E: '#EF4444', F: '#7C3AED',
   }
 
+  const criticalCount   = (gradeSummary['E'] ?? 0) + (gradeSummary['F'] ?? 0)
+  const warningCount    = gradeSummary['D'] ?? 0
+
+  const typeDistCount = useMemo(() => {
+    const c: Record<string,number> = { '결품': 0, '과잉': 0, '납기': 0, '마진': 0 }
+    for (const r of riskItems) if (r.type in c) c[r.type]++
+    return c
+  }, [riskItems])
+
+  const top5Critical    = useMemo(() => riskItems.filter(r => ['E','F'].includes(r.grade)).slice(0, 5), [riskItems])
+  const pendingCritical = riskItems.filter(r => ['E','F'].includes(r.grade) && r.status === '미처리').length
+
   return (
     <div style={{ position: 'relative' }}>
       <PageHeader
@@ -313,21 +325,150 @@ export default function PageRiskManagement() {
         }
       />
 
-      {/* Grade scoreboard — gradeSummary 기반 (전체 데이터 집계) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10, marginBottom: 20 }}>
-        {['A','B','C','D','E','F'].map(g => (
-          <div key={g} onClick={() => setGradeF(gradeF === g ? '전체' : g)} style={{
-            ...card, padding: '14px 16px', textAlign: 'center', cursor: 'pointer',
-            background: gradeF === g ? `${gradeColors[g]}12` : T.surface,
-            border: `1px solid ${gradeF === g ? gradeColors[g] + '50' : T.border}`,
-            transition: 'all 0.15s',
-          }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: gradeColors[g], fontFamily: "'IBM Plex Mono',monospace" }}>
-              {dataSource === 'loading' ? '—' : (gradeSummary[g] ?? 0)}
+      {/* ── 경영진 · 생산관리팀장 요약 대시보드 ────────────────────────────────── */}
+
+      {/* KPI 4종 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 14 }}>
+        {([
+          { label: '즉시 조치 필요',   value: criticalCount,   sub: 'E · F 등급 — 이번 주 내 조치 필수',    color: T.red,           bg: T.redSoft,               border: T.redMid },
+          { label: '주의 필요',        value: warningCount,    sub: 'D 등급 — 조기 대응 권고',                color: gradeColors['D'], bg: `${gradeColors['D']}12`, border: `${gradeColors['D']}40` },
+          { label: '전체 관리 품목',   value: totalCount,      sub: '현재 기준일 기준 전체 품목 수',          color: T.text2,          bg: T.surface2,              border: T.border },
+          { label: '미처리 (E·F 중)', value: pendingCritical, sub: '즉시 조치 필요 중 아직 미실시',          color: T.blue,           bg: T.blueSoft,              border: T.blueMid },
+        ] as { label: string; value: number; sub: string; color: string; bg: string; border: string }[]).map(({ label, value, sub, color, bg, border }) => (
+          <div key={label} style={{ ...card, padding: '16px 20px', background: bg, border: `1px solid ${border}`, borderLeftWidth: 4, borderLeftColor: color, borderLeftStyle: 'solid' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 34, fontWeight: 800, color, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
+              {dataSource === 'loading' ? '—' : value}
             </div>
-            <div style={{ fontSize: 11, color: T.text3, marginTop: 3 }}>Grade {g}</div>
+            <div style={{ fontSize: 10, color: T.text3, marginTop: 6 }}>{sub}</div>
           </div>
         ))}
+      </div>
+
+      {/* 2-컬럼: 왼쪽(등급현황 + 위험유형 분포) / 오른쪽(즉시 조치 TOP 5) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: 14, marginBottom: 20 }}>
+
+        {/* 왼쪽 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* 등급별 현황 */}
+          <div style={{ ...card, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text1 }}>등급별 현황</span>
+              <span style={{ fontSize: 10, color: T.text3 }}>카드 클릭 시 해당 등급만 필터링 · 전체 {totalCount.toLocaleString()}건 기준</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>
+              {['A','B','C','D','E','F'].map(g => (
+                <div key={g} onClick={() => setGradeF(gradeF === g ? '전체' : g)} style={{
+                  textAlign: 'center', cursor: 'pointer', padding: '12px 6px', borderRadius: 8,
+                  background: gradeF === g ? `${gradeColors[g]}15` : T.surface2,
+                  border: `1px solid ${gradeF === g ? gradeColors[g] + '60' : T.border}`,
+                  transition: 'all 0.15s',
+                }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: gradeColors[g], fontFamily: "'IBM Plex Mono',monospace" }}>
+                    {dataSource === 'loading' ? '—' : (gradeSummary[g] ?? 0)}
+                  </div>
+                  <div style={{ fontSize: 10, color: T.text3, marginTop: 3 }}>Grade {g}</div>
+                </div>
+              ))}
+            </div>
+            {/* 등급 의미 범례 */}
+            <div style={{ display: 'flex', gap: 16, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+              {[['A·B', '정상 — 특별 조치 불필요', T.green], ['C', '경계 — 모니터링 필요', gradeColors['C']], ['D', '위험 — 조기 대응 권고', gradeColors['D']], ['E·F', '심각 — 즉시 조치 필수', T.red]].map(([g, desc, c]) => (
+                <div key={g as string} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: c as string, flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: T.text3 }}><strong style={{ color: T.text2 }}>{g}</strong> {desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 위험유형 분포 */}
+          <div style={{ ...card, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text1 }}>위험유형 분포</span>
+              <span style={{ fontSize: 10, color: T.text3 }}>현재 로드된 {riskItems.length}건 기준 — 가장 빈번한 위험 원인 파악용</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
+              {([
+                { type: '결품', color: T.red,           desc: '재고 바닥 위험 — 납품 차질 가능성' },
+                { type: '납기', color: gradeColors['D'], desc: '리드타임 초과 — 제때 입고 불가' },
+                { type: '과잉', color: T.blue,           desc: '재고 과다 — 보관비·운전자금 부담' },
+                { type: '마진', color: T.amber,          desc: '수익성 악화 — 단가 재협의 필요' },
+              ] as { type: string; color: string; desc: string }[]).map(({ type, color, desc }) => {
+                const cnt = typeDistCount[type] ?? 0
+                const pct = riskItems.length > 0 ? Math.round(cnt / riskItems.length * 100) : 0
+                return (
+                  <div key={type}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                      <div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color }}>{type}</span>
+                        <span style={{ fontSize: 11, color: T.text3, marginLeft: 6 }}>{desc}</span>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color, fontFamily: "'IBM Plex Mono',monospace", flexShrink: 0, marginLeft: 8 }}>
+                        {cnt}건
+                      </span>
+                    </div>
+                    <div style={{ height: 7, background: T.surface2, borderRadius: 4 }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.6s', opacity: 0.75 }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* 오른쪽: 즉시 조치 필요 TOP 5 */}
+        <div style={{ ...card, padding: '16px 18px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 3 }}>🚨 즉시 조치 필요 TOP 5</div>
+          <div style={{ fontSize: 11, color: T.text3, marginBottom: 14, lineHeight: 1.6 }}>
+            E·F 등급 중 리스크 점수 최상위<br/>
+            <span style={{ color: T.red, fontWeight: 600 }}>이번 주 내 반드시 확인이 필요한 품목입니다</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            {dataSource === 'loading'
+              ? Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} style={{ height: 66, borderRadius: 8, background: T.surface2, marginBottom: 8, animation: 'pulse 1.5s ease-in-out infinite' }} />
+                ))
+              : top5Critical.length === 0
+              ? (
+                <div style={{ textAlign: 'center', padding: '36px 0', color: T.text3, fontSize: 12 }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>✅</div>
+                  즉시 조치 필요 품목이 없습니다
+                </div>
+              )
+              : top5Critical.map((r) => (
+                <div
+                  key={r.sku}
+                  onClick={() => setDrawer(r)}
+                  style={{
+                    padding: '10px 12px', borderRadius: 8, marginBottom: 8, cursor: 'pointer',
+                    background: r.grade === 'F' ? T.redSoft : T.amberSoft,
+                    border: `1px solid ${r.grade === 'F' ? T.redMid : T.amberMid}`,
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                      <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono',monospace", color: T.text3, marginBottom: 2 }}>{r.sku}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                      <div style={{ fontSize: 11, color: T.text2, marginTop: 3 }}>{r.action}</div>
+                      <div style={{ fontSize: 10, color: T.text3, marginTop: 2 }}>
+                        재고 {r.stock.toLocaleString()} / 안전재고 {r.safeStock.toLocaleString()} EA
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: r.grade === 'F' ? T.red : T.amber, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>{r.score}</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: r.grade === 'F' ? T.red : T.amber, marginTop: 2 }}>Grade {r.grade}</div>
+                      <div style={{ fontSize: 10, color: T.text3, marginTop: 2 }}>{r.status}</div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
       </div>
 
       <FilterBar>
@@ -397,13 +538,8 @@ export default function PageRiskManagement() {
 
       <HighUncertaintyPanel />
 
-      {filtered.some(r => ['E','F'].includes(r.grade)) && (
-        <div style={{ padding: '10px 14px', background: T.redSoft, border: `1px solid ${T.redMid}`, borderRadius: 8, fontSize: 12, color: T.red, fontWeight: 500, marginBottom: 16 }}>
-          ⚠ E~F 등급 {filtered.filter(r => ['E','F'].includes(r.grade)).length}건 — 이번 주 내 조치가 필요합니다.
-        </div>
-      )}
 
-      {dataSource === 'loading' ? (
+{dataSource === 'loading' ? (
         <div style={{ ...card, padding: '48px', textAlign: 'center', color: T.text3, fontSize: 13 }}>
           리스크 데이터를 불러오는 중…
         </div>

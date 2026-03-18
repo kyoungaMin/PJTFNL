@@ -81,16 +81,19 @@ const STATUS_LABEL: Record<string, string> = {
      date      - 기준일 (없으면 최신 eval_date 자동 탐색)
      type      - 제품 유형 필터 (제품, 반제품, 부재료 등)
      page      - 페이지 번호 (기본 1, PAGE_SIZE=200)
+     sku       - 특정 SKU 단건 조회 (지정 시 페이지네이션 생략, 1건 즉시 반환)
+     eval_type - weekly / monthly (기본 monthly)
 ═══════════════════════════════════════════════════════════════════ */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const dateParam = searchParams.get('date')
-    const typeParam = searchParams.get('type')
+    const dateParam  = searchParams.get('date')
+    const typeParam  = searchParams.get('type')
     const gradeParam = searchParams.get('grade')
-    const evalType  = searchParams.get('eval_type') || 'monthly' // 주간/월간 구분
-    const page      = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-    const offset    = (page - 1) * PAGE_SIZE
+    const skuParam   = searchParams.get('sku')   // ← 단건 조회용 SKU 코드
+    const evalType   = searchParams.get('eval_type') || 'monthly'
+    const page       = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+    const offset     = (page - 1) * PAGE_SIZE
 
     // ── 1. eval_date 결정 ──────────────────────────────────────────────────
     let evalDate: string | undefined = dateParam ?? undefined
@@ -107,7 +110,53 @@ export async function GET(request: Request) {
     }
 
     if (!evalDate) {
-      return NextResponse.json({ items: [], evalDate: null, gradeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
+      return NextResponse.json({ items: [], evalDate: null, gradeSummary: {}, typeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
+    }
+
+    // ── 1-b. SKU 단건 조회 (sku 파라미터 있으면 즉시 반환) ─────────────────
+    if (skuParam) {
+      const RISK_SELECT_SKU = 'product_id,eval_date,total_risk,risk_grade,stockout_risk,excess_risk,delivery_risk,margin_risk,safety_stock,inventory_days'
+      const { data: skuRisk, error: skuErr } = await supabase
+        .from('risk_score')
+        .select(RISK_SELECT_SKU)
+        .eq('product_id', skuParam)
+        .eq('eval_date', evalDate)
+        .eq('eval_type', evalType)
+        .limit(1)
+      if (skuErr) throw skuErr
+
+      if (!skuRisk?.[0]) {
+        return NextResponse.json({ items: [], evalDate, gradeSummary: {}, typeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
+      }
+
+      const r = skuRisk[0]
+      const [prodRows, ltRows, aqRows, invRows] = await Promise.all([
+        supabase.from('product_master').select('product_code,product_name').eq('product_code', skuParam).limit(1),
+        supabase.from('product_lead_time').select('avg_lead_days').eq('product_id', skuParam).order('calc_date', { ascending: false }).limit(1),
+        supabase.from('action_queue').select('action_type,description,status').eq('product_id', skuParam).order('created_at', { ascending: false }).limit(1),
+        supabase.from('inventory').select('inventory_qty').eq('product_id', skuParam).order('snapshot_date', { ascending: false }).limit(10),
+      ])
+      const prod  = prodRows.data?.[0]
+      const lt    = ltRows.data?.[0]
+      const aq    = aqRows.data?.[0]
+      const stock = (invRows.data ?? []).reduce((sum, row) => sum + Number(row.inventory_qty ?? 0), 0)
+      const rType = dominantType(r)
+      const grade = r.risk_grade ?? '-'
+
+      const item = {
+        id: 1, sku: r.product_id,
+        name:      prod?.product_name ?? r.product_id,
+        score:     Math.round(Number(r.total_risk ?? 0)),
+        grade,
+        type:      rType,
+        action:    aq ? (ACTION_TYPE_LABEL[aq.action_type] ?? aq.description ?? defaultAction(rType, grade)) : defaultAction(rType, grade),
+        status:    aq ? (STATUS_LABEL[aq.status] ?? '미처리') : '미처리',
+        stock:     Math.round(stock),
+        safeStock: Math.round(Number(r.safety_stock ?? 0)),
+        leadTime:  Math.round(Number(lt?.avg_lead_days ?? 0)),
+        customer:  '-',
+      }
+      return NextResponse.json({ items: [item], evalDate, gradeSummary: { [grade]: 1 }, typeSummary: { [rType]: 1 }, totalCount: 1, hasMore: false, source: 'database' })
     }
 
     // ── 2. 제품유형 필터: product_master에서 대상 product_code 목록 선추출 ─
@@ -120,42 +169,56 @@ export async function GET(request: Request) {
       )
       validProductIds = typeRows.map((r: any) => r.product_code)
       if (validProductIds.length === 0) {
-        return NextResponse.json({ items: [], evalDate, gradeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
+        return NextResponse.json({ items: [], evalDate, gradeSummary: {}, typeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
       }
     }
 
-    // ── 3. 등급별 건수 집계 (전체 데이터 기준) ────────────────────────────
+    // ── 3. 등급별 + 위험유형별 건수 집계 (전체 데이터 기준) ─────────────────
     const GRADES = ['A', 'B', 'C', 'D', 'E', 'F']
+    const TYPE_COLS = 'stockout_risk,excess_risk,delivery_risk,margin_risk'
     let gradeSummary: Record<string, number> = {}
+    let typeSummary:  Record<string, number> = { '결품': 0, '과잉': 0, '납기': 0, '마진': 0 }
     let totalCount = 0
 
     if (validProductIds) {
-      const gradeRows = await batchIn(
-        'risk_score', 'risk_grade', 'product_id', validProductIds,
+      // grade + type 컬럼을 한 번에 조회해서 동시 집계
+      const gradeTypeRows = await batchIn(
+        'risk_score', `risk_grade,${TYPE_COLS}`, 'product_id', validProductIds,
         (q) => q.eq('eval_date', evalDate).eq('eval_type', evalType)
       )
-      for (const r of gradeRows) {
+      for (const r of gradeTypeRows) {
         const g = String(r.risk_grade ?? '')
         if (g) gradeSummary[g] = (gradeSummary[g] ?? 0) + 1
+        const t = dominantType(r)
+        typeSummary[t] = (typeSummary[t] ?? 0) + 1
       }
-      totalCount = gradeParam ? (gradeSummary[gradeParam] ?? 0) : gradeRows.length
+      totalCount = gradeParam ? (gradeSummary[gradeParam] ?? 0) : gradeTypeRows.length
     } else {
-      const countResults = await Promise.all(
-        GRADES.map(g =>
-          supabase
-            .from('risk_score')
-            .select('*', { count: 'exact', head: true })
-            .eq('eval_date', evalDate!)
-            .eq('eval_type', evalType)
-            .eq('risk_grade', g)
-        )
-      )
+      // grade: 6개 COUNT 쿼리 / type: 전체 rows 동시 조회
+      const [countResults, typeRows] = await Promise.all([
+        Promise.all(
+          GRADES.map(g =>
+            supabase
+              .from('risk_score')
+              .select('*', { count: 'exact', head: true })
+              .eq('eval_date', evalDate!)
+              .eq('eval_type', evalType)
+              .eq('risk_grade', g)
+          )
+        ),
+        fetchAll('risk_score', TYPE_COLS,
+          q => q.eq('eval_date', evalDate!).eq('eval_type', evalType)),
+      ])
       for (let i = 0; i < GRADES.length; i++) {
         const cnt = countResults[i].count ?? 0
         gradeSummary[GRADES[i]] = cnt
         totalCount += cnt
       }
       if (gradeParam) totalCount = gradeSummary[gradeParam] ?? 0
+      for (const r of typeRows) {
+        const t = dominantType(r)
+        typeSummary[t] = (typeSummary[t] ?? 0) + 1
+      }
     }
 
     // ── 4. risk_score 목록 조회 (페이지네이션) ──────────────────────────────
@@ -192,7 +255,7 @@ export async function GET(request: Request) {
     const hasMore = offset + risks.length < totalCount
 
     if (risks.length === 0) {
-      return NextResponse.json({ items: [], evalDate, gradeSummary, totalCount, hasMore: false, source: page === 1 ? 'empty' : 'database' })
+      return NextResponse.json({ items: [], evalDate, gradeSummary, typeSummary, totalCount, hasMore: false, source: page === 1 ? 'empty' : 'database' })
     }
 
     const productIds = risks.map(r => r.product_id)
@@ -274,7 +337,7 @@ export async function GET(request: Request) {
       }
     })
 
-    return NextResponse.json({ items, evalDate, gradeSummary, totalCount, hasMore, source: 'database' })
+    return NextResponse.json({ items, evalDate, gradeSummary, typeSummary, totalCount, hasMore, source: 'database' })
   } catch (err: any) {
     console.error('[API] risk error:', err)
     return NextResponse.json({ items: [], gradeSummary: {}, totalCount: 0, hasMore: false, source: 'error', error: err.message }, { status: 500 })

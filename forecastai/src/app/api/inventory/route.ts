@@ -555,6 +555,72 @@ export async function GET(req: Request) {
       })
     }
 
+    // ── RPC 우선 경로 (DB 내부 집계 → 빠름) ───────────────────────────────
+    try {
+      const [kpiResult, trendResult, coverageResult] = await Promise.all([
+        supabase.rpc('get_inventory_kpi_stats',    { p_month: selectedMonth, p_type: typeParam }),
+        supabase.rpc('get_inventory_trend',         { p_month: selectedMonth, p_limit: 12 }),
+        supabase.rpc('get_inventory_avg_coverage',  { p_month: selectedMonth, p_type: typeParam }),
+      ])
+
+      if (kpiResult.error)   throw kpiResult.error
+      if (trendResult.error) throw trendResult.error
+
+      // KPI 통계 조합
+      const typeStats: Record<string, { qty: number; skuCount: number; riskCount: number; shortCount: number }> = {}
+      const categoryStats: Record<string, number> = {}
+      let totalQty = 0, totalRisk = 0, totalShort = 0, totalSku = 0
+
+      for (const row of (kpiResult.data ?? [])) {
+        if (row.result_type === 'type') {
+          typeStats[row.name] = {
+            qty:        Number(row.total_qty   ?? 0),
+            skuCount:   Number(row.sku_count   ?? 0),
+            riskCount:  Number(row.risk_count  ?? 0),
+            shortCount: Number(row.short_count ?? 0),
+          }
+          totalQty   += Number(row.total_qty   ?? 0)
+          totalRisk  += Number(row.risk_count  ?? 0)
+          totalShort += Number(row.short_count ?? 0)
+          totalSku   += Number(row.sku_count   ?? 0)
+        } else if (row.result_type === 'category') {
+          categoryStats[row.name] = Number(row.total_qty ?? 0)
+        }
+      }
+      typeStats['전체'] = { qty: totalQty, skuCount: totalSku, riskCount: totalRisk, shortCount: totalShort }
+      const productTypes = ['전체', ...Object.keys(typeStats).filter(t => t !== '전체').sort()]
+
+      // 트렌드 조합
+      const trendMap: Record<string, Record<string, number>> = {}
+      for (const row of (trendResult.data ?? [])) {
+        if (!trendMap[row.month]) trendMap[row.month] = {}
+        trendMap[row.month][row.product_type] = Number(row.total_qty ?? 0)
+      }
+      const trend = Object.keys(trendMap).sort().map(month => ({
+        month,
+        label: monthLabel(month),
+        ...trendMap[month],
+      }))
+
+      const avgCoverageDays = Number(coverageResult.data ?? 0)
+      const sel = typeStats[typeParam] ?? typeStats['전체'] ?? { qty: 0, skuCount: 0, riskCount: 0, shortCount: 0 }
+      const kpi = {
+        totalSku:      sel.skuCount,
+        totalQty:      Math.round(sel.qty),
+        riskCount:     sel.riskCount,
+        shortCount:    sel.shortCount,
+        avgCoverageDays,
+        snapshotDate:  selectedMonth,
+      }
+
+      return respond({ availableMonths, selectedMonth, productTypes, kpi, trend, typeStats, categoryStats, source: 'database' })
+
+    } catch (rpcErr) {
+      // RPC 미등록 환경(로컬 개발 등) 대비 폴백
+      console.warn('[API] inventory dashboard RPC failed, using fallback:', (rpcErr as any)?.message ?? rpcErr)
+    }
+
+    // ── 폴백: 기존 다중 쿼리 방식 ─────────────────────────────────────────
     const selectedMonthIndex = Math.max(0, availableMonths.indexOf(selectedMonth))
     const trendMonths = availableMonths.slice(selectedMonthIndex, selectedMonthIndex + 12).reverse()
     const [invByProduct, trendInventoryMaps] = await Promise.all([
@@ -577,7 +643,6 @@ export async function GET(req: Request) {
     const riskPromise = resolveMonthlyRiskDate(selectedMonth)
       .then(async (latestRiskDate) => {
         const safetyMap: Record<string, { safetyStock: number; grade: string }> = {}
-        
         if (latestRiskDate && selectedMonthIds.length > 0) {
           const riskRows = await batchIn(
             'risk_score',
@@ -586,15 +651,10 @@ export async function GET(req: Request) {
             selectedMonthIds,
             q => q.eq('eval_date', latestRiskDate).eq('eval_type', 'monthly')
           )
-          
           for (const r of riskRows) {
-            safetyMap[r.product_id] = {
-              safetyStock: Number(r.safety_stock ?? 0),
-              grade: r.risk_grade ?? '-'
-            }
+            safetyMap[r.product_id] = { safetyStock: Number(r.safety_stock ?? 0), grade: r.risk_grade ?? '-' }
           }
         }
-        
         return safetyMap
       })
 
@@ -603,125 +663,81 @@ export async function GET(req: Request) {
     const productMap: Record<string, any> = {}
     for (const p of allProducts) productMap[p.product_code] = p
 
-    const trendMap: Record<string, Record<string, number>> = {}
+    const trendMapFb: Record<string, Record<string, number>> = {}
     trendMonths.forEach((month, index) => {
       const monthInventory = trendInventoryMaps[index] ?? {}
-      if (!trendMap[month]) trendMap[month] = {}
-
+      if (!trendMapFb[month]) trendMapFb[month] = {}
       for (const [pid, qty] of Object.entries(monthInventory)) {
         const productType = productMap[pid]?.product_type ?? '기타'
-        trendMap[month][productType] = (trendMap[month][productType] ?? 0) + Number(qty ?? 0)
+        trendMapFb[month][productType] = (trendMapFb[month][productType] ?? 0) + Number(qty ?? 0)
       }
     })
 
-    const trend = trendMonths.map(month => ({
-      month,
-      label: monthLabel(month),
-      ...(trendMap[month] ?? {}),
-    }))
+    const trend = trendMonths.map(month => ({ month, label: monthLabel(month), ...(trendMapFb[month] ?? {}) }))
 
     const typeSet = new Set<string>()
     for (const pid of selectedMonthIds) {
-      const productType = productMap[pid]?.product_type
-      if (productType) typeSet.add(productType)
+      const pt = productMap[pid]?.product_type
+      if (pt) typeSet.add(pt)
     }
     const productTypes = ['전체', ...Array.from(typeSet).sort()]
 
     const typeStats: Record<string, { qty: number; skuCount: number; riskCount: number; shortCount: number }> = {}
     const categoryStats: Record<string, number> = {}
-    let totalQty = 0
-    let totalRisk = 0
-    let totalShort = 0
+    let totalQty = 0, totalRisk = 0, totalShort = 0
 
     for (const [pid, qty] of Object.entries(invByProduct)) {
-      const productType = productMap[pid]?.product_type ?? '기타'
+      const productType     = productMap[pid]?.product_type     ?? '기타'
       const productCategory = productMap[pid]?.product_category ?? '기타'
-      if (!typeStats[productType]) {
-        typeStats[productType] = { qty: 0, skuCount: 0, riskCount: 0, shortCount: 0 }
-      }
-
+      if (!typeStats[productType]) typeStats[productType] = { qty: 0, skuCount: 0, riskCount: 0, shortCount: 0 }
       typeStats[productType].qty += qty
       typeStats[productType].skuCount++
       totalQty += qty
-
       if (typeParam !== '전체' && productType === typeParam) {
         categoryStats[productCategory] = (categoryStats[productCategory] ?? 0) + qty
       }
-
-      const riskInfo = safetyMap[pid]
-      const safeStock = riskInfo?.safetyStock ?? 0
-      const grade = riskInfo?.grade ?? '-'
-
-      const statusCode = classifyInventoryStatus(Number(qty ?? 0), safeStock, grade)
-
-      if (statusCode === 'risk') {
-        typeStats[productType].riskCount++
-        totalRisk++
-      } else if (statusCode === 'short') {
-        typeStats[productType].shortCount++
-        totalShort++
-      }
+      const riskInfo  = safetyMap[pid]
+      const statusCode = classifyInventoryStatus(Number(qty ?? 0), riskInfo?.safetyStock ?? 0, riskInfo?.grade ?? '-')
+      if (statusCode === 'risk')  { typeStats[productType].riskCount++;  totalRisk++  }
+      else if (statusCode === 'short') { typeStats[productType].shortCount++; totalShort++ }
     }
+    typeStats['전체'] = { qty: totalQty, skuCount: selectedMonthIds.length, riskCount: totalRisk, shortCount: totalShort }
 
-    typeStats['전체'] = {
-      qty: totalQty,
-      skuCount: selectedMonthIds.length,
-      riskCount: totalRisk,
-      shortCount: totalShort,
-    }
-
-    const referenceDate = resolveReferenceDate(selectedMonth)
-    const eightWeeksAgo = new Date(referenceDate)
+    const referenceDate   = resolveReferenceDate(selectedMonth)
+    const eightWeeksAgo   = new Date(referenceDate)
     eightWeeksAgo.setDate(referenceDate.getDate() - 56)
-
-    const filteredIds = typeParam !== '전체'
+    const filteredIds     = typeParam !== '전체'
       ? selectedMonthIds.filter(pid => productMap[pid]?.product_type === typeParam)
       : selectedMonthIds
 
     let avgCoverageDays = 0
     if (filteredIds.length > 0) {
       const wkRows = await batchIn(
-        'weekly_product_summary',
-        'product_id,order_qty',
-        'product_id',
-        filteredIds,
+        'weekly_product_summary', 'product_id,order_qty', 'product_id', filteredIds,
         q => q.gte('week_start', formatDate(eightWeeksAgo)).lte('week_start', formatDate(referenceDate))
       )
-
       const demandByPid: Record<string, { total: number; cnt: number }> = {}
       for (const r of wkRows) {
         if (!demandByPid[r.product_id]) demandByPid[r.product_id] = { total: 0, cnt: 0 }
         demandByPid[r.product_id].total += Number(r.order_qty ?? 0)
         demandByPid[r.product_id].cnt++
       }
-
       const typeInventory = filteredIds.reduce((sum, pid) => sum + (invByProduct[pid] ?? 0), 0)
-      const weeklyDemand = Object.values(demandByPid)
-        .reduce((sum, { total, cnt }) => sum + (cnt > 0 ? total / cnt : 0), 0)
-
+      const weeklyDemand  = Object.values(demandByPid).reduce((sum, { total, cnt }) => sum + (cnt > 0 ? total / cnt : 0), 0)
       avgCoverageDays = weeklyDemand > 0 ? Math.round((typeInventory / weeklyDemand) * 7) : 0
     }
 
-    const selectedTypeStats = typeStats[typeParam] ?? typeStats['전체']
+    const sel = typeStats[typeParam] ?? typeStats['전체']
     const kpi = {
-      totalSku: selectedTypeStats.skuCount,
-      totalQty: Math.round(selectedTypeStats.qty),
-      riskCount: selectedTypeStats.riskCount,
-      shortCount: selectedTypeStats.shortCount,
+      totalSku:      sel.skuCount,
+      totalQty:      Math.round(sel.qty),
+      riskCount:     sel.riskCount,
+      shortCount:    sel.shortCount,
       avgCoverageDays,
-      snapshotDate: selectedMonth,
+      snapshotDate:  selectedMonth,
     }
 
-    return respond({
-      availableMonths,
-      selectedMonth,
-      productTypes,
-      kpi,
-      trend,
-      typeStats,
-      categoryStats,
-      source: 'database',
-    })
+    return respond({ availableMonths, selectedMonth, productTypes, kpi, trend, typeStats, categoryStats, source: 'database' })
   } catch (err: any) {
     console.error('[API] inventory error:', err)
     return NextResponse.json({ source: 'error', error: err.message }, { status: 500 })

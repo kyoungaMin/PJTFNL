@@ -687,16 +687,16 @@ export default function PageInventory() {
                           color: T.text3,
                           whiteSpace: 'nowrap',
                           width:
-                            header === 'SKU 코드' ? 128 :
-                            header === '품목명/규격' ? 300 :
-                            header === '유형' ? 84 :
-                            header === '카테고리' ? 110 :
-                            header === '재고 (EA)' ? 108 :
-                            header === '안전재고' ? 102 :
-                            header === '커버리지' ? 82 :
-                            header === '재고 금액' ? 98 :
-                            header === '고객' ? 170 :
-                            68,
+                            header === 'SKU 코드' ? 100 :
+                            header === '품목명/규격' ? 220 :
+                            header === '유형' ? 72 :
+                            header === '카테고리' ? 90 :
+                            header === '재고 (EA)' ? 88 :
+                            header === '안전재고' ? 80 :
+                            header === '커버리지' ? 72 :
+                            header === '재고 금액' ? 88 :
+                            header === '고객' ? 140 :
+                            64,
                         }}
                       >
                         {header}
@@ -722,7 +722,11 @@ export default function PageInventory() {
                           transition: 'background 0.1s',
                         }}
                       >
-                        <td style={{ padding: '11px 10px', textAlign: 'center', fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, fontWeight: 600, color: T.text3, wordBreak: 'break-all', lineHeight: 1.45 }}>{item.sku}</td>
+                        <td style={{ padding: '11px 10px', textAlign: 'center', fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, fontWeight: 600, color: T.text3, lineHeight: 1.6 }}>
+                          {item.sku.split('-').map((part, i, arr) => (
+                            <span key={i}>{i < arr.length - 1 ? `${part}-` : part}{i < arr.length - 1 && <br />}</span>
+                          ))}
+                        </td>
                         <td style={{ padding: '14px 10px', color: T.text1 }}>
                           <div style={{ fontWeight: 600, lineHeight: 1.45, wordBreak: 'break-word' }}>
                             {item.name}
