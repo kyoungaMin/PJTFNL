@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+// ─── 인메모리 캐시 (5분, model별) ────────────────────────────────────────
+const skuCache = new Map<string, { data: any; ts: number }>()
+const SKU_CACHE_TTL = 300_000
+
 /**
  * GET /api/forecast-skus?model=weekly|monthly
  * 예측 데이터가 존재하는 SKU 목록 반환 (product_master 조인)
@@ -9,6 +13,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const model = searchParams.get('model') ?? 'weekly'
   const modelId = model === 'monthly' ? 'lgbm_q_v3' : 'lgbm_q_v3'
+
+  // 캐시 히트
+  const cached = skuCache.get(model)
+  if (cached && Date.now() - cached.ts < SKU_CACHE_TTL) {
+    return NextResponse.json(cached.data)
+  }
 
   if (!supabase) {
     return NextResponse.json({ skus: [], source: 'no_client' }, { status: 200 })
@@ -53,7 +63,9 @@ export async function GET(request: Request) {
       spec: specMap[id] ?? '',
     }))
 
-    return NextResponse.json({ skus, source: 'database' })
+    const responseData = { skus, source: 'database' }
+    skuCache.set(model, { data: responseData, ts: Date.now() })
+    return NextResponse.json(responseData)
   } catch (err: any) {
     console.error('[API] forecast-skus error:', err)
     return NextResponse.json(

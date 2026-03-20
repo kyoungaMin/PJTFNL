@@ -530,6 +530,7 @@ function ExtLayout({ title, sub, isLive, loading, tickerItems, chartL, chartR, c
 // ── 페이지 컴포넌트 ───────────────────────────────────────────────────────────
 
 // SOX=일간, DRAM/NAND=주간(매주 목), SILICON_WAFER=월간
+// MU/WDC=월간(Yahoo Finance), SEMI_PPI=월간(FRED)
 export function PageExtSemi() {
   const [freq, setFreq] = useState<Freq>('month')
   const period = Math.max(...(periodOptionsForFreq(freq) as unknown as number[]))
@@ -538,25 +539,58 @@ export function PageExtSemi() {
   const isLive = data !== EXT_SEMI_DATA
   const sox = calcChange(data, 'sox'), dram = calcChange(data, 'dram'), nand = calcChange(data, 'nand')
   const silicon = calcChange(data, 'silicon_wafer')
+  const mu = calcChange(data, 'mu'), wdc = calcChange(data, 'wdc'), ppi = calcChange(data, 'semi_ppi')
+
+  // DRAM/NAND 유료 데이터가 없으면 대리지표(MU/WDC) 사용
+  const hasDram = data.some(r => (r.dram as number) > 0)
+  const hasProxy = data.some(r => (r.mu as number) > 0)
+
   return <ExtLayout
-    title="산업 지표" sub="SOX 지수(일간) · DRAM / NAND 현물가(주간) · 실리콘웨이퍼(월간)"
+    title="산업 지표" sub="SOX 지수 · DRAM/NAND · Micron(MU)/WDC 주가 · 반도체 PPI"
     isLive={isLive} loading={loading}
     freqOptions={['week', 'month']} freq={freq} onFreqChange={setFreq}
     tickerItems={[
       <TickerCard key="sox"  label="SOX 지수"   value={sox.value as number}  unit="pt"   changePct={sox.pct}  chartData={data} dataKey="sox"
         source={INDICATOR_META.SOX.source} freq={INDICATOR_META.SOX.freq} isMock={!isLive} />,
-      <TickerCard key="dram" label="DRAM 현물가" value={dram.value as number} unit="$/Gb" changePct={dram.pct} chartData={data} dataKey="dram"
-        source={INDICATOR_META.DRAM_DDR4.source} freq={INDICATOR_META.DRAM_DDR4.freq} isMock={!isLive} />,
-      <TickerCard key="nand" label="NAND 현물가" value={nand.value as number} unit="$/GB" changePct={nand.pct} chartData={data} dataKey="nand"
-        source={INDICATOR_META.NAND_TLC.source} freq={INDICATOR_META.NAND_TLC.freq} isMock={!isLive} />,
+      ...(hasDram ? [
+        <TickerCard key="dram" label="DRAM 현물가" value={dram.value as number} unit="$/Gb" changePct={dram.pct} chartData={data} dataKey="dram"
+          source={INDICATOR_META.DRAM_DDR4.source} freq={INDICATOR_META.DRAM_DDR4.freq} isMock={!isLive} />,
+        <TickerCard key="nand" label="NAND 현물가" value={nand.value as number} unit="$/GB" changePct={nand.pct} chartData={data} dataKey="nand"
+          source={INDICATOR_META.NAND_TLC.source} freq={INDICATOR_META.NAND_TLC.freq} isMock={!isLive} />,
+      ] : []),
+      ...(hasProxy ? [
+        <TickerCard key="mu"  label="Micron(MU)" value={mu.value as number}  unit="$" changePct={mu.pct}  chartData={data} dataKey="mu"
+          source={INDICATOR_META.MU_CLOSE.source} freq={INDICATOR_META.MU_CLOSE.freq} isMock={!isLive} />,
+        <TickerCard key="wdc" label="WDC"        value={wdc.value as number} unit="$" changePct={wdc.pct} chartData={data} dataKey="wdc"
+          source={INDICATOR_META.WDC_CLOSE.source} freq={INDICATOR_META.WDC_CLOSE.freq} isMock={!isLive} />,
+        <TickerCard key="ppi" label="반도체 PPI"  value={ppi.value as number} unit="idx" changePct={ppi.pct} chartData={data} dataKey="semi_ppi"
+          source={INDICATOR_META.SEMI_PPI.source} freq={INDICATOR_META.SEMI_PPI.freq} isMock={!isLive} />,
+      ] : []),
       <TickerCard key="silicon" label="실리콘웨이퍼" value={silicon.value as number} unit="$/inch²" changePct={silicon.pct} chartData={data} dataKey="silicon_wafer"
         source={INDICATOR_META.SILICON_WAFER.source} freq={INDICATOR_META.SILICON_WAFER.freq} isMock={!isLive} />,
     ]}
     chartL={<ExtChartCard title="SOX 지수 추이" data={data} lineKeys={['sox']} colors={[T.blue]} />}
-    chartR={<ExtChartCard title="DRAM / NAND 현물가" data={data} lineKeys={['dram', 'nand']} colors={[T.purple, '#0D9488']} />}
-    chartExtra={<ExtChartCard title="실리콘웨이퍼 가격" data={data} lineKeys={['silicon_wafer']} colors={[T.amber]} />}
-    tableData={data} tableKeys={['sox', 'dram', 'nand', 'silicon_wafer']}
-    tableLabels={['SOX 지수', 'DRAM', 'NAND', '실리콘웨이퍼']} tableUnits={['pt', '$/Gb', '$/GB', '$/inch²']}
+    chartR={hasDram
+      ? <ExtChartCard title="DRAM / NAND 현물가" data={data} lineKeys={['dram', 'nand']} colors={[T.purple, '#0D9488']} />
+      : <ExtChartCard title="메모리 주가 (DRAM/NAND 대리)" data={data} lineKeys={['mu', 'wdc']} colors={[T.purple, '#0D9488']} />
+    }
+    chartExtra={hasProxy
+      ? <ExtChartCard title="반도체 생산자물가지수 (FRED PPI)" data={data} lineKeys={['semi_ppi']} colors={[T.amber]} />
+      : <ExtChartCard title="실리콘웨이퍼 가격" data={data} lineKeys={['silicon_wafer']} colors={[T.amber]} />
+    }
+    tableData={data}
+    tableKeys={hasDram
+      ? ['sox', 'dram', 'nand', 'silicon_wafer', 'mu', 'wdc', 'semi_ppi']
+      : ['sox', 'mu', 'wdc', 'semi_ppi', 'silicon_wafer']
+    }
+    tableLabels={hasDram
+      ? ['SOX 지수', 'DRAM', 'NAND', '실리콘웨이퍼', 'Micron(MU)', 'WDC', '반도체 PPI']
+      : ['SOX 지수', 'Micron(MU)', 'WDC', '반도체 PPI', '실리콘웨이퍼']
+    }
+    tableUnits={hasDram
+      ? ['pt', '$/Gb', '$/GB', '$/inch²', '$', '$', 'idx']
+      : ['pt', '$', '$', 'idx', '$/inch²']
+    }
     filename="ext_semi.csv"
     indicatorType="semi"
   />

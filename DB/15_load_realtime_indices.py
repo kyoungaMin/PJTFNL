@@ -9,6 +9,11 @@ Yahoo Finance API(yfinance) + FRED API + stooq.com 으로 실제 시세 수집
   [CHINA]  CN_PMI_MFG    — 중국 차이신 제조업 PMI   (FRED: CHNPMIMFGBS, 월간) ← 실데이터
   [FRED]   US_FED_RATE   — 미국 연방기금금리        (FRED: FEDFUNDS, 월간)   ← 실데이터
 
+무료 대리지표 (DRAM/NAND 가격 프록시):
+  [MARKET] MU_CLOSE      — Micron(MU) 주가           (Yahoo Finance, 일간) — DRAM 대리
+  [MARKET] WDC_CLOSE     — WDC 주가                  (Yahoo Finance, 일간) — NAND 대리
+  [FRED]   SEMI_PPI      — 반도체 생산자물가지수     (FRED PCU33443344, 월간)
+
 앵커 보간 (무료 실시간 API 없음):
   [MARKET] DRAM_DDR4     — DRAM DDR4 8Gb 현물가격   (TrendForce 유료 → 앵커 보간)
   [MARKET] NAND_TLC      — NAND Flash 128Gb TLC     (TrendForce 유료 → 앵커 보간)
@@ -549,6 +554,39 @@ def collect_wafer(start: date, end: date, **_) -> list[tuple[date, float]]:
     return generate_monthly_from_anchors(WAFER_ANCHORS, 0.005, start, end)
 
 
+def collect_mu(start: date, end: date, force_generate: bool = False) -> list[tuple[date, float]]:
+    """Micron Technology(MU) 주가 — DRAM/NAND 가격 대리지표 (Yahoo Finance)"""
+    if not force_generate:
+        data = fetch_yahoo("MU", start, end)
+        if data:
+            return data
+        print("    [폴백] MU Yahoo Finance 실패")
+    return []
+
+
+def collect_wdc(start: date, end: date, force_generate: bool = False) -> list[tuple[date, float]]:
+    """Western Digital(WDC) 주가 — NAND 가격 대리지표 (Yahoo Finance)"""
+    if not force_generate:
+        data = fetch_yahoo("WDC", start, end)
+        if data:
+            return data
+        print("    [폴백] WDC Yahoo Finance 실패")
+    return []
+
+
+def collect_semi_ppi(start: date, end: date, force_generate: bool = False) -> list[tuple[date, float]]:
+    """반도체 생산자물가지수 — FRED PCU33443344 (월간, 무료)"""
+    if not force_generate:
+        if not FRED_API_KEY:
+            print("    → FRED_API_KEY 미설정 — 수집 불가")
+            return []
+        data = fetch_fred_monthly("PCU33443344", start, end)
+        if data:
+            return data
+        print("    [폴백] FRED PCU33443344 실패")
+    return []
+
+
 # ══════════════════════════════════════════════════════════
 # 지표 레지스트리
 # ══════════════════════════════════════════════════════════
@@ -617,6 +655,30 @@ INDICATORS = {
         "unit": "USD",
         "collect": collect_wafer,
         "api": "앵커 보간 (SEMI 유료)",
+    },
+    "mu": {
+        "code": "MU_CLOSE",
+        "source": "MARKET",
+        "name": "Micron Technology Stock Price",
+        "unit": "USD",
+        "collect": collect_mu,
+        "api": "Yahoo Finance MU (DRAM 대리지표)",
+    },
+    "wdc": {
+        "code": "WDC_CLOSE",
+        "source": "MARKET",
+        "name": "Western Digital Stock Price",
+        "unit": "USD",
+        "collect": collect_wdc,
+        "api": "Yahoo Finance WDC (NAND 대리지표)",
+    },
+    "semi_ppi": {
+        "code": "SEMI_PPI",
+        "source": "FRED",
+        "name": "Semiconductor PPI (Producer Price Index)",
+        "unit": "Index",
+        "collect": collect_semi_ppi,
+        "api": "FRED PCU33443344 (실데이터)",
     },
 }
 

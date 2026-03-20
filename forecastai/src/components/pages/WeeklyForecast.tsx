@@ -264,6 +264,131 @@ function useForecastWeekly(
 
 // (SKU_OPTIONS는 컴포넌트 내에서 동적으로 생성 — useDbSkus 사용)
 
+// ─── 외부지표 요약 훅 ─────────────────────────────────────────────────────────
+
+type ExtSummary = {
+  sox: number | null
+  soxPrev: number | null
+  usd: number | null
+  usdPrev: number | null
+  rate: number | null
+  ratePrev: number | null
+}
+
+function useExtIndicatorSummary() {
+  const [summary, setSummary] = useState<ExtSummary>({ sox: null, soxPrev: null, usd: null, usdPrev: null, rate: null, ratePrev: null })
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      fetch('/api/ext-semi?months=3&freq=month').then(r => r.json()).catch(() => null),
+      fetch('/api/ext-fx?months=3&freq=month').then(r => r.json()).catch(() => null),
+    ]).then(([semiResp, fxResp]) => {
+      if (cancelled) return
+      const semiItems: { sox: number }[] = semiResp?.items ?? []
+      const fxItems: { usd: number; rate: number }[] = fxResp?.items ?? []
+      const last2Semi = semiItems.filter(r => r.sox > 0).slice(-2)
+      const last2Fx = fxItems.filter(r => r.usd > 0).slice(-2)
+      const last2Rate = fxItems.filter(r => r.rate > 0).slice(-2)
+      setSummary({
+        sox:      last2Semi[1]?.sox ?? null,
+        soxPrev:  last2Semi[0]?.sox ?? null,
+        usd:      last2Fx[1]?.usd  ?? null,
+        usdPrev:  last2Fx[0]?.usd  ?? null,
+        rate:     last2Rate[1]?.rate ?? null,
+        ratePrev: last2Rate[0]?.rate ?? null,
+      })
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  return summary
+}
+
+// ─── 외부지표 요약 카드 ───────────────────────────────────────────────────────
+
+function trendIcon(cur: number | null, prev: number | null): { icon: string; color: string } {
+  if (cur == null || prev == null) return { icon: '─', color: T.text3 }
+  if (cur > prev) return { icon: '▲', color: T.red }      // 반도체지수↑ = 긍정, 환율↑ = 부담 → 맥락별 동일 아이콘
+  if (cur < prev) return { icon: '▼', color: T.blue }
+  return { icon: '→', color: T.text3 }
+}
+
+function pctChange(cur: number | null, prev: number | null): string | null {
+  if (cur == null || prev == null || prev === 0) return null
+  const pct = ((cur - prev) / prev) * 100
+  return (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%'
+}
+
+function ExtIndicatorSummaryBar() {
+  const { sox, soxPrev, usd, usdPrev, rate, ratePrev } = useExtIndicatorSummary()
+  const hasAny = sox != null || usd != null || rate != null
+
+  if (!hasAny) return null
+
+  const soxTrend  = trendIcon(sox, soxPrev)
+  const usdTrend  = trendIcon(usd, usdPrev)
+  const rateTrend = trendIcon(rate, ratePrev)
+
+  const items = [
+    {
+      label: 'SOX',
+      value: sox != null ? sox.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '─',
+      change: pctChange(sox, soxPrev),
+      trend: soxTrend,
+    },
+    {
+      label: 'USD/KRW',
+      value: usd != null ? usd.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '─',
+      change: null,
+      trend: usdTrend,
+    },
+    {
+      label: '기준금리',
+      value: rate != null ? rate.toFixed(2) + '%' : '─',
+      change: null,
+      trend: rateTrend,
+    },
+  ]
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 0,
+      marginBottom: 12,
+      padding: '7px 14px',
+      background: T.surface,
+      border: `1px solid ${T.border}`,
+      borderRadius: 9,
+      flexWrap: 'wrap' as const,
+    }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color: T.text3, marginRight: 12, letterSpacing: '0.04em' }}>
+        외부지표
+      </span>
+      {items.map((item, idx) => (
+        <React.Fragment key={item.label}>
+          {idx > 0 && (
+            <div style={{ width: 1, height: 16, background: T.border, margin: '0 14px' }} />
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 11, color: T.text3, fontWeight: 600 }}>{item.label}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.text1, fontFamily: "'IBM Plex Mono',monospace" }}>
+              {item.value}
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: item.trend.color }}>
+              {item.trend.icon}
+              {item.change && (
+                <span style={{ fontSize: 10, marginLeft: 2 }}>{item.change}</span>
+              )}
+            </span>
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  )
+}
+
 // ─── 세그먼트 버튼 그룹 ───────────────────────────────────────────────────────
 
 function SegmentBtn<TV extends string>({
@@ -880,6 +1005,9 @@ export default function PageWeeklyForecast() {
             : <span style={{ fontSize: 11, fontWeight: 700, color: T.amber, background: T.amberSoft, border: `1px solid ${T.amberMid}`, borderRadius: 6, padding: '3px 8px' }}>● MOCK</span>
         )}
       </FilterBar>
+
+      {/* ─── 외부지표 요약 카드 ──────────────────────────────────────────────── */}
+      <ExtIndicatorSummaryBar />
 
       {/* ─── 차트 카드 ───────────────────────────────────────────────────────── */}
       <div style={card}>

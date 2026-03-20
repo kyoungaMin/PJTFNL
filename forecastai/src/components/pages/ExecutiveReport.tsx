@@ -1,6 +1,13 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
-import { T, card } from '@/lib/data'
+import { T, card, formatWeekLabel } from '@/lib/data'
+
+/** API label → 공통 포맷 변환 */
+function displayWeekLabel(raw: string): string {
+  const m = raw.match(/\((\d{4}-\d{2}-\d{2})/)
+  if (m) return formatWeekLabel(m[1])
+  return raw
+}
 
 // ─── 타입 ───────────────────────────────────────────────────────────────────
 interface WeekOption { value: string; label: string; start: string; end: string }
@@ -109,7 +116,7 @@ export default function ExecutiveReport() {
     const { kpi, meta, topProducts } = data
     const rows: string[][] = [
       ['항목', '값'],
-      ['보고 기간', `${meta.targetWeek} (${meta.weekStart} ~ ${meta.weekEnd})`],
+      ['보고 기간', formatWeekLabel(meta.weekStart)],
       ['주간 수주량 (EA)', String(kpi.weekOrderQty)],
       ['주간 생산량 (EA)', String(kpi.weekProducedQty)],
       ['전주 대비 변화율 (%)', kpi.changeRate ?? '-'],
@@ -127,7 +134,7 @@ export default function ExecutiveReport() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `임원보고서_${meta.targetWeek}.csv`
+    a.download = `임원보고서_${formatWeekLabel(meta.weekStart)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -182,7 +189,7 @@ export default function ExecutiveReport() {
               }}
             >
               {weekOptions.map(w => (
-                <option key={w.value} value={w.value}>{w.label}</option>
+                <option key={w.value} value={w.value}>{displayWeekLabel(w.label)}</option>
               ))}
             </select>
           )}
@@ -250,10 +257,10 @@ export default function ExecutiveReport() {
             {/* 보고서 제목 (인쇄용) */}
             <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${T.border}` }}>
               <div style={{ fontSize: 18, fontWeight: 800, color: T.text1 }}>
-                주간 임원 보고서 — {data.meta.targetWeek}
+                주간 임원 보고서 — {formatWeekLabel(data.meta.weekStart)}
               </div>
               <div style={{ fontSize: 12, color: T.text3, marginTop: 4 }}>
-                보고 기간: {data.meta.weekStart} ~ {data.meta.weekEnd}　|　생성: {new Date(data.meta.generatedAt).toLocaleString('ko-KR')}
+                보고 기간: {formatWeekLabel(data.meta.weekStart)}　|　생성: {new Date(data.meta.generatedAt).toLocaleString('ko-KR')}
               </div>
             </div>
 

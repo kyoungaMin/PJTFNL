@@ -4,6 +4,8 @@ import { T } from '@/lib/data'
 import type { Member, RoleType } from '@/lib/data'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 import { Sidebar, Header } from '@/components/layout'
+import { useAlertStream } from '@/hooks/useAlertStream'
+import { ToastContainer, type ToastItem } from '@/components/ui/ToastContainer'
 import LoginPage from '@/components/pages/Login'
 import PageDashboard from '@/components/pages/Dashboard'
 import PageWeeklyForecast from '@/components/pages/WeeklyForecast'
@@ -20,6 +22,8 @@ import PageAdmin from '@/components/pages/Admin'
 import PageExecutiveReport from '@/components/pages/ExecutiveReport'
 import PageIndustryNews from '@/components/pages/IndustryNews'
 import PageDataPipeline from '@/components/pages/DataPipelineManager'
+import PageMonitoring from '@/components/pages/Monitoring'
+import PageHelp from '@/components/pages/Help'
 import PageBatchSchedule from '@/components/pages/BatchSchedule'
 
 const ROLE_GRAD: Record<RoleType, string> = {
@@ -40,6 +44,39 @@ export default function Home() {
   const [collapsed] = useState(false)
   const [currentUser, setCurrentUser] = useState<Member | null>(null)
   const [alertCount, setAlertCount] = useState(0)
+  const [toasts, setToasts] = useState<ToastItem[]>([])
+
+  // SSE 실시간 알림 스트림
+  const { realtimeAlerts, unreadCount, connected } = useAlertStream()
+
+  // 실시간 알림 → 토스트 표시 + 배지 수 동기화
+  const prevAlertsRef = React.useRef<string[]>([])
+  useEffect(() => {
+    if (!realtimeAlerts.length) return
+    const newOnes = realtimeAlerts.filter(a => !prevAlertsRef.current.includes(a.id))
+    if (newOnes.length) {
+      setToasts(prev => [
+        ...newOnes.map(a => ({
+          id: a.id,
+          severity: a.severity as ToastItem['severity'],
+          title: a.title,
+          message: a.message,
+          target_page: a.target_page,
+        })),
+        ...prev,
+      ].slice(0, 5))
+      prevAlertsRef.current = realtimeAlerts.map(a => a.id)
+    }
+  }, [realtimeAlerts])
+
+  // SSE unreadCount를 alertCount에 반영
+  useEffect(() => {
+    if (unreadCount > 0) setAlertCount(unreadCount)
+  }, [unreadCount])
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }, [])
 
   // stable reference — Dashboard → Header 알림 배지 업데이트
   const handleAlertCount = useCallback((count: number) => setAlertCount(count), [])
@@ -138,6 +175,16 @@ export default function Home() {
             <div style={{ fontSize:13, color:T.text3 }}>데이터 관리 페이지는 Admin 역할만 접근 가능합니다.</div>
           </div>
         ),
+    monitoring: currentUser.role === 'Admin'
+      ? <PageMonitoring />
+      : (
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:12 }}>
+            <div style={{ fontSize:48, color:T.border }}>🔒</div>
+            <div style={{ fontSize:16, fontWeight:700, color:T.text1 }}>접근 권한이 없습니다</div>
+            <div style={{ fontSize:13, color:T.text3 }}>모니터링 페이지는 Admin 역할만 접근 가능합니다.</div>
+          </div>
+        ),
+    help:               <PageHelp />,
     admin: currentUser.role === 'Admin'
       ? <PageAdmin currentUser={currentUser} />
       : (
@@ -153,9 +200,10 @@ export default function Home() {
     <div style={{ display:'flex', height:'100vh', minWidth:1280, background:T.pageBg,
       fontFamily:"'Pretendard','Noto Sans KR','Apple SD Gothic Neo',sans-serif",
       color:T.text1, overflow:'hidden' }}>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} onNavigate={setPage} />
       <Sidebar page={page} setPage={setPage} collapsed={collapsed} currentUser={currentUser} />
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-        <Header currentUser={currentUser} setCurrentUser={setCurrentUser} setPage={setPage} alertCount={alertCount} />
+        <Header currentUser={currentUser} setCurrentUser={setCurrentUser} setPage={setPage} alertCount={alertCount} sseConnected={connected} />
         <div style={{ flex:1, overflowY:'auto', padding:'28px 32px' }}>
           {PAGE_MAP[page] ?? <PageDashboard />}
           <div style={{ textAlign:'center', marginTop:16, paddingBottom:8, fontSize:11, color:'#64748B' }}>

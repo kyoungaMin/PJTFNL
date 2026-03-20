@@ -16,9 +16,9 @@ interface InsightItem {
 
 const INDICATOR_CONTEXT: Record<string, { label: string; keys: string[]; units: string[] }> = {
   semi: {
-    label: '반도체 산업지표 (SOX 지수, DRAM/NAND 현물가)',
-    keys: ['sox', 'dram', 'nand'],
-    units: ['pt', '$/Gb', '$/GB'],
+    label: '반도체 산업지표 (SOX 지수, DRAM/NAND 현물가, Micron 주가, WDC 주가, 반도체 PPI)',
+    keys: ['sox', 'dram', 'nand', 'mu', 'wdc', 'semi_ppi'],
+    units: ['pt', '$/Gb', '$/GB', '$', '$', 'idx'],
   },
   global: {
     label: '글로벌 수요지표 (산업생산지수 IPI)',

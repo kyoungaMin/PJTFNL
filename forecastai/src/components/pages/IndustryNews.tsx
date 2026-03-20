@@ -363,9 +363,11 @@ export default function IndustryNews() {
                       <div style={{
                         fontSize: 12, color: T.text3, marginBottom: 6, lineHeight: 1.55,
                         overflow: 'hidden',
+                        textOverflow: 'ellipsis',
                         display: '-webkit-box',
                         WebkitLineClamp: 2,
                         WebkitBoxOrient: 'vertical' as const,
+                        maxHeight: '2.4em',
                       }}>
                         {news.summary}
                       </div>

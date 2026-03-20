@@ -135,7 +135,33 @@
 
 - **전체 갱신**: 의존성 순서대로 자동 실행 (독립 → 종속)
 - **실행 이력**: 최근 50건, 대상 기간·소요 시간·상태 추적
+- **ML 배치 자동화**: S0→S8 전체 파이프라인 주 1회 자동 실행 (`run_batch.bat` → Windows 작업 스케줄러)
 - **Admin 전용**: 관리자 권한만 접근 가능
+
+### 3.7 시스템 모니터링 (Admin)
+
+시스템 상태를 실시간으로 확인하고, 장애 발생 시 자동 알림을 받습니다.
+
+| 항목 | 기능 | 설명 |
+|------|------|------|
+| DB 상태 | 연결 체크 + 응답시간 | Supabase 쿼리 latency 측정, 정상/주의/장애 3단계 |
+| API 에러율 | 라우트별 통계 | 최근 1시간 요청 수, 에러 수, 평균 응답시간 |
+| 파이프라인 | 실패/미갱신 감지 | 실패 파이프라인 + 24시간 미갱신 파이프라인 자동 감지 |
+| 알림 관리 | CRUD + 자동 생성 | 파이프라인 실패 시 자동 알림, 중복 방지 (6시간 윈도우) |
+| 규칙 점검 | 자동 평가 | DB 장애, API 에러율 10% 초과, 파이프라인 실패 등 자동 감지 |
+
+### 3.8 도움말 센터 (Help)
+
+시스템 내장형 도움말로, 비개발자도 쉽게 이해할 수 있는 언어로 작성되어 있습니다.
+
+| 탭 | 내용 |
+|------|------|
+| **사용자 매뉴얼** | 로그인, 화면 구성, 역할 안내, 대시보드·수요예측·재고·최적화·외부지표 사용법, FAQ 6개 |
+| **API 안내** | 20개 주요 엔드포인트 카테고리별 정리, SSE 실시간 알림 설명, 오류 코드 해결법 |
+| **운영 매뉴얼** | 사용자/데이터 관리, 모니터링, 배치 작업 일정, 장애 대응 5개 시나리오, 보안 안내 |
+
+- 전 역할(Admin~Viewer) 접근 가능
+- 접이식 FAQ, 키워드 검색 지원
 
 ### 3.6 다차원 집계 대시보드
 
@@ -211,6 +237,9 @@
 │  ┌─ 파이프라인 ──────────────────────────────────┐   │
 │  │ pipeline_run (실행 이력·기간·상태 추적)         │   │
 │  └───────────────────────────────────────────────┘   │
+│  ┌─ 모니터링 ───────────────────────────────────┐   │
+│  │ system_alert / system_health_log / api_log    │   │
+│  └───────────────────────────────────────────────┘   │
 │  ┌─ 집계 ────────────────────────────────────────┐   │
 │  │ weekly/monthly_product_summary                 │   │
 │  │ weekly/monthly_customer_summary                │   │
@@ -253,6 +282,11 @@ python DB/07_pipeline/run_pipeline.py --step=3m,4m
 
 # 주간 + 월간 + 최적화 한 번에 실행
 python DB/07_pipeline/run_pipeline.py --step=0,1,2,3,4,5,6,3m,4m,7,8
+
+# 배치 자동 실행 (S0→S8, DB 기록 + 실패 알림)
+DB\07_pipeline\run_batch.bat                  # 주간
+DB\07_pipeline\run_batch.bat --monthly        # 주간 + 월간
+DB\07_pipeline\run_batch.bat --step=0,1,2     # 특정 스텝만
 ```
 
 **주간 파이프라인 (S0~S8)**
@@ -391,7 +425,7 @@ PJTFNL/
 │   │       └── data-pipeline/         ← 데이터 파이프라인 실행/이력 관리 (Admin)
 │   ├── sql/                           ← DB 마이그레이션 SQL
 │   │   └── create_pipeline_run.sql    ← 파이프라인 실행 이력 테이블
-│   ├── src/components/pages/          ← 14개 페이지 컴포넌트
+│   ├── src/components/pages/          ← 18개 페이지 컴포넌트
 │   ├── src/components/ui/             ← 공통 UI (Badge, Table 등)
 │   └── src/lib/data.ts                ← 테마, 목데이터, 유틸
 │
@@ -690,7 +724,7 @@ DB/07_pipeline/
 | **다솜** | 대시보드, 로그인, 관리 | `Dashboard.tsx`, `Login.tsx`, `Admin.tsx` |
 | **지은** | 수요예측, 외부지표 | `WeeklyForecast.tsx`, `MonthlyForecast.tsx`, `ExternalIndicators.tsx` |
 | **성민** | 재고관리 | `Inventory.tsx`, `RiskManagement.tsx`, `ActionQueue.tsx` |
-| **경아** | 최적화, 모델 평가, 데이터 관리 | `Simulation.tsx`, `Purchase.tsx`, `ModelEvaluation.tsx`, `ModelScenario.tsx`, `DataPipelineManager.tsx` |
+| **경아** | 최적화, 모델 평가, 데이터 관리, 모니터링, 도움말 | `Simulation.tsx`, `Purchase.tsx`, `ModelEvaluation.tsx`, `ModelScenario.tsx`, `DataPipelineManager.tsx`, `Monitoring.tsx`, `Help.tsx` |
 
 ### 프론트엔드 구조
 
@@ -716,7 +750,9 @@ forecastai/
 │   │   │   ├── Purchase.tsx        ← [경아] 발주 최적화
 │   │   │   ├── ModelEvaluation.tsx ← [경아] 모델 평가 대시보드
 │   │   │   ├── ModelScenario.tsx   ← [경아] 모델 시나리오
-│   │   │   └── DataPipelineManager.tsx ← [경아] 데이터 생성 관리 (Admin)
+│   │   │   ├── DataPipelineManager.tsx ← [경아] 데이터 생성 관리 (Admin)
+│   │   │   ├── Monitoring.tsx      ← [경아] 시스템 모니터링 (Admin)
+│   │   │   └── Help.tsx            ← [경아] 도움말 센터 (전 역할)
 │   │   └── ui/index.tsx            ← 공통 UI 컴포넌트
 │   └── lib/data.ts                 ← 테마, 목데이터, 유틸
 ├── package.json
@@ -739,5 +775,6 @@ forecastai/
 | [DB/SCHEMA_REFERENCE.md](DB/SCHEMA_REFERENCE.md) | DB 스키마, API 연동, DBML 전체 레퍼런스 |
 | [DEV_LOG.md](DEV_LOG.md) | 프로젝트 INDEX (마일스톤, 의사결정, 이슈) |
 | [DEV_LOG/](DEV_LOG/) | 개발자별 일자별 개발일지 |
+| 도움말 센터 (시스템 내장) | 사용자 매뉴얼 · API 안내 · 운영 매뉴얼 (Help.tsx, 사이드바 "도움말" 메뉴) |
 | [executive_summary.html](DB/07_pipeline/executive_summary.html) | 경영진 요약 보고서 (모델 성능, 실험 결과, 활용 방안) |
 | [MODEL_COMPARISON_REPORT.md](DB/07_pipeline/experiments/MODEL_COMPARISON_REPORT.md) | 멀티 모델 성능 비교 분석 보고서 (LightGBM vs Ridge vs SVR, 세그먼트별) |

@@ -70,6 +70,8 @@ export function Sidebar({ page, setPage, collapsed, currentUser }: { page:string
             {(collapsed || openGroups['관리자']) && grouped.adminGroup.items.map(item=><NavItem key={item.id} item={item}/>)}
           </div>
         )}
+        <div style={{ height:1, background:T.sidebarBd, margin:"8px 16px" }}/>
+        {NAV_STRUCTURE.filter(n=>n.id==="help").map(item=><NavItem key={item.id} item={item}/>)}
       </nav>
 
       {!collapsed && (
@@ -88,11 +90,12 @@ export function Sidebar({ page, setPage, collapsed, currentUser }: { page:string
   );
 }
 
-export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }: {
+export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0, sseConnected = false }: {
   currentUser: import('@/lib/data').Member
   setCurrentUser: (m: import('@/lib/data').Member | null) => void
   setPage: (p: string) => void
   alertCount?: number
+  sseConnected?: boolean
 }) {
   const [alertOpen, setAlertOpen] = useState(false);
   const [userOpen,  setUserOpen]  = useState(false);
@@ -169,6 +172,14 @@ export function Header({ currentUser, setCurrentUser, setPage, alertCount = 0 }:
     <div style={{ height:58, background:"#FFFFFF", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"0 24px", flexShrink:0, position:"relative", zIndex:50 }}>
 
       <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+
+        {/* SSE 연결 상태 */}
+        <div title={sseConnected ? '실시간 알림 연결됨' : '실시간 알림 연결 끊김'} style={{
+          width:7, height:7, borderRadius:"50%",
+          background: sseConnected ? '#22C55E' : '#94A3B8',
+          boxShadow: sseConnected ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
+          transition:"background 0.3s, box-shadow 0.3s",
+        }}/>
 
         {/* Alert bell */}
         <div data-dropdown style={{ position:"relative" }}>

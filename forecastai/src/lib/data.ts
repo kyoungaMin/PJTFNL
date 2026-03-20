@@ -1,3 +1,55 @@
+// ─── 주차 공통 유틸 ──────────────────────────────────────────────────────────
+/** 주어진 날짜가 속한 주의 월요일을 반환 */
+export function getMonday(d: Date): Date {
+  const dt = new Date(d)
+  const day = dt.getDay()
+  const diff = day === 0 ? -6 : 1 - day  // 일요일이면 -6, 그 외 1-요일
+  dt.setDate(dt.getDate() + diff)
+  dt.setHours(0, 0, 0, 0)
+  return dt
+}
+
+/** 주어진 날짜가 해당 월의 몇 주차인지 반환 (월요일 시작 기준) */
+export function getWeekOfMonth(d: Date): number {
+  const mon = getMonday(d)
+  const firstOfMonth = new Date(mon.getFullYear(), mon.getMonth(), 1)
+  const firstMonday = getMonday(firstOfMonth)
+  // 1일이 월~목이면 그 주가 1주차, 금~일이면 다음 주가 1주차
+  if (firstMonday.getMonth() < firstOfMonth.getMonth() && firstOfMonth.getDay() > 4) {
+    // 1일이 금(5),토(6),일(0) → 다음 월요일이 1주차
+    firstMonday.setDate(firstMonday.getDate() + 7)
+  }
+  const diff = Math.floor((mon.getTime() - firstMonday.getTime()) / (7 * 24 * 60 * 60 * 1000))
+  return Math.max(1, diff + 1)
+}
+
+/** 날짜 → "MM월 N주차 (MM/DD ~ MM/DD)" 형식 */
+export function formatWeekLabel(dateStr: string): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  const mon = getMonday(d)
+  const sun = new Date(mon)
+  sun.setDate(mon.getDate() + 6)
+  const month = mon.getMonth() + 1
+  const week = getWeekOfMonth(mon)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(month)}월 ${week}주차 (${pad(mon.getMonth()+1)}/${pad(mon.getDate())} ~ ${pad(sun.getMonth()+1)}/${pad(sun.getDate())})`
+}
+
+/** 날짜 → "YYYY년 MM월" 형식 */
+export function formatMonthLabel(dateStr: string): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  return `${d.getFullYear()}년 ${String(d.getMonth() + 1).padStart(2, '0')}월`
+}
+
+/** 주간/월간에 따라 적절한 형식으로 날짜 표시 */
+export function formatPeriodLabel(dateStr: string, type: 'weekly' | 'monthly'): string {
+  return type === 'weekly' ? formatWeekLabel(dateStr) : formatMonthLabel(dateStr)
+}
+
 // ─── Design Tokens ──────────────────────────────────────────────────────────
 export const T = {
   pageBg:'#F0F4F8', surface:'#FFFFFF', surface2:'#F8FAFC', surface3:'#F1F5F9',
@@ -612,7 +664,9 @@ export const NAV_STRUCTURE = [
   {id:'executive-report',label:'임원 보고서',  parent:'보고서', dot:'#A78BFA'},
   {id:'data-pipeline',   label:'데이터 관리',  parent:'관리자', dot:'#F59E0B'},
   {id:'batch-schedule',  label:'배치 스케줄',  parent:'관리자', dot:'#A78BFA'},
+  {id:'monitoring',       label:'모니터링',     parent:'관리자', dot:'#FCA5A5'},
   {id:'admin',           label:'직원 관리',    parent:'관리자', dot:'#93C5FD'},
+  {id:'help',            label:'도움말',       dot:'#60A5FA'},
 ]
 
 export const SEARCH_INDEX = [
