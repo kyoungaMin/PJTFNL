@@ -99,6 +99,17 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
   // PW 초기화 메시지 (userId → 표시 메시지)
   const [pwResetMsg, setPwResetMsg] = useState<Record<string, string>>({})
 
+  // ─── 이메일 수신자 관리 상태 ────────────────────────────────────────────────
+  type EmailRecipient = { id: string; email: string; name: string; is_active: boolean; created_at: string }
+  const [recipients,      setRecipients]      = useState<EmailRecipient[]>([])
+  const [recipLoading,    setRecipLoading]    = useState(false)
+  const [recipFetched,    setRecipFetched]    = useState(false)
+  const [newRecipEmail,   setNewRecipEmail]   = useState('')
+  const [newRecipName,    setNewRecipName]    = useState('')
+  const [recipMsg,        setRecipMsg]        = useState('')
+  const [sendTestLoading, setSendTestLoading] = useState(false)
+  const [sendTestMsg,     setSendTestMsg]     = useState('')
+
   const roleColors: Record<string, string> = {
     Admin: T.purple, Manager: T.blue, Analyst: T.green, Viewer: T.text3,
   }
@@ -243,6 +254,70 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
     }
     setBulkLoading(false)
   }
+
+  // ─── 이메일 수신자 핸들러 ─────────────────────────────────────────────────
+  const fetchRecipients = async (t: string) => {
+    if (!t) return
+    setRecipLoading(true)
+    try {
+      const res = await fetch('/api/admin/email-recipients', {
+        headers: { Authorization: `Bearer ${t}` },
+      })
+      if (res.ok) setRecipients(await res.json())
+    } finally {
+      setRecipLoading(false)
+      setRecipFetched(true)
+    }
+  }
+
+  const handleAddRecipient = async () => {
+    if (!newRecipEmail.includes('@')) { setRecipMsg('올바른 이메일을 입력하세요.'); return }
+    setRecipMsg('')
+    const res = await fetch('/api/admin/email-recipients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ email: newRecipEmail.trim(), name: newRecipName.trim() }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      setRecipients(prev => [...prev, data])
+      setNewRecipEmail(''); setNewRecipName('')
+      setRecipMsg('✓ 수신자가 추가되었습니다.')
+    } else {
+      setRecipMsg(`오류: ${data.error ?? '추가 실패'}`)
+    }
+  }
+
+  const handleToggleRecipient = async (id: string, current: boolean) => {
+    const res = await fetch('/api/admin/email-recipients', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id, is_active: !current }),
+    })
+    if (res.ok) setRecipients(prev => prev.map(r => r.id === id ? { ...r, is_active: !current } : r))
+  }
+
+  const handleDeleteRecipient = async (id: string) => {
+    const res = await fetch(`/api/admin/email-recipients?id=${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) setRecipients(prev => prev.filter(r => r.id !== id))
+  }
+
+  const handleSendTest = async () => {
+    setSendTestLoading(true); setSendTestMsg('')
+    const res = await fetch('/api/cron/report-email', { method: 'POST' })
+    const data = await res.json()
+    if (res.ok) {
+      setSendTestMsg(`✓ 발송 완료: ${data.sent}명 성공 / ${data.failed}명 실패`)
+    } else {
+      setSendTestMsg(`오류: ${data.error ?? '발송 실패'}`)
+    }
+    setSendTestLoading(false)
+  }
+
+  useEffect(() => { if (token && !recipFetched) fetchRecipients(token) }, [token])
 
   // ─── 필터링 ────────────────────────────────────────────────────────────────
   const filtered = dbUsers.filter(u => {
@@ -400,6 +475,97 @@ export default function PageAdmin({ currentUser }: { currentUser: Member }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* ── 이메일 보고서 수신자 관리 ── */}
+      <div style={{ ...card, marginTop:16 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+          <div>
+            <div style={sectionTitle}>주간 임원 보고서 이메일 수신자</div>
+            <div style={{ fontSize:12, color:T.text3, marginTop:2 }}>매주 월요일 오전 9시에 아래 수신자에게 자동으로 보고서가 발송됩니다.</div>
+          </div>
+          <Btn variant="secondary" onClick={handleSendTest} disabled={sendTestLoading} style={{ fontSize:12, padding:'6px 14px' }}>
+            {sendTestLoading ? '발송 중…' : '지금 테스트 발송'}
+          </Btn>
+        </div>
+
+        {sendTestMsg && (
+          <div style={{ fontSize:12, color: sendTestMsg.startsWith('✓') ? T.green : T.red, padding:'8px 12px', background: sendTestMsg.startsWith('✓') ? T.greenSoft : T.redSoft, borderRadius:6, marginBottom:12 }}>
+            {sendTestMsg}
+          </div>
+        )}
+
+        {/* 수신자 추가 폼 */}
+        <div style={{ display:'flex', gap:8, marginBottom:12, alignItems:'flex-end' }}>
+          <div style={{ flex:2 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:T.text3, marginBottom:4 }}>이메일 *</div>
+            <input
+              type="email" value={newRecipEmail} onChange={e => setNewRecipEmail(e.target.value)}
+              placeholder="ceo@company.com"
+              style={{ width:'100%', padding:'7px 10px', border:`1px solid ${T.borderMid}`, borderRadius:6, fontSize:12, outline:'none', boxSizing:'border-box' }}
+            />
+          </div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:T.text3, marginBottom:4 }}>이름</div>
+            <input
+              type="text" value={newRecipName} onChange={e => setNewRecipName(e.target.value)}
+              placeholder="대표이사"
+              style={{ width:'100%', padding:'7px 10px', border:`1px solid ${T.borderMid}`, borderRadius:6, fontSize:12, outline:'none', boxSizing:'border-box' }}
+            />
+          </div>
+          <Btn onClick={handleAddRecipient} style={{ padding:'7px 16px', fontSize:12, whiteSpace:'nowrap' }}>+ 추가</Btn>
+        </div>
+
+        {recipMsg && (
+          <div style={{ fontSize:12, color: recipMsg.startsWith('✓') ? T.green : T.red, padding:'6px 10px', background: recipMsg.startsWith('✓') ? T.greenSoft : T.redSoft, borderRadius:5, marginBottom:10 }}>
+            {recipMsg}
+          </div>
+        )}
+
+        {/* 수신자 목록 */}
+        {recipLoading ? (
+          <div style={{ textAlign:'center', padding:'24px 0', color:T.text3, fontSize:13 }}>불러오는 중…</div>
+        ) : recipients.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'24px 0', color:T.text3, fontSize:13 }}>
+            등록된 수신자가 없습니다. 위에서 추가해 주세요.
+          </div>
+        ) : (
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ background:T.surface2, borderBottom:`1px solid ${T.border}` }}>
+                {['이름','이메일','상태','등록일',''].map(h => (
+                  <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:600, color:T.text3 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {recipients.map(r => (
+                <tr key={r.id} style={{ borderBottom:`1px solid ${T.border}` }}>
+                  <td style={{ padding:'9px 12px', fontWeight:600, color:T.text1 }}>{r.name || '—'}</td>
+                  <td style={{ padding:'9px 12px', color:T.text2 }}>{r.email}</td>
+                  <td style={{ padding:'9px 12px' }}>
+                    <StatusBadge status={r.is_active ? '활성' : '비활성'}/>
+                  </td>
+                  <td style={{ padding:'9px 12px', color:T.text3 }}>
+                    {new Date(r.created_at).toLocaleDateString('ko-KR', { month:'short', day:'numeric' })}
+                  </td>
+                  <td style={{ padding:'9px 12px' }}>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button onClick={() => handleToggleRecipient(r.id, r.is_active)}
+                        style={{ fontSize:11, color: r.is_active ? T.text3 : T.green, background:'none', border:'none', cursor:'pointer' }}>
+                        {r.is_active ? '비활성화' : '활성화'}
+                      </button>
+                      <button onClick={() => handleDeleteRecipient(r.id)}
+                        style={{ fontSize:11, color:T.red, background:'none', border:'none', cursor:'pointer', fontWeight:600 }}>
+                        삭제
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* ── 단일 초대 모달 ── */}

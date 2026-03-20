@@ -235,17 +235,17 @@ export async function GET(request: Request) {
     // ─── 7. Top critical/high 액션 ──────────────────────────────────────────
     const { data: actionRows } = await supabase
       .from('action_queue')
-      .select('product_id, action_type, priority, reason')
-      .in('priority', ['critical', 'high'])
-      .in('status', ['pending', 'in_progress'])
-      .order('priority', { ascending: true })
+      .select('product_id, action_type, severity, description')
+      .in('severity', ['critical', 'high'])
+      .eq('status', 'pending')
+      .order('severity', { ascending: true })
       .limit(5)
 
     const topActions = (actionRows ?? []).map(r => ({
       product_id:  String(r.product_id  ?? ''),
       action_type: String(r.action_type ?? ''),
-      priority:    String(r.priority    ?? ''),
-      reason:      String(r.reason      ?? ''),
+      priority:    String(r.severity    ?? ''),
+      reason:      String(r.description ?? ''),
     }))
 
     // ─── 8. 예측 정확도 (MAPE 기반) ─────────────────────────────────────────
