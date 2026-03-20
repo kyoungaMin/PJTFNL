@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+// ─── 인메모리 캐시 (5분, 키별) ──────────────────────────────────────────
+const cache = new Map<string, { data: any; ts: number }>()
+const CACHE_TTL = 300_000 // 5분
+
+function getCached(key: string) {
+  const entry = cache.get(key)
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data
+  return null
+}
+function setCache(key: string, data: any) {
+  cache.set(key, { data, ts: Date.now() })
+}
+
 // GET /api/model-scenario?model=lgbm_q_v4&product=ALL&weeks=8
 export async function GET(req: NextRequest) {
   const modelId = req.nextUrl.searchParams.get('model') ?? 'segment_best_v1'
@@ -10,6 +23,10 @@ export async function GET(req: NextRequest) {
   try {
     // 1) 제품 목록 조회 (product 파라미터가 없거나 ALL이면)
     if (!productId || productId === 'ALL') {
+      const cacheKey = `products:${modelId}`
+      const cached = getCached(cacheKey)
+      if (cached) return NextResponse.json(cached)
+
       // forecast_result에서 해당 모델의 고유 product_id 목록
       // 최근 90일 데이터만 스캔하여 타임아웃 방지
       const cutoff = new Date()
@@ -21,22 +38,27 @@ export async function GET(req: NextRequest) {
         .select('product_id')
         .eq('model_id', modelId)
         .gte('target_date', cutoffStr)
+        .limit(5000)
 
       if (prodErr) throw prodErr
 
       const uniqueIds = [...new Set((prodRows ?? []).map(r => r.product_id))]
 
-      // product_master에서 이름 조회
-      const { data: masterRows } = await supabase
-        .from('product_master')
-        .select('product_code,product_name,product_specification')
-        .in('product_code', uniqueIds.slice(0, 500))
-
+      // product_master에서 이름 조회 (200개씩 배치)
       const nameMap: Record<string, string> = {}
       const specMap: Record<string, string> = {}
-      for (const m of (masterRows ?? [])) {
-        nameMap[m.product_code] = m.product_name
-        specMap[m.product_code] = m.product_specification ?? ''
+
+      for (let i = 0; i < uniqueIds.length; i += 200) {
+        const chunk = uniqueIds.slice(i, i + 200)
+        const { data: masterRows } = await supabase
+          .from('product_master')
+          .select('product_code,product_name,product_specification')
+          .in('product_code', chunk)
+
+        for (const m of (masterRows ?? [])) {
+          nameMap[m.product_code] = m.product_name
+          specMap[m.product_code] = m.product_specification ?? ''
+        }
       }
 
       const products = uniqueIds.map(id => ({
@@ -46,26 +68,46 @@ export async function GET(req: NextRequest) {
       }))
       products.sort((a, b) => a.name.localeCompare(b.name))
 
-      return NextResponse.json({ products, modelId })
+      const responseData = { products, modelId }
+      setCache(cacheKey, responseData)
+      return NextResponse.json(responseData)
     }
 
     // 2) 특정 제품의 예측 시계열 조회
+    const detailCacheKey = `detail:${modelId}:${productId}:${weeks}`
+    const cachedDetail = getCached(detailCacheKey)
+    if (cachedDetail) return NextResponse.json(cachedDetail)
+
     // 필요한 주수 + 여유분만 조회하여 타임아웃 방지
     const dateCutoff = new Date()
     dateCutoff.setDate(dateCutoff.getDate() - (weeks + 4) * 7)
     const dateCutoffStr = dateCutoff.toISOString().slice(0, 10)
 
-    const { data: rows, error } = await supabase
-      .from('forecast_result')
-      .select('target_date, p10, p50, p90, actual_qty')
-      .eq('model_id', modelId)
-      .eq('product_id', productId)
-      .gte('target_date', dateCutoffStr)
-      .order('target_date', { ascending: true })
+    // forecast_result + product_master + production_plan 병렬 조회
+    const [forecastRes, masterRes, planRes] = await Promise.all([
+      supabase
+        .from('forecast_result')
+        .select('target_date, p10, p50, p90, actual_qty')
+        .eq('model_id', modelId)
+        .eq('product_id', productId)
+        .gte('target_date', dateCutoffStr)
+        .order('target_date', { ascending: true }),
+      supabase
+        .from('product_master')
+        .select('product_code,product_name,product_specification')
+        .eq('product_code', productId)
+        .limit(1),
+      supabase
+        .from('production_plan')
+        .select('current_inventory,safety_stock,daily_capacity,demand_p50')
+        .eq('product_id', productId)
+        .order('plan_date', { ascending: false })
+        .limit(1),
+    ])
 
-    if (error) throw error
+    if (forecastRes.error) throw forecastRes.error
 
-    const allRows = rows ?? []
+    const allRows = forecastRes.data ?? []
     if (allRows.length === 0) {
       return NextResponse.json({ product: null, predictions: [], modelId, source: 'empty' })
     }
@@ -111,19 +153,9 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // 3) 제품 정보 (production_plan, product_master)
-    const { data: masterRow } = await supabase
-      .from('product_master')
-      .select('product_code,product_name,product_specification')
-      .eq('product_code', productId)
-      .limit(1)
-
-    const { data: planRow } = await supabase
-      .from('production_plan')
-      .select('current_inventory,safety_stock,daily_capacity,demand_p50')
-      .eq('product_id', productId)
-      .order('plan_date', { ascending: false })
-      .limit(1)
+    // 3) 제품 정보
+    const masterRow = masterRes.data
+    const planRow = planRes.data
 
     const hasPlan = planRow && planRow.length > 0 && Number(planRow[0].current_inventory ?? 0) > 0
     let currentStock: number, safeStock: number, productionCap: number
@@ -162,7 +194,7 @@ export async function GET(req: NextRequest) {
       : null
     const totalRecords = allRows.length
 
-    return NextResponse.json({
+    const responseData = {
       product,
       predictions,
       modelId,
@@ -182,7 +214,10 @@ export async function GET(req: NextRequest) {
         } as Record<string, string>)[modelId] ?? modelId,
         estimated: dataEstimated,
       },
-    })
+    }
+
+    setCache(detailCacheKey, responseData)
+    return NextResponse.json(responseData)
   } catch (err: any) {
     console.error('[API] model-scenario error:', err)
     return NextResponse.json(

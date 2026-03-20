@@ -8,7 +8,16 @@ export const dynamic = 'force-dynamic'
 // → 실제 서비스 전환 시 이 상수를 제거하고 new Date()로 복원
 const SYSTEM_BASE_DATE = '2026-02-28'
 
+// ─── 인메모리 캐시 (60초) ────────────────────────────────────────────────────
+let dashboardCache: { data: any; ts: number } | null = null
+const CACHE_TTL = 60_000
+
 export async function GET() {
+  // 캐시 히트 시 즉시 반환
+  if (dashboardCache && Date.now() - dashboardCache.ts < CACHE_TTL) {
+    return NextResponse.json(dashboardCache.data)
+  }
+
   try {
     const now = new Date(SYSTEM_BASE_DATE + 'T00:00:00')
 
@@ -36,10 +45,17 @@ export async function GET() {
     fromMonday.setDate(thisMonday.getDate() - 25 * 7)
     const fromStr = toLocalDateStr(fromMonday)
 
-    const { data: orderWeekRows, error: orderErr } = await supabase
-      .rpc('get_order_weekly_summary', { p_from_date: fromStr })
+    // ─── 병렬 실행: 독립적인 3개 쿼리를 동시에 실행 ─────────────────────────
+    const [orderWeekResult, maxOrderResult, pendingResult] = await Promise.all([
+      supabase.rpc('get_order_weekly_summary', { p_from_date: fromStr }),
+      supabase.from('daily_order').select('order_date').order('order_date', { ascending: false }).limit(1),
+      supabase.from('purchase_order').select('*', { count: 'exact', head: true }).in('status', ['R', 'P']),
+    ])
 
-    if (orderErr) throw orderErr
+    if (orderWeekResult.error) throw orderWeekResult.error
+    if (pendingResult.error) throw pendingResult.error
+
+    const orderWeekRows = orderWeekResult.data
 
     // week_start_date → 라벨 맵 + 정렬용 배열
     const orderWeekMap: Record<string, number> = {}
@@ -56,23 +72,21 @@ export async function GET() {
     const orderActual: unknown[] = []
 
     // ─── calendar_week 기반 기준 주차 확정 ────────────────────────────────────
-    // daily_order 최신 수주일 → 해당 날짜가 속한 calendar_week 조회
-    // → 이 주차가 대시보드 전체 기준 (헤더·차트·각 상세화면 연계용)
-    const { data: maxOrderRow } = await supabase
-      .from('daily_order')
-      .select('order_date')
-      .order('order_date', { ascending: false })
-      .limit(1)
-    const maxOrderDate = String(maxOrderRow?.[0]?.order_date ?? toLocalDateStr(now))
+    const maxOrderDate = String(maxOrderResult.data?.[0]?.order_date ?? toLocalDateStr(now))
 
-    // maxOrderDate가 속한 주차 (week_start <= maxOrderDate, 가장 최근)
-    const { data: refCalRows } = await supabase
-      .from('calendar_week')
-      .select('year_week, week_start, week_end, year_month')
-      .lte('week_start', maxOrderDate)
-      .order('week_start', { ascending: false })
-      .limit(1)
-    const refWeek = refCalRows?.[0]
+    // ─── 병렬 실행: calendar_week + forecast 최신행 동시 조회 ─────────────
+    const [refCalResult, latestFcstResult] = await Promise.all([
+      supabase.from('calendar_week')
+        .select('year_week, week_start, week_end, year_month')
+        .lte('week_start', maxOrderDate)
+        .order('week_start', { ascending: false })
+        .limit(1),
+      supabase.from('forecast_result')
+        .select('forecast_date, model_id')
+        .order('forecast_date', { ascending: false })
+        .limit(1),
+    ])
+    const refWeek = refCalResult.data?.[0]
 
     // qty=0인 주(3월 초 등 미수주 주차)를 제외하고 실제 수주가 있는 마지막 주 사용
     const lastNonZeroWeek = [...weekActuals].reverse().find(w => (orderWeekMap[w.label] ?? 0) > 0)
@@ -86,11 +100,7 @@ export async function GET() {
     latestAnchor.setDate(latestAnchor.getDate() - latestDow + 1)
 
     // ─── 1-b. 예측 밴드 (forecast_result 최신 기준, 전 제품 합산) ────────────
-    const { data: latestFcstRow } = await supabase
-      .from('forecast_result')
-      .select('forecast_date, model_id')
-      .order('forecast_date', { ascending: false })
-      .limit(1)
+    const latestFcstRow = latestFcstResult.data
 
     const horizonFcstMap: Record<string, { p10: number; p50: number; p90: number }> = {}
     // 예측 주차 정렬용 (미래 주차 순서 보장)
@@ -157,22 +167,29 @@ export async function GET() {
       }
     })
 
-    // ─── 2. 재고 커버리지 KPI ─────────────────────────────────────────────────
-    // ⚠️ inventory(617,720행) + daily_order(259,684행) 직접 조회 → limit=1000에 걸려
-    //    inventory 합계·수요 분모가 모두 과소 계산 → 1,081일 오계산 버그
-    //    → DB/24_coverage_rpc.sql의 get_inventory_coverage RPC로 해결
-    // 재고 커버리지: 실데이터 최신 주 기준 30일 범위 (오늘이 아닌 실데이터 기준)
+    // ─── 2. 재고 커버리지 + plan_date — 병렬 실행 ────────────────────────────
     const thirtyDaysBeforeLatest = new Date(latestAnchor)
     thirtyDaysBeforeLatest.setDate(latestAnchor.getDate() - 30)
     const thirtyDaysStr = toLocalDateStr(thirtyDaysBeforeLatest)
+    const latestActualWeekEnd = (() => {
+      const d = new Date(latestActualDate + 'T00:00:00')
+      d.setDate(d.getDate() + 6)
+      return toLocalDateStr(d)
+    })()
 
-    const { data: covRows } = await supabase
-      .rpc('get_inventory_coverage', {
+    const [covResult, planDateResult] = await Promise.all([
+      supabase.rpc('get_inventory_coverage', {
         p_from_date: thirtyDaysStr,
         p_to_date:   latestActualDate,
-      })
+      }),
+      supabase.from('purchase_recommendation')
+        .select('plan_date')
+        .lte('plan_date', latestActualWeekEnd)
+        .order('plan_date', { ascending: false })
+        .limit(1),
+    ])
 
-    const covRow            = covRows?.[0]
+    const covRow            = covResult.data?.[0]
     const totalInventoryQty = Number(covRow?.total_inv_qty   ?? 0)
     const totalDemand30     = Number(covRow?.total_order_qty ?? 0)
     const snapshotDate      = String(covRow?.snapshot_date   ?? '')
@@ -182,21 +199,7 @@ export async function GET() {
       ? Math.round(totalInventoryQty / dailyAvgDemand)
       : 0
 
-    // ─── 2-b. 구매·생산 권고 plan_date 조회 (상세화면 연계용) ─────────────
-    // latestActualDate 주(월~토) 이내에서 가장 최신 plan_date 선택
-    // → 미래 주차(예: 3/02) 데이터 혼입 방지, 대시보드 기준 주와 동일 주차 보장
-    const latestActualWeekEnd = (() => {
-      const d = new Date(latestActualDate + 'T00:00:00')
-      d.setDate(d.getDate() + 6)  // 월요일 + 6 = 토요일
-      return toLocalDateStr(d)
-    })()
-    const { data: latestPlanRow } = await supabase
-      .from('purchase_recommendation')
-      .select('plan_date')
-      .lte('plan_date', latestActualWeekEnd)  // 이번 주(토) 이하만
-      .order('plan_date', { ascending: false })
-      .limit(1)
-    const planDate = String(latestPlanRow?.[0]?.plan_date ?? '')
+    const planDate = String(planDateResult.data?.[0]?.plan_date ?? '')
     // planDate 주 종료일 (planDate + 6일): risk·action eval_date 범위 필터에 사용
     const planDateEnd = planDate ? (() => {
       const d = new Date(planDate + 'T00:00:00')
@@ -204,59 +207,38 @@ export async function GET() {
       return toLocalDateStr(d)
     })() : ''
 
-    // ─── 3. 구매 발주 KPI (R=미입고, P=처리중) ───────────────────────────────
-    const { count: pendingCount, error: poErr } = await supabase
-      .from('purchase_order')
-      .select('*', { count: 'exact', head: true })
-      .in('status', ['R', 'P'])
+    // ─── 3. 구매 발주 KPI (R=미입고, P=처리중) — 이미 병렬 조회 완료 ─────────
+    const pendingCount = pendingResult.count
 
-    if (poErr) throw poErr
-
-    // ─── 4. 위험 등급 집계 (planDate 주차 우선, 없으면 최신 eval_date, 기본: monthly) ────────
-    // ML 미실행 시 빈 배열 반환 → 프론트에서 Mock fallback
-    // planDate 주차(planDate~planDateEnd)에서 eval_date 먼저 찾고, 없으면 최신 fallback
-    let evalDataRow: any = null
-    if (planDate && planDateEnd) {
-      const { data: weekEval } = await supabase
-        .from('risk_score')
-        .select('eval_date')
-        .eq('eval_type', 'monthly') // 대시보드는 기본적으로 월간 리스크 현황 노출
-        .gte('eval_date', planDate)
-        .lte('eval_date', planDateEnd)
-        .order('eval_date', { ascending: false })
-        .limit(1)
-      evalDataRow = weekEval?.[0] ?? null
+    // ─── 4. 위험 등급 집계 — monthly + weekly eval_date 병렬 조회 ────────────
+    // planDate 주차 우선 → 없으면 최신 fallback
+    const buildEvalQuery = (evalType: string) => {
+      if (planDate && planDateEnd) {
+        return supabase.from('risk_score').select('eval_date')
+          .eq('eval_type', evalType)
+          .gte('eval_date', planDate).lte('eval_date', planDateEnd)
+          .order('eval_date', { ascending: false }).limit(1)
+      }
+      return supabase.from('risk_score').select('eval_date')
+        .eq('eval_type', evalType)
+        .order('eval_date', { ascending: false }).limit(1)
     }
-    if (!evalDataRow) {
-      const { data: fallbackEval } = await supabase
-        .from('risk_score')
-        .select('eval_date')
-        .eq('eval_type', 'monthly') // 대시보드는 기본적으로 월간 리스크 현황 노출
-        .order('eval_date', { ascending: false })
-        .limit(1)
+    const [monthlyEvalResult, weeklyEvalResult] = await Promise.all([
+      buildEvalQuery('monthly'),
+      buildEvalQuery('weekly'),
+    ])
+
+    let evalDataRow = monthlyEvalResult.data?.[0] ?? null
+    if (!evalDataRow && planDate) {
+      const { data: fallbackEval } = await supabase.from('risk_score').select('eval_date')
+        .eq('eval_type', 'monthly').order('eval_date', { ascending: false }).limit(1)
       evalDataRow = fallbackEval?.[0] ?? null
     }
 
-    // ─── 4-b. weekly용 eval_date 조회 (리스크관리 주간 연동용) ──────────────
-    let weeklyEvalDate = ''
-    if (planDate && planDateEnd) {
-      const { data: wEval } = await supabase
-        .from('risk_score')
-        .select('eval_date')
-        .eq('eval_type', 'weekly')
-        .gte('eval_date', planDate)
-        .lte('eval_date', planDateEnd)
-        .order('eval_date', { ascending: false })
-        .limit(1)
-      weeklyEvalDate = wEval?.[0]?.eval_date ? String(wEval[0].eval_date) : ''
-    }
-    if (!weeklyEvalDate) {
-      const { data: wFallback } = await supabase
-        .from('risk_score')
-        .select('eval_date')
-        .eq('eval_type', 'weekly')
-        .order('eval_date', { ascending: false })
-        .limit(1)
+    let weeklyEvalDate = weeklyEvalResult.data?.[0]?.eval_date ? String(weeklyEvalResult.data[0].eval_date) : ''
+    if (!weeklyEvalDate && planDate) {
+      const { data: wFallback } = await supabase.from('risk_score').select('eval_date')
+        .eq('eval_type', 'weekly').order('eval_date', { ascending: false }).limit(1)
       weeklyEvalDate = wFallback?.[0]?.eval_date ? String(wFallback[0].eval_date) : ''
     }
 
@@ -372,14 +354,14 @@ export async function GET() {
       .filter(g => ['E', 'F'].includes(g.grade))
       .reduce((s, g) => s + g.count, 0)
 
-    return NextResponse.json({
-      orderActual,          // 기존 유지 (호환성)
-      orderChartData,       // 신규: 실적+예측 통합 차트 데이터
-      lastActualM,          // 실적/예측 구분선 기준 월 ('YY.MM)
-      hasForecastData,      // 예측 밴드 실데이터 여부
-      riskGrades,           // 위험 등급별 count (ML 미실행 시 빈 배열)
-      actionItems,          // AI 생산 권고 Top3 (ML 미실행 시 빈 배열)
-      urgentCount,          // E~F 등급 건수 (ML 미실행 시 0)
+    const responseData = {
+      orderActual,
+      orderChartData,
+      lastActualM,
+      hasForecastData,
+      riskGrades,
+      actionItems,
+      urgentCount,
       inventoryCoverage: {
         totalQty: Math.round(totalInventoryQty),
         snapshotDate,
@@ -390,33 +372,28 @@ export async function GET() {
         pendingCount: orderCount,
         status: orderStatus,
       },
-      latestDataDate: latestActualDate,  // 기존 호환성 유지
-      // ─── 기준 주차 메타데이터 (각 상세화면 연계용) ───────────────────────────
-      // daily_order max(order_date)가 속한 calendar_week 정보
-      // · 구매권고·생산권고·리스크관리 → weekStart~weekEnd 기간 필터
-      // · 재고현황 → yearMonth 기준 월 필터
+      latestDataDate: latestActualDate,
       refWeekInfo: {
         yearWeek:  String(refWeek?.year_week  ?? ''),
         weekStart: latestActualDate,
-        // weekEnd: weekStart(월요일) + 5일 = 토요일 (2/23 → 2/28)
         weekEnd:   (() => {
           const d = new Date(latestActualDate + 'T00:00:00')
           d.setDate(d.getDate() + 5)
           return toLocalDateStr(d)
         })(),
-        // yearMonth: planDate 기준 월 우선 (재고현황 연계), 없으면 calendar_week 기준
         yearMonth: planDate ? planDate.substring(0, 7) : String(refWeek?.year_month ?? ''),
         maxOrderDate,
-        // 헤더·전 상세화면 공통 기준: ML plan_date 주의 일요일
         planDate: headerPlanDate,
-        // 구매·생산 권고 페이지 날짜 연계: purchase_recommendation.plan_date 실제값
         mlPlanDate: planDate,
-        // 리스크 관리 페이지 날짜 연계: risk_score.eval_date 실제값
         evalDate: evalDataRow?.eval_date ? String(evalDataRow.eval_date) : '',
         weeklyEvalDate,
       },
       source: 'database',
-    })
+    }
+
+    // 캐시 저장
+    dashboardCache = { data: responseData, ts: Date.now() }
+    return NextResponse.json(responseData)
   } catch (err: any) {
     console.error('[API] dashboard error:', err)
     return NextResponse.json(

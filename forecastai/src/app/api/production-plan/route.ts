@@ -40,6 +40,13 @@ function planDateToWeekLabel(dateStr: string): string {
   return `${fmt(d)} ~ ${fmt(end)}`
 }
 
+// ─── 인메모리 캐시 (60초, plan_date별) ────────────────────────────────────
+const prodPlanCache = new Map<string, { data: any; ts: number }>()
+const CACHE_TTL = 60_000
+// available dates 캐시 (별도, 5분)
+let availDatesCache: { dates: string[]; ts: number } | null = null
+const AVAIL_CACHE_TTL = 300_000
+
 /* ─── GET: 생산 권고 목록 (주차 기반) ─── */
 export async function GET(request: Request) {
   try {
@@ -47,17 +54,25 @@ export async function GET(request: Request) {
     const requestedWeek = searchParams.get('week')
     const requestedDate = searchParams.get('date')
 
-    // 1) 사용 가능한 plan_date 목록 — cursor 방식으로 distinct 조회
-    const availableDates: string[] = []
-    let cursor: string | null = null
-    for (let i = 0; i < 20; i++) {
-      let q = supabase.from('production_plan').select('plan_date')
-        .order('plan_date', { ascending: false }).limit(1)
-      if (cursor) q = q.lt('plan_date', cursor)
-      const { data: row } = await q
-      if (!row || row.length === 0) break
-      availableDates.push(row[0].plan_date)
-      cursor = row[0].plan_date
+    // 1) 사용 가능한 plan_date 목록 — 단일 쿼리 + 캐시
+    let availableDates: string[]
+    if (availDatesCache && Date.now() - availDatesCache.ts < AVAIL_CACHE_TTL) {
+      availableDates = availDatesCache.dates
+    } else {
+      const dateSet = new Set<string>()
+      const PAGE_D = 1000
+      for (let off = 0; ; off += PAGE_D) {
+        const { data: dateRows } = await supabase
+          .from('production_plan')
+          .select('plan_date')
+          .order('plan_date', { ascending: false })
+          .range(off, off + PAGE_D - 1)
+        if (!dateRows || dateRows.length === 0) break
+        for (const r of dateRows) dateSet.add(r.plan_date as string)
+        if (dateRows.length < PAGE_D) break
+      }
+      availableDates = [...dateSet]
+      availDatesCache = { dates: availableDates, ts: Date.now() }
     }
 
     if (availableDates.length === 0) {
@@ -74,6 +89,12 @@ export async function GET(request: Request) {
       : (requestedDate && availableDates.includes(requestedDate))
         ? requestedDate
         : availableDates[0]
+
+    // 캐시 히트 시 즉시 반환
+    const cached = prodPlanCache.get(planDate)
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      return NextResponse.json(cached.data)
+    }
 
     // 2) 해당 주차 데이터 전체 조회 (페이지네이션)
     const plans: any[] = []
@@ -250,7 +271,7 @@ export async function GET(request: Request) {
 
     const planWeek = plans[0]?.plan_horizon ?? planDate
 
-    return NextResponse.json({
+    const responseData = {
       items,
       categoryChart,
       categories,
@@ -261,7 +282,9 @@ export async function GET(request: Request) {
       availableWeeks,
       availableDates,
       source: 'database',
-    })
+    }
+    prodPlanCache.set(planDate, { data: responseData, ts: Date.now() })
+    return NextResponse.json(responseData)
   } catch (err: any) {
     console.error('[API] production-plan error:', err)
     return NextResponse.json(
