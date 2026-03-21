@@ -70,8 +70,6 @@ export function Sidebar({ page, setPage, collapsed, currentUser }: { page:string
             {(collapsed || openGroups['관리자']) && grouped.adminGroup.items.map(item=><NavItem key={item.id} item={item}/>)}
           </div>
         )}
-        <div style={{ height:1, background:T.sidebarBd, margin:"8px 16px" }}/>
-        {NAV_STRUCTURE.filter(n=>n.id==="help").map(item=><NavItem key={item.id} item={item}/>)}
       </nav>
 
       {!collapsed && (
