@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 // POST /api/admin/delete-user
 // Body: { access_token, userId }
 // admin만 호출 가능. Auth + user_profile 모두 영구 삭제.
