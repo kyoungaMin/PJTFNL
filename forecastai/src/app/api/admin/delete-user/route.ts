@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,6 +7,11 @@ export const dynamic = 'force-dynamic'
 // Body: { access_token, userId }
 // admin만 호출 가능. Auth + user_profile 모두 영구 삭제.
 export async function POST(req: NextRequest) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
   const body = await req.json()
   const { access_token, userId } = body
 
