@@ -18,9 +18,18 @@ interface SummaryData {
   insights: { color: string; text: string }[]
 }
 
+interface VideoItem {
+  id: string
+  title: string
+  channelTitle: string
+  thumbnailUrl: string
+  publishedAt: string
+}
+
 interface ApiData {
   news: NewsItem[]
   summary: SummaryData
+  videos?: VideoItem[]
   source: 'live' | 'cache' | 'mock'
   period: string
 }
@@ -76,6 +85,7 @@ export default function IndustryNews() {
   const [data, setData]         = useState<ApiData | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
+  const [visibleVideoCount, setVisibleVideoCount] = useState(6)
 
   useEffect(() => {
     setLoading(true)
@@ -401,6 +411,84 @@ export default function IndustryNews() {
           })
         )}
       </div>
+
+      {/* ── 관련 영상 ─────────────────────────────────────────────────────── */}
+      {data?.videos && data.videos.length > 0 && (
+        <div style={{ marginTop: 24, marginBottom: 40 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>관련 영상</span>
+            <span style={{ fontSize: 12, color: T.text3 }}>총 {data.videos.length}건</span>
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: 16
+          }}>
+            {data.videos.slice(0, visibleVideoCount).map((vid, idx) => {
+              const hasVideo = vid.id && !vid.id.includes('mock');
+              return (
+              <div 
+                key={idx}
+                onClick={() => hasVideo ? window.open(`https://www.youtube.com/watch?v=${vid.id}`, '_blank') : null}
+                style={{
+                  ...card, 
+                  padding: 0, 
+                  overflow: 'hidden', 
+                  cursor: hasVideo ? 'pointer' : 'default',
+                  border: `1px solid ${T.border}`,
+                  transition: 'transform 0.1s, box-shadow 0.1s',
+                }}
+                onMouseEnter={e => {
+                  if (hasVideo) {
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'
+                  }
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'none'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              >
+                <div style={{ 
+                  width: '100%', 
+                  aspectRatio: '16/9', 
+                  backgroundColor: T.surface2,
+                  backgroundImage: `url(${vid.thumbnailUrl})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+                }} />
+                <div style={{ padding: '12px 14px' }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 600, color: T.text1, marginBottom: 6,
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+                  }} dangerouslySetInnerHTML={{ __html: vid.title }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: T.text3 }}>
+                    <span style={{ fontWeight: 600 }}>{vid.channelTitle}</span>
+                    <span>·</span>
+                    <span>{vid.publishedAt}</span>
+                  </div>
+                </div>
+              </div>
+            )})}
+          </div>
+          {data.videos.length > visibleVideoCount && (
+            <div style={{ textAlign: 'center', marginTop: 24 }}>
+              <button
+                onClick={() => setVisibleVideoCount(prev => prev + 6)}
+                style={{
+                  padding: '10px 24px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  border: `1px solid ${T.blue}`, background: 'transparent', color: T.blue,
+                  cursor: 'pointer', transition: 'background 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = T.blueSoft}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                더보기 ↓
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

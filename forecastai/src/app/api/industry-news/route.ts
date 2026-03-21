@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 // ─── 인메모리 캐시 (기간별 분리, 6시간 유지) ──────────────────────────────────
-const cacheMap: Record<string, { news: NewsItem[]; summary: SummaryData; generatedAt: number }> = {}
+const cacheMap: Record<string, { news: NewsItem[]; summary: SummaryData; videos: VideoItem[]; generatedAt: number }> = {}
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 
 interface NewsItem {
@@ -19,6 +19,14 @@ interface NewsItem {
 interface SummaryData {
   keywords: string[]
   insights: { color: string; text: string }[]
+}
+
+interface VideoItem {
+  id: string
+  title: string
+  channelTitle: string
+  thumbnailUrl: string
+  publishedAt: string
 }
 
 // ─── 언론사 도메인 매핑 ────────────────────────────────────────────────────────
@@ -324,8 +332,46 @@ const MOCK_SUMMARY: SummaryData = {
   ],
 }
 
+// ─── YouTube 영상 검색 (관련 영상) ────────────────────────────────────────────────
+const YOUTUBE_QUERIES = ['반도체 트렌드', 'AI 반도체 시장', '글로벌 반도체 공급망']
+
+async function searchYouTube(query: string): Promise<VideoItem[]> {
+  const apiKey = process.env.YOUTUBE_API_KEY
+  if (!apiKey) throw new Error('YOUTUBE_API_KEY가 설정되지 않았습니다.')
+
+  const threeMonthsAgo = new Date()
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+  const publishedAfter = threeMonthsAgo.toISOString()
+
+  const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${encodeURIComponent(query)}&type=video&key=${apiKey}&order=relevance&publishedAfter=${publishedAfter}`)
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`YouTube API 오류: ${res.status} — ${err}`)
+  }
+
+  const data = await res.json()
+  return (data.items ?? []).map((item: any) => ({
+    id: item.id?.videoId ?? '',
+    title: item.snippet?.title ? stripHtml(item.snippet.title) : '제목 없음',
+    channelTitle: item.snippet?.channelTitle ?? '채널명 없음',
+    thumbnailUrl: item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? '',
+    publishedAt: item.snippet?.publishedAt ? new Date(item.snippet.publishedAt).toISOString().slice(0, 10) : '',
+  }))
+}
+
+const MOCK_VIDEOS: VideoItem[] = [
+  { id: '1mock', title: '[Mock] 엔비디아/TSMC - AI 반도체 시장의 진화', channelTitle: '경제뉴스', thumbnailUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&q=80', publishedAt: new Date().toISOString().slice(0, 10) },
+  { id: '2mock', title: '[Mock] 글로벌 공급망 재편 실태 파악', channelTitle: 'IT트렌드랩', thumbnailUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=500&q=80', publishedAt: new Date().toISOString().slice(0, 10) },
+  { id: '3mock', title: '[Mock] 2026 메모리 반도체 슈퍼사이클 진짜 올까?', channelTitle: '테크튜브', thumbnailUrl: 'https://images.unsplash.com/photo-1616423640778-28d1b53229bd?w=500&q=80', publishedAt: new Date().toISOString().slice(0, 10) },
+  { id: '4mock', title: '[Mock] 반도체 장비주 최신 동향', channelTitle: '주식인사이트', thumbnailUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&q=80', publishedAt: new Date().toISOString().slice(0, 10) },
+  { id: '5mock', title: '[Mock] HBM 기술의 현재와 미래', channelTitle: 'AI연구소', thumbnailUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=500&q=80', publishedAt: new Date().toISOString().slice(0, 10) },
+  { id: '6mock', title: '[Mock] 인텔 파운드리 전략 심층 분석', channelTitle: '반도체썰방', thumbnailUrl: 'https://images.unsplash.com/photo-1616423640778-28d1b53229bd?w=500&q=80', publishedAt: new Date().toISOString().slice(0, 10) },
+  { id: '7mock', title: '[Mock] 삼성전자 vs TSMC 2나노 공정 대전', channelTitle: '경제뉴스', thumbnailUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&q=80', publishedAt: new Date().toISOString().slice(0, 10) },
+  { id: '8mock', title: '[Mock] 무역 통제에 따른 원자재 가격 동향', channelTitle: '거시경제TV', thumbnailUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=500&q=80', publishedAt: new Date().toISOString().slice(0, 10) },
+]
+
 // ─── 뉴스 수집 + GPT 처리 (백그라운드 갱신에도 재사용) ───────────────────────
-async function fetchFreshData(period: string, days: number): Promise<{ news: NewsItem[]; summary: SummaryData }> {
+async function fetchFreshData(period: string, days: number): Promise<{ news: NewsItem[]; summary: SummaryData; videos: VideoItem[] }> {
   const googlePromises = GOOGLE_NEWS_QUERIES.map(q =>
     searchGoogleNewsRSS(q, days).catch(e => {
       console.warn(`[Industry-News] Google News RSS 쿼리 실패: ${q}`, e)
@@ -339,7 +385,16 @@ async function fetchFreshData(period: string, days: number): Promise<{ news: New
     })
   )
 
-  const results = await Promise.all([...googlePromises, ...tavilyPromises])
+  const randomYq = YOUTUBE_QUERIES[Math.floor(Math.random() * YOUTUBE_QUERIES.length)]
+  const youtubePromise = searchYouTube(randomYq).catch(e => {
+    console.warn(`[Industry-News] YouTube 검색 실패:`, e)
+    return [] as VideoItem[]
+  })
+
+  // 모든 프로미스를 한 번에 대기
+  const allResults = await Promise.all([...googlePromises, ...tavilyPromises, youtubePromise])
+  const videos = allResults.pop() as VideoItem[]
+  const results = allResults as NewsItem[][]
 
   const allNews: NewsItem[] = []
   const seen = new Set<string>()
@@ -365,7 +420,7 @@ async function fetchFreshData(period: string, days: number): Promise<{ news: New
   // 번역 + 요약 GPT 1회 통합 호출
   const { translatedNews, summary } = await translateAndSummarize(filtered, period)
 
-  return { news: translatedNews, summary }
+  return { news: translatedNews, summary, videos }
 }
 
 // ─── GET 핸들러 ───────────────────────────────────────────────────────────────
@@ -402,6 +457,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       news:    MOCK_NEWS,
       summary: MOCK_SUMMARY,
+      videos:  MOCK_VIDEOS,
       source:  'mock',
       period,
     }, { status: 200 })

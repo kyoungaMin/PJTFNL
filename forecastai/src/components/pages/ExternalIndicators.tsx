@@ -142,9 +142,11 @@ function useExtData<T>(fetcher: (months: number, freq: Freq) => Promise<T>, fall
 // ── 공통 컴포넌트 ─────────────────────────────────────────────────────────────
 
 function calcChange(data: Record<string, unknown>[], key: string) {
-  if (data.length < 2) return { value: data[0]?.[key] ?? 0, pct: 0 }
-  const last = data[data.length - 1][key] as number
-  const prev = data[data.length - 2][key] as number
+  // 0은 결측치로 간주 — 마지막 유효값(비-0)을 찾아서 사용
+  const nonZero = data.filter(r => (r[key] as number) !== 0 && r[key] != null)
+  if (nonZero.length < 2) return { value: nonZero[nonZero.length - 1]?.[key] ?? null, pct: 0 }
+  const last = nonZero[nonZero.length - 1][key] as number
+  const prev = nonZero[nonZero.length - 2][key] as number
   return { value: last, pct: prev ? (last - prev) / prev * 100 : 0 }
 }
 
@@ -158,15 +160,17 @@ function LoadingCard() {
 }
 
 function TickerCard({ label, value, unit, changePct, chartData, dataKey, source, freq, isMock }: {
-  label: string; value: number; unit: string; changePct: number;
+  label: string; value: number | null; unit: string; changePct: number;
   chartData: Record<string, unknown>[]; dataKey: string;
   source?: string; freq?: string; isMock?: boolean;
 }) {
   const up = changePct >= 0
-  const vals = chartData.map(x => x[dataKey] as number)
+  // 0은 결측치로 간주하고 스파크라인에서 제외
+  const validData = chartData.filter(x => (x[dataKey] as number) !== 0 && x[dataKey] != null)
+  const vals = validData.map(x => x[dataKey] as number)
   const min = Math.min(...vals), max = Math.max(...vals), range = max - min || 1
-  const pts = chartData.map((d, i) => {
-    const x = (i / (chartData.length - 1)) * 80
+  const pts = validData.map((d, i) => {
+    const x = (i / Math.max(validData.length - 1, 1)) * 80
     const y = 26 - ((d[dataKey] as number - min) / range) * 22
     return `${x},${y}`
   }).join(' ')
@@ -186,8 +190,8 @@ function TickerCard({ label, value, unit, changePct, chartData, dataKey, source,
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: T.text1, fontFamily: "'IBM Plex Mono',monospace", lineHeight: 1 }}>
-            {typeof value === 'number' && value > 100 ? value.toLocaleString() : value}
-            <span style={{ fontSize: 11, color: T.text3, fontWeight: 400, marginLeft: 3 }}>{unit}</span>
+            {value == null ? <span style={{ fontSize: 13, color: T.text3 }}>-</span> : (value > 100 ? value.toLocaleString() : value)}
+            {value != null && <span style={{ fontSize: 11, color: T.text3, fontWeight: 400, marginLeft: 3 }}>{unit}</span>}
           </div>
           <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: up ? T.green : T.red }}>{up ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%</span>
@@ -330,8 +334,18 @@ function ExtChartCard({ title, data, lineKeys, colors, height = 155, mockKeys, d
 }) {
   const fmt = (v: number) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v)
 
+  // 0 값을 null로 변환 + connectNulls로 선이 끊기지 않고 건너뜀
+  const chartData = data.map(row => {
+    const newRow: Record<string, unknown> = { ...row }
+    lineKeys.forEach(k => {
+      const v = row[k] as number
+      if (v === 0 || v == null || isNaN(v) || !isFinite(v)) newRow[k] = null
+    })
+    return newRow
+  })
+
   const computeDomain = (keys: string[]): [number, number] => {
-    const vals = data.flatMap(row => keys.map(k => row[k] as number).filter(v => v != null && !isNaN(v) && isFinite(v)))
+    const vals = data.flatMap(row => keys.map(k => row[k] as number).filter(v => v != null && v !== 0 && !isNaN(v) && isFinite(v)))
     if (!vals.length) return [0, 100]
     const min = Math.min(...vals)
     const max = Math.max(...vals)
@@ -347,7 +361,7 @@ function ExtChartCard({ title, data, lineKeys, colors, height = 155, mockKeys, d
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '16px 20px', boxShadow: '0 1px 4px rgba(15,23,42,0.07)' }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, marginBottom: 12 }}>{title}</div>
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={data} margin={{ top: 2, right: dualAxis ? 40 : 4, left: 0, bottom: 0 }}>
+        <ComposedChart data={chartData} margin={{ top: 2, right: dualAxis ? 40 : 4, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
           <XAxis dataKey="d" tick={{ fontSize: 9, fill: T.text3 }} axisLine={false} tickLine={false} />
           <YAxis yAxisId="left" tick={{ fontSize: 9, fill: T.text3 }} axisLine={false} tickLine={false} width={38}
@@ -360,7 +374,8 @@ function ExtChartCard({ title, data, lineKeys, colors, height = 155, mockKeys, d
           {lineKeys.map((k, i) => (
             <Line key={k} yAxisId={dualAxis && i > 0 ? 'right' : 'left'} type="monotone" dataKey={k} stroke={colors[i]} strokeWidth={2.2} dot={false}
               strokeDasharray={mockKeys?.includes(k) ? '5 3' : undefined}
-              activeDot={{ r: 4, fill: colors[i], stroke: 'white', strokeWidth: 2 }} />
+              activeDot={{ r: 4, fill: colors[i], stroke: 'white', strokeWidth: 2 }}
+              connectNulls={true} />
           ))}
         </ComposedChart>
       </ResponsiveContainer>
