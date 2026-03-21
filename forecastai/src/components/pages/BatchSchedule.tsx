@@ -22,6 +22,8 @@ interface ScheduleConfig {
   day_of_month: number   // 1~31
   interval_hours: number // hourly 전용
   updated_at: string | null
+  last_run_at: string | null
+  last_run_status: string | null
 }
 
 /* ──────────────────────────────────────────────
@@ -30,24 +32,26 @@ interface ScheduleConfig {
 ────────────────────────────────────────────── */
 const DEFAULT_SCHEDULES: ScheduleConfig[] = [
   // ERP 연동
-  { source_id:'erp-order',     source_name:'수주 데이터',       description:'ERP에서 일별 수주 실적을 가져옵니다',      category:'ERP연동',     is_active:true,  freq:'daily',   hour:6,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'erp-inventory', source_name:'재고 데이터',       description:'ERP에서 제품별 현재 재고 현황을 가져옵니다', category:'ERP연동',     is_active:true,  freq:'daily',   hour:6,  minute:30, day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'erp-purchase',  source_name:'구매발주 데이터',   description:'ERP에서 발주 내역을 가져옵니다',            category:'ERP연동',     is_active:true,  freq:'daily',   hour:7,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'erp-product',   source_name:'제품 마스터',       description:'ERP에서 제품 기준 정보를 가져옵니다',       category:'ERP연동',     is_active:true,  freq:'monthly', hour:3,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
+  { source_id:'erp-order',     source_name:'수주 데이터',         description:'ERP에서 일별 수주 실적을 가져옵니다',          category:'ERP연동',      is_active:true,  freq:'daily',   hour:6,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'erp-inventory', source_name:'재고 데이터',         description:'ERP에서 제품별 현재 재고 현황을 가져옵니다',   category:'ERP연동',      is_active:true,  freq:'daily',   hour:6,  minute:30, day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'erp-purchase',  source_name:'구매발주 데이터',     description:'ERP에서 발주 내역을 가져옵니다',               category:'ERP연동',      is_active:true,  freq:'daily',   hour:7,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'erp-product',   source_name:'제품 마스터',         description:'ERP에서 제품 기준 정보를 가져옵니다',          category:'ERP연동',      is_active:true,  freq:'monthly', hour:3,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
   // 외부지표
-  { source_id:'ext-fred',      source_name:'FRED 경제지표',     description:'미국 연준 환율·금리·생산지수 데이터',       category:'외부지표',    is_active:true,  freq:'daily',   hour:8,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'ext-eia',       source_name:'EIA 에너지 가격',   description:'미국 에너지부 유가·전력 등 에너지 데이터',  category:'외부지표',    is_active:true,  freq:'weekly',  hour:9,  minute:0,  day_of_week:2, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'ext-customs',   source_name:'관세청 무역통계',   description:'한국 관세청 수출입 통계 데이터',            category:'외부지표',    is_active:true,  freq:'monthly', hour:10, minute:0,  day_of_week:0, day_of_month:15, interval_hours:6,  updated_at:null },
-  { source_id:'ext-ecos',      source_name:'한국은행 ECOS',     description:'한국은행 기준금리·경제통계 데이터',         category:'외부지표',    is_active:false, freq:'monthly', hour:11, minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
+  { source_id:'ext-bdi',       source_name:'발틱 운임지수 (BDI)', description:'해운 운임 동향 — Stooq에서 매일 수집',         category:'외부지표',     is_active:true,  freq:'daily',   hour:1,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ext-fred',      source_name:'FRED 경제지표',       description:'미국 연준 금리·구리가격 등 월간 지표',         category:'외부지표',     is_active:true,  freq:'monthly', hour:9,  minute:0,  day_of_week:0, day_of_month:2,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ext-eia',       source_name:'EIA 에너지 가격',     description:'미국 에너지부 WTI 유가 — 매주 수집',           category:'외부지표',     is_active:true,  freq:'weekly',  hour:8,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ext-customs',   source_name:'관세청 무역통계',     description:'한국 관세청 수출입 통계 데이터',               category:'외부지표',     is_active:true,  freq:'monthly', hour:10, minute:0,  day_of_week:0, day_of_month:15, interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ext-ecos',      source_name:'한국은행 ECOS',       description:'한국은행 기준금리·환율 등 월간 지표',          category:'외부지표',     is_active:true,  freq:'monthly', hour:9,  minute:0,  day_of_week:0, day_of_month:2,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
   // AI 파이프라인
-  { source_id:'ml-s0',         source_name:'데이터 집계 (S0)',  description:'수주·재고·발주를 주간 단위로 묶어서 정리',   category:'AI파이프라인', is_active:true, freq:'weekly',  hour:2,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'ml-s3',         source_name:'피처 생성 (S3)',    description:'AI가 학습할 수 있도록 데이터를 가공',        category:'AI파이프라인', is_active:true, freq:'weekly',  hour:3,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'ml-s4',         source_name:'AI 수요예측 (S4)',  description:'P10/P50/P90 예측값 생성 (1~13주 앞)',        category:'AI파이프라인', is_active:true, freq:'weekly',  hour:4,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'ml-s5',         source_name:'리스크 분석 (S5)', description:'제품별 A/B/C/D 위험 등급 산출',             category:'AI파이프라인', is_active:true, freq:'weekly',  hour:5,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'ml-s6',         source_name:'생산·구매 권고 (S6)', description:'AI 기반 생산·발주 우선순위 생성',         category:'AI파이프라인', is_active:true, freq:'weekly',  hour:6,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
+  { source_id:'ml-s0',         source_name:'데이터 집계 (S0)',    description:'수주·재고·발주를 주간 단위로 묶어서 정리',     category:'AI파이프라인', is_active:true,  freq:'weekly',  hour:2,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ml-s3',         source_name:'피처 생성 (S3)',      description:'AI가 학습할 수 있도록 데이터를 가공',          category:'AI파이프라인', is_active:true,  freq:'weekly',  hour:3,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ml-s4',         source_name:'AI 수요예측 (S4)',    description:'P10/P50/P90 예측값 생성 (1~13주 앞)',          category:'AI파이프라인', is_active:true,  freq:'weekly',  hour:4,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ml-s5',         source_name:'리스크 분석 (S5)',    description:'제품별 A/B/C/D 위험 등급 산출',               category:'AI파이프라인', is_active:true,  freq:'weekly',  hour:5,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ml-s6',         source_name:'생산·구매 권고 (S6)', description:'AI 기반 생산·발주 우선순위 생성',             category:'AI파이프라인', is_active:true,  freq:'weekly',  hour:6,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
   // 기타
-  { source_id:'news-collect',  source_name:'업계 동향 뉴스',   description:'반도체·부품 관련 뉴스 자동 수집',           category:'기타',        is_active:true,  freq:'hourly',  hour:0,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
-  { source_id:'ai-insights',   source_name:'AI 인사이트 요약', description:'대시보드 AI 분석 요약 자동 갱신',           category:'기타',        is_active:true,  freq:'hourly',  hour:0,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null },
+  { source_id:'report-email',  source_name:'주간 임원 보고서 메일', description:'매주 월요일 오전 AI 요약 보고서를 이메일 발송', category:'기타',        is_active:true,  freq:'weekly',  hour:9,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'news-collect',  source_name:'업계 동향 뉴스',      description:'반도체·부품 관련 뉴스 자동 수집',             category:'기타',         is_active:true,  freq:'hourly',  hour:0,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
+  { source_id:'ai-insights',   source_name:'AI 인사이트 요약',    description:'대시보드 AI 분석 요약 자동 갱신',             category:'기타',         is_active:true,  freq:'hourly',  hour:0,  minute:0,  day_of_week:0, day_of_month:1,  interval_hours:6,  updated_at:null, last_run_at:null, last_run_status:null },
 ]
 
 /* ──────────────────────────────────────────────
@@ -307,6 +311,21 @@ function ScheduleCard({
               마지막 저장: <span style={{ color:T.text2 }}>{local.updated_at.slice(0,16).replace('T',' ')}</span>
             </span>
           )}
+          {local.last_run_at && (
+            <span style={{ color:T.text3 }}>
+              마지막 실행:{' '}
+              <span style={{
+                color: local.last_run_status === 'success' ? T.green
+                     : local.last_run_status === 'error'   ? T.red ?? '#EF4444'
+                     : local.last_run_status === 'running'  ? T.blue
+                     : T.text2,
+                fontWeight: 600,
+              }}>
+                {local.last_run_at.slice(0,16).replace('T',' ')}
+                {local.last_run_status === 'success' ? ' ✓' : local.last_run_status === 'error' ? ' ✗' : local.last_run_status === 'running' ? ' ⋯' : ''}
+              </span>
+            </span>
+          )}
         </div>
 
         <Btn
@@ -345,14 +364,16 @@ export default function BatchSchedule() {
           if (!db) return def
           return {
             ...def,
-            is_active:      db.is_active,
-            freq:           db.freq as Freq,
-            hour:           db.hour,
-            minute:         db.minute,
-            day_of_week:    db.day_of_week,
-            day_of_month:   db.day_of_month,
-            interval_hours: db.interval_hours,
-            updated_at:     db.updated_at,
+            is_active:       db.is_active,
+            freq:            db.freq as Freq,
+            hour:            db.hour,
+            minute:          db.minute,
+            day_of_week:     db.day_of_week,
+            day_of_month:    db.day_of_month,
+            interval_hours:  db.interval_hours,
+            updated_at:      db.updated_at,
+            last_run_at:     (db as any).last_run_at     ?? null,
+            last_run_status: (db as any).last_run_status ?? null,
           }
         }))
         setDbBadge('db')
