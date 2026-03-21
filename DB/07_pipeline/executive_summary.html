@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 수요예측 모델 — 경영진 요약 보고서</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  :root {
+    --primary: #1e40af;
+    --primary-light: #3b82f6;
+    --success: #059669;
+    --success-light: #d1fae5;
+    --warning: #d97706;
+    --warning-light: #fef3c7;
+    --danger: #dc2626;
+    --danger-light: #fee2e2;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    background: var(--gray-50);
+    color: var(--gray-900);
+    line-height: 1.6;
+  }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #2563eb 100%);
+    color: white;
+    padding: 40px 48px 32px;
+  }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  .header .subtitle { font-size: 15px; opacity: 0.85; }
+  .header .date-badge {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .header-bottom {
+    display: flex; gap: 32px; margin-top: 24px;
+    padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);
+  }
+  .header-stat { text-align: center; }
+  .header-stat .label { font-size: 12px; opacity: 0.7; margin-bottom: 2px; }
+  .header-stat .value { font-size: 22px; font-weight: 700; }
+  .header-stat .unit { font-size: 12px; opacity: 0.7; }
+
+  /* Container */
+  .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+  /* 한 줄 요약 */
+  .one-liner {
+    background: white;
+    border: 2px solid var(--primary-light);
+    border-radius: 12px;
+    padding: 24px 32px;
+    margin-bottom: 32px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .one-liner .icon { font-size: 32px; }
+  .one-liner .text { font-size: 17px; font-weight: 500; }
+  .one-liner .text strong { color: var(--primary); }
+
+  /* Section */
+  .section {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+  .section-header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--gray-200);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-header .num {
+    background: var(--primary);
+    color: white;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+  }
+  .section-header h2 { font-size: 18px; font-weight: 600; }
+  .section-body { padding: 24px 28px; }
+
+  /* KPI Cards */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-card {
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    transition: transform 0.15s;
+  }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .kpi-card .kpi-label { font-size: 12px; color: var(--gray-500); margin-bottom: 4px; }
+  .kpi-card .kpi-value { font-size: 28px; font-weight: 700; }
+  .kpi-card .kpi-sub { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+  .kpi-card.good { border-color: var(--success); background: var(--success-light); }
+  .kpi-card.good .kpi-value { color: var(--success); }
+  .kpi-card.warn { border-color: var(--warning); background: var(--warning-light); }
+  .kpi-card.warn .kpi-value { color: var(--warning); }
+
+  /* Gauge desc */
+  .gauge-desc {
+    background: var(--gray-50);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--gray-700);
+  }
+  .gauge-desc strong { color: var(--primary); }
+
+  /* Table */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data-table th {
+    background: var(--gray-50);
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--gray-200);
+    font-size: 13px;
+    color: var(--gray-700);
+  }
+  .data-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--gray-100);
+  }
+  .data-table tr:hover { background: var(--gray-50); }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-good { background: var(--success-light); color: var(--success); }
+  .badge-warn { background: var(--warning-light); color: var(--warning); }
+  .badge-danger { background: var(--danger-light); color: var(--danger); }
+  .badge-blue { background: #dbeafe; color: var(--primary); }
+
+  /* Chart container */
+  .chart-container { margin: 16px 0; }
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  /* Decision box */
+  .decision-box {
+    border: 2px solid var(--primary-light);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 20px;
+  }
+  .decision-box .dbox-header {
+    background: var(--primary);
+    color: white;
+    padding: 12px 20px;
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .decision-box .dbox-body { padding: 0; }
+  .decision-box .dbox-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--gray-100);
+    gap: 16px;
+  }
+  .decision-box .dbox-item:last-child { border-bottom: none; }
+  .decision-box .dbox-q { flex: 1; font-size: 14px; }
+  .decision-box .dbox-a {
+    background: var(--success-light);
+    color: var(--success);
+    padding: 4px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  /* Roadmap */
+  .roadmap { display: flex; gap: 0; margin: 20px 0; }
+  .roadmap-item {
+    flex: 1;
+    padding: 20px;
+    text-align: center;
+    position: relative;
+  }
+  .roadmap-item::after {
+    content: '→';
+    position: absolute;
+    right: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 20px;
+    color: var(--gray-300);
+  }
+  .roadmap-item:last-child::after { display: none; }
+  .roadmap-item .rm-phase {
+    font-size: 11px;
+    color: var(--gray-500);
+    margin-bottom: 4px;
+  }
+  .roadmap-item .rm-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .roadmap-item .rm-target {
+    font-size: 13px;
+    color: var(--gray-500);
+  }
+  .roadmap-item.current {
+    background: #eff6ff;
+    border-radius: 10px;
+    border: 2px solid var(--primary-light);
+  }
+  .roadmap-item.current .rm-title { color: var(--primary); }
+
+  /* Insight cards */
+  .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .insight-card {
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .insight-card .ic-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .insight-card .ic-body { font-size: 13px; color: var(--gray-700); line-height: 1.7; }
+  .insight-card .ic-body li { margin-bottom: 4px; }
+
+  /* Error product profile */
+  .profile-bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 0;
+  }
+  .profile-bar .pb-label { width: 160px; font-size: 13px; color: var(--gray-700); }
+  .profile-bar .pb-track { flex: 1; height: 24px; background: var(--gray-100); border-radius: 4px; position: relative; overflow: hidden; }
+  .profile-bar .pb-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding: 0 8px; }
+  .profile-bar .pb-value { font-size: 11px; font-weight: 600; color: white; white-space: nowrap; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 24px;
+    color: var(--gray-500);
+    font-size: 12px;
+  }
+
+  @media print {
+    .header { padding: 20px; }
+    .container { padding: 16px; }
+    .section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>AI 수요예측 모델 — 경영진 요약 보고서</h1>
+      <div class="subtitle">반도체 부품·소재 수요 변동성 분석 및 재고 리스크 최적화 AI SaaS</div>
+    </div>
+    <div class="date-badge">보고일: 2026-03-07 | 모델: LightGBM v2</div>
+  </div>
+  <div class="header-bottom">
+    <div class="header-stat">
+      <div class="label">분석 대상 제품</div>
+      <div class="value">3,148<span class="unit">개</span></div>
+    </div>
+    <div class="header-stat">
+      <div class="label">주간 학습 데이터</div>
+      <div class="value">82,159<span class="unit">행</span></div>
+    </div>
+    <div class="header-stat">
+      <div class="label">월간 학습 데이터</div>
+      <div class="value">45,268<span class="unit">행</span></div>
+    </div>
+    <div class="header-stat">
+      <div class="label">실험 수행</div>
+      <div class="value">10<span class="unit">건</span></div>
+    </div>
+    <div class="header-stat">
+      <div class="label">활용 피처</div>
+      <div class="value">69<span class="unit">개</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ========== 한 줄 요약 ========== -->
+<div class="one-liner">
+  <div class="icon">📊</div>
+  <div class="text">
+    <strong>월간 예측 R²=0.64</strong>로 실무 활용 가능 수준 달성 — 월 단위 생산계획·발주에 <strong>즉시 적용</strong> 권장<br>
+    주간 예측 R²=0.27은 보조 지표로 활용, 구조적 개선 후 고도화 필요
+  </div>
+</div>
+
+<!-- ========== 1. 모델 성능 현황 ========== -->
+<div class="section">
+  <div class="section-header">
+    <div class="num">1</div>
+    <h2>모델 성능 현황</h2>
+  </div>
+  <div class="section-body">
+    <div class="kpi-row">
+      <div class="kpi-card good">
+        <div class="kpi-label">월간 예측 정확도 (R²)</div>
+        <div class="kpi-value">64.0%</div>
+        <div class="kpi-sub">✅ 실무 적용 가능</div>
+      </div>
+      <div class="kpi-card warn">
+        <div class="kpi-label">주간 예측 정확도 (R²)</div>
+        <div class="kpi-value">26.7%</div>
+        <div class="kpi-sub">⚠️ 보조 지표용</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">월간 평균 오차 (MAE)</div>
+        <div class="kpi-value">59.6<span style="font-size:14px">개</span></div>
+        <div class="kpi-sub">예측값과 실제값의 평균 차이</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">주간 평균 오차 (MAE)</div>
+        <div class="kpi-value">49.7<span style="font-size:14px">개</span></div>
+        <div class="kpi-sub">예측값과 실제값의 평균 차이</div>
+      </div>
+    </div>
+
+    <div class="gauge-desc">
+      <strong>R² (결정계수)란?</strong> 모델이 실제 수주 변동의 몇 %를 설명할 수 있는지 나타내는 지표입니다.<br>
+      • <strong>64%</strong> = "10번 예측하면 6~7번은 방향과 크기를 맞춘다" → 의사결정 보조에 활용 가능<br>
+      • <strong>27%</strong> = "10번 중 3번 정도 맞춘다" → 단독 의사결정에는 부족, 알림/참고용
+    </div>
+
+    <!-- Gauge Charts -->
+    <div class="chart-row" style="margin-top:20px">
+      <div id="gauge-monthly" class="chart-container"></div>
+      <div id="gauge-weekly" class="chart-container"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 2. 왜 월간이 주간보다 정확한가 ========== -->
+<div class="section">
+  <div class="section-header">
+    <div class="num">2</div>
+    <h2>주간 vs 월간 — 왜 차이가 나는가?</h2>
+  </div>
+  <div class="section-body">
+    <div class="chart-row">
+      <div id="chart-compare" class="chart-container"></div>
+      <div>
+        <div class="insight-card" style="height:100%">
+          <div class="ic-title">💡 핵심 원인</div>
+          <div class="ic-body">
+            <ul style="padding-left:18px">
+              <li><strong>노이즈 감소 효과</strong> — 주 단위 수주는 요일·시점에 따라 변동이 크지만, 월로 합산하면 이런 노이즈가 평균화됩니다</li>
+              <li style="margin-top:8px"><strong>패턴 안정성</strong> — 월간 트렌드(계절성, 프로젝트 사이클)는 주간 변동보다 예측 가능한 패턴을 보입니다</li>
+              <li style="margin-top:8px"><strong>과적합 감소</strong> — 월간 데이터는 훈련-검증 격차(Gap)가 0.11로, 주간(0.20)보다 모델이 안정적으로 학습합니다</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <table class="data-table" style="margin-top:20px">
+      <thead>
+        <tr>
+          <th>비교 항목</th>
+          <th>주간 예측</th>
+          <th>월간 예측</th>
+          <th>차이</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>설명력 (R²)</strong></td>
+          <td>26.7%</td>
+          <td><strong>64.0%</strong></td>
+          <td><span class="badge badge-good">+37.3%p</span></td>
+        </tr>
+        <tr>
+          <td><strong>평균 오차 (MAE)</strong></td>
+          <td>49.7개</td>
+          <td>59.6개</td>
+          <td><span class="badge badge-blue">월간은 절대량이 더 커서 오차도 큼</span></td>
+        </tr>
+        <tr>
+          <td><strong>과적합 수준</strong></td>
+          <td>Gap 0.09 <span class="badge badge-warn">주의</span></td>
+          <td>Gap 0.11 <span class="badge badge-warn">주의</span></td>
+          <td>유사</td>
+        </tr>
+        <tr>
+          <td><strong>학습 기간</strong></td>
+          <td>95주 (약 1년 10개월)</td>
+          <td>20개월 (약 1년 8개월)</td>
+          <td>유사</td>
+        </tr>
+        <tr>
+          <td><strong>검증 기간</strong></td>
+          <td>24주 (약 6개월)</td>
+          <td>6개월</td>
+          <td>동일</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========== 3. 10가지 실험 결과 요약 ========== -->
+<div class="section">
+  <div class="section-header">
+    <div class="num">3</div>
+    <h2>개선 시도 결과 — 무엇이 효과 있었나?</h2>
+  </div>
+  <div class="section-body">
+    <p style="font-size:14px;color:var(--gray-700);margin-bottom:16px">
+      5가지 다른 접근 방식을 주간·월간 각각 적용하여 총 10건의 실험을 수행했습니다.
+    </p>
+
+    <div class="chart-row">
+      <div id="chart-weekly-exp" class="chart-container"></div>
+      <div id="chart-monthly-exp" class="chart-container"></div>
+    </div>
+
+    <table class="data-table" style="margin-top:20px">
+      <thead>
+        <tr>
+          <th>시도한 방법</th>
+          <th>설명</th>
+          <th>주간 R²</th>
+          <th>월간 R²</th>
+          <th>판정</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>V1: 기본 설정</strong></td>
+          <td>별도 조정 없이 학습</td>
+          <td>26.4%</td>
+          <td><strong>64.0% ★</strong></td>
+          <td><span class="badge badge-good">월간 최적</span></td>
+        </tr>
+        <tr>
+          <td><strong>V3: 정규화 강화</strong></td>
+          <td>모델 복잡도를 제한하여 안정성 향상</td>
+          <td><strong>26.7% ★</strong></td>
+          <td>59.8%</td>
+          <td><span class="badge badge-good">주간 최적</span></td>
+        </tr>
+        <tr>
+          <td><strong>V2: Log 변환</strong></td>
+          <td>큰 수주량을 압축해서 학습</td>
+          <td>-0.05%</td>
+          <td>29.4%</td>
+          <td><span class="badge badge-danger">부적합</span></td>
+        </tr>
+        <tr>
+          <td><strong>V4: Log+정규화</strong></td>
+          <td>V2와 V3을 결합</td>
+          <td>-0.16%</td>
+          <td>31.8%</td>
+          <td><span class="badge badge-danger">부적합</span></td>
+        </tr>
+        <tr>
+          <td><strong>V5: 종합 개선</strong></td>
+          <td>Log+정규화+파생변수+이상치처리</td>
+          <td>0.01%</td>
+          <td>24.5%</td>
+          <td><span class="badge badge-danger">부적합</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="gauge-desc" style="margin-top:16px">
+      <strong>핵심 결론:</strong><br>
+      • <strong>Log 변환</strong>(큰 수치를 압축하는 기법)은 이 데이터에 맞지 않습니다 — 대규모 수주 예측을 오히려 망가뜨림<br>
+      • <strong>정규화 강화</strong>는 주간 예측의 과적합을 55% 줄이면서 정확도를 유지 → 주간에 효과적<br>
+      • 월간 예측은 기본 설정이 이미 충분히 좋아서 추가 조정 시 오히려 성능 하락
+    </div>
+  </div>
+</div>
+
+<!-- ========== 4. 예측이 어려운 제품 프로파일 ========== -->
+<div class="section">
+  <div class="section-header">
+    <div class="num">4</div>
+    <h2>예측이 어려운 제품의 특징</h2>
+  </div>
+  <div class="section-body">
+    <p style="font-size:14px;color:var(--gray-700);margin-bottom:16px">
+      에러가 높은 제품군을 분석한 결과, 다음과 같은 공통 특성이 발견되었습니다.
+    </p>
+
+    <div id="chart-error-profile" class="chart-container"></div>
+
+    <div class="insight-grid" style="margin-top:20px">
+      <div class="insight-card">
+        <div class="ic-title">🔴 예측 어려운 제품</div>
+        <div class="ic-body">
+          <ul style="padding-left:18px">
+            <li><strong>수주 변동이 큰 제품</strong> — 어떤 주에는 0, 어떤 주에는 수천 개</li>
+            <li><strong>대규모 스팟 수주</strong>가 간헐적으로 발생하는 제품</li>
+            <li><strong>거래 규모가 큰</strong> 전략 제품/핵심 고객 물량</li>
+          </ul>
+        </div>
+      </div>
+      <div class="insight-card">
+        <div class="ic-title">🟢 예측 잘 되는 제품</div>
+        <div class="ic-body">
+          <ul style="padding-left:18px">
+            <li><strong>수주가 꾸준한</strong> 제품 — 매주 비슷한 수량</li>
+            <li><strong>소량·정기 발주</strong> 패턴의 범용 부품</li>
+            <li><strong>계절성이 뚜렷한</strong> 제품 (패턴 학습 용이)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="gauge-desc" style="margin-top:16px">
+      <strong>실무 제안:</strong> 예측이 어려운 고변동 제품은 <strong>AI 예측 + 영업 담당자 보정</strong>을 병행하는 것이 가장 현실적입니다.
+      AI가 기본 예측값을 제시하고, 담당자가 고객 미팅·프로젝트 일정 등 정성적 정보를 반영하여 보정합니다.
+    </div>
+  </div>
+</div>
+
+<!-- ========== 5. 예측에 영향을 주는 핵심 요인 ========== -->
+<div class="section">
+  <div class="section-header">
+    <div class="num">5</div>
+    <h2>예측에 영향을 주는 핵심 요인 TOP 10</h2>
+  </div>
+  <div class="section-body">
+    <p style="font-size:14px;color:var(--gray-700);margin-bottom:16px">
+      AI 모델이 예측할 때 가장 많이 참고하는 데이터입니다. 이 데이터의 품질이 예측 정확도를 좌우합니다.
+    </p>
+    <div class="chart-row">
+      <div id="chart-fi" class="chart-container"></div>
+      <div>
+        <table class="data-table">
+          <thead>
+            <tr><th>#</th><th>핵심 요인</th><th>카테고리</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td><strong>26주 수주 이동평균</strong></td><td><span class="badge badge-blue">수주 트렌드</span></td></tr>
+            <tr><td>2</td><td><strong>4주 매출 이동평균</strong></td><td><span class="badge badge-blue">매출 트렌드</span></td></tr>
+            <tr><td>3</td><td><strong>13주 수주 이동평균</strong></td><td><span class="badge badge-blue">수주 트렌드</span></td></tr>
+            <tr><td>4</td><td><strong>4주 수주 최대값</strong></td><td><span class="badge badge-warn">변동성</span></td></tr>
+            <tr><td>5</td><td><strong>직전 주 매출량</strong></td><td><span class="badge badge-blue">매출 최신</span></td></tr>
+            <tr><td>6</td><td><strong>구리 LME 가격</strong></td><td><span class="badge badge-good">외부지표</span></td></tr>
+            <tr><td>7</td><td><strong>USD/KRW 환율 변동률</strong></td><td><span class="badge badge-good">외부지표</span></td></tr>
+            <tr><td>8</td><td><strong>DRAM 가격 변동률</strong></td><td><span class="badge badge-good">외부지표</span></td></tr>
+            <tr><td>9</td><td><strong>현재 재고량</strong></td><td><span class="badge badge-warn">재고</span></td></tr>
+            <tr><td>10</td><td><strong>SOX 반도체지수 변동률</strong></td><td><span class="badge badge-good">외부지표</span></td></tr>
+          </tbody>
+        </table>
+        <div class="gauge-desc" style="margin-top:12px">
+          <strong>시사점:</strong> 내부 수주/매출 데이터뿐 아니라 <strong>외부 경제지표</strong>(구리가격, 환율, DRAM, SOX지수)도 예측에 유의미하게 기여합니다.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 6. 활용 방안 및 의사결정 ========== -->
+<div class="section">
+  <div class="section-header">
+    <div class="num">6</div>
+    <h2>활용 방안 및 의사결정 요청</h2>
+  </div>
+  <div class="section-body">
+
+    <table class="data-table" style="margin-bottom:24px">
+      <thead>
+        <tr><th>활용 영역</th><th>주간 예측</th><th>월간 예측</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>생산계획 수립</strong></td>
+          <td><span class="badge badge-warn">보조 참고</span></td>
+          <td><span class="badge badge-good">즉시 활용</span> — 월별 생산 물량 결정</td>
+        </tr>
+        <tr>
+          <td><strong>원자재 발주</strong></td>
+          <td><span class="badge badge-warn">보조 참고</span></td>
+          <td><span class="badge badge-good">즉시 활용</span> — 월별 발주량·시점 결정</td>
+        </tr>
+        <tr>
+          <td><strong>재고 목표 설정</strong></td>
+          <td>—</td>
+          <td><span class="badge badge-good">즉시 활용</span> — 적정 재고 수준 산출</td>
+        </tr>
+        <tr>
+          <td><strong>이상 징후 감지</strong></td>
+          <td><span class="badge badge-good">즉시 활용</span> — 급등/급락 알림</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><strong>고객별 수요 예측</strong></td>
+          <td><span class="badge badge-danger">미지원</span></td>
+          <td><span class="badge badge-danger">미지원</span> (향후 과제)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="decision-box">
+      <div class="dbox-header">📋 경영진 의사결정 요청 사항</div>
+      <div class="dbox-body">
+        <div class="dbox-item">
+          <div class="dbox-q"><strong>월간 예측 실무 적용 시점</strong> — R²=64%로 산업 평균(50~70%) 범위 내 달성</div>
+          <div class="dbox-a">권장: 즉시 적용</div>
+        </div>
+        <div class="dbox-item">
+          <div class="dbox-q"><strong>주간 예측 활용 범위</strong> — R²=27%로 단독 의사결정에는 부족</div>
+          <div class="dbox-a">권장: 알림/보조용</div>
+        </div>
+        <div class="dbox-item">
+          <div class="dbox-q"><strong>고변동 제품 관리 방식</strong> — 수주 변동이 큰 제품군의 예측 한계</div>
+          <div class="dbox-a">권장: AI + 담당자 보정</div>
+        </div>
+        <div class="dbox-item">
+          <div class="dbox-q"><strong>추가 모델 개선 투자</strong> — 2-Stage 모델(수주 유무 분류 → 수량 회귀) 개발</div>
+          <div class="dbox-a">권장: 개발 진행</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 7. 로드맵 ========== -->
+<div class="section">
+  <div class="section-header">
+    <div class="num">7</div>
+    <h2>향후 로드맵</h2>
+  </div>
+  <div class="section-body">
+    <div class="roadmap">
+      <div class="roadmap-item current">
+        <div class="rm-phase">현재</div>
+        <div class="rm-title">베이스라인 완성</div>
+        <div class="rm-target">월간 R²=64%<br>주간 R²=27%</div>
+      </div>
+      <div class="roadmap-item">
+        <div class="rm-phase">단기</div>
+        <div class="rm-title">실무 연동</div>
+        <div class="rm-target">월간 예측 →<br>생산계획·발주 자동 연동</div>
+      </div>
+      <div class="roadmap-item">
+        <div class="rm-phase">중기</div>
+        <div class="rm-title">2-Stage 모델</div>
+        <div class="rm-target">주간 R² 목표: 50%↑<br>수주 유무 분류 + 수량 회귀</div>
+      </div>
+      <div class="roadmap-item">
+        <div class="rm-phase">장기</div>
+        <div class="rm-title">고도화</div>
+        <div class="rm-target">월간 R² 목표: 75%↑<br>제품군별 특화 모델</div>
+      </div>
+    </div>
+
+    <div class="gauge-desc">
+      <strong>2-Stage 모델이란?</strong><br>
+      현재 모델은 "다음 주/월에 몇 개 수주될까?"를 바로 예측합니다.<br>
+      2-Stage 모델은 두 단계로 나눕니다:<br>
+      &nbsp;&nbsp;1단계: "수주가 있을까, 없을까?" (분류) → 수주 0인 제품 필터링<br>
+      &nbsp;&nbsp;2단계: "수주가 있다면, 몇 개?" (회귀) → 정확한 수량 예측<br>
+      이렇게 하면 수주가 드문 제품의 예측 정확도가 크게 향상됩니다.
+    </div>
+  </div>
+</div>
+
+</div><!-- container -->
+
+<div class="footer">
+  AI 수요예측 모델 경영진 요약 보고서 | 생성: 2026-03-07 | LightGBM v2 5-Fold CV 앙상블
+</div>
+
+<!-- ========== CHARTS ========== -->
+<script>
+// Color palette
+const BLUE = '#3b82f6', GREEN = '#059669', RED = '#dc2626', ORANGE = '#d97706', GRAY = '#9ca3af';
+
+// 1. Gauge Charts
+Plotly.newPlot('gauge-monthly', [{
+  type: 'indicator', mode: 'gauge+number',
+  value: 64.0,
+  title: { text: '<b>월간 예측 정확도</b><br><span style="font-size:12px;color:#6b7280">R² (결정계수)</span>', font: { size: 16 } },
+  number: { suffix: '%', font: { size: 36 } },
+  gauge: {
+    axis: { range: [0, 100], tickwidth: 1, tickcolor: '#e5e7eb' },
+    bar: { color: GREEN, thickness: 0.7 },
+    bgcolor: '#f3f4f6',
+    steps: [
+      { range: [0, 30], color: '#fee2e2' },
+      { range: [30, 50], color: '#fef3c7' },
+      { range: [50, 70], color: '#d1fae5' },
+      { range: [70, 100], color: '#a7f3d0' }
+    ],
+    threshold: { line: { color: '#111', width: 3 }, thickness: 0.8, value: 64 }
+  }
+}], {
+  height: 240, margin: { t: 60, b: 20, l: 30, r: 30 },
+  paper_bgcolor: 'transparent',
+  annotations: [
+    { x: 0.15, y: 0, text: '낮음', showarrow: false, font: { size: 10, color: RED } },
+    { x: 0.5, y: 0, text: '보통', showarrow: false, font: { size: 10, color: ORANGE } },
+    { x: 0.85, y: 0, text: '우수', showarrow: false, font: { size: 10, color: GREEN } }
+  ]
+}, { responsive: true, displayModeBar: false });
+
+Plotly.newPlot('gauge-weekly', [{
+  type: 'indicator', mode: 'gauge+number',
+  value: 26.7,
+  title: { text: '<b>주간 예측 정확도</b><br><span style="font-size:12px;color:#6b7280">R² (결정계수)</span>', font: { size: 16 } },
+  number: { suffix: '%', font: { size: 36 } },
+  gauge: {
+    axis: { range: [0, 100], tickwidth: 1, tickcolor: '#e5e7eb' },
+    bar: { color: ORANGE, thickness: 0.7 },
+    bgcolor: '#f3f4f6',
+    steps: [
+      { range: [0, 30], color: '#fee2e2' },
+      { range: [30, 50], color: '#fef3c7' },
+      { range: [50, 70], color: '#d1fae5' },
+      { range: [70, 100], color: '#a7f3d0' }
+    ],
+    threshold: { line: { color: '#111', width: 3 }, thickness: 0.8, value: 26.7 }
+  }
+}], {
+  height: 240, margin: { t: 60, b: 20, l: 30, r: 30 },
+  paper_bgcolor: 'transparent',
+  annotations: [
+    { x: 0.15, y: 0, text: '낮음', showarrow: false, font: { size: 10, color: RED } },
+    { x: 0.5, y: 0, text: '보통', showarrow: false, font: { size: 10, color: ORANGE } },
+    { x: 0.85, y: 0, text: '우수', showarrow: false, font: { size: 10, color: GREEN } }
+  ]
+}, { responsive: true, displayModeBar: false });
+
+// 2. Weekly vs Monthly Comparison
+Plotly.newPlot('chart-compare', [
+  {
+    type: 'bar',
+    name: '주간 예측',
+    x: ['설명력 (R²)', '과적합 안정성', '학습 안정성'],
+    y: [26.7, (1-0.09)*100, 53.2],
+    marker: { color: ORANGE, cornerradius: 4 },
+    text: ['26.7%', '91%', '53.2%'],
+    textposition: 'outside',
+    textfont: { size: 12, color: ORANGE }
+  },
+  {
+    type: 'bar',
+    name: '월간 예측',
+    x: ['설명력 (R²)', '과적합 안정성', '학습 안정성'],
+    y: [64.0, (1-0.11)*100, 53.3],
+    marker: { color: BLUE, cornerradius: 4 },
+    text: ['64.0%', '89%', '53.3%'],
+    textposition: 'outside',
+    textfont: { size: 12, color: BLUE }
+  }
+], {
+  height: 340,
+  margin: { t: 40, b: 60, l: 50, r: 20 },
+  paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+  barmode: 'group',
+  yaxis: { range: [0, 110], title: '', gridcolor: '#f3f4f6', showgrid: true },
+  legend: { orientation: 'h', y: 1.12 },
+  font: { family: 'Pretendard, sans-serif' }
+}, { responsive: true, displayModeBar: false });
+
+// 3. Weekly experiments
+const weeklyExps = ['V1: 기본', 'V2: Log변환', 'V3: 정규화★', 'V4: Log+정규화', 'V5: 종합'];
+const weeklyR2 = [26.4, -0.05, 26.7, -0.16, 0.01];
+const weeklyColors = weeklyR2.map((v,i) => i===2 ? GREEN : v < 5 ? RED : GRAY);
+
+Plotly.newPlot('chart-weekly-exp', [{
+  type: 'bar',
+  x: weeklyExps, y: weeklyR2,
+  marker: { color: weeklyColors, cornerradius: 4 },
+  text: weeklyR2.map(v => v.toFixed(1)+'%'),
+  textposition: 'outside',
+  textfont: { size: 11 }
+}], {
+  height: 300,
+  title: { text: '<b>주간 예측 — 실험별 R²</b>', font: { size: 14 } },
+  margin: { t: 50, b: 80, l: 50, r: 20 },
+  paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+  yaxis: { range: [-5, 35], gridcolor: '#f3f4f6', suffix: '%' },
+  xaxis: { tickangle: -20 },
+  font: { family: 'Pretendard, sans-serif', size: 11 },
+  shapes: [{ type: 'line', y0: 0, y1: 0, x0: -0.5, x1: 4.5, line: { color: '#ccc', dash: 'dot' } }]
+}, { responsive: true, displayModeBar: false });
+
+// 4. Monthly experiments
+const monthlyExps = ['V1: 기본★', 'V2: Log변환', 'V3: 정규화', 'V4: Log+정규화', 'V5: 종합'];
+const monthlyR2 = [64.0, 29.4, 59.8, 31.8, 24.5];
+const monthlyColors = monthlyR2.map((v,i) => i===0 ? GREEN : v > 50 ? BLUE : RED);
+
+Plotly.newPlot('chart-monthly-exp', [{
+  type: 'bar',
+  x: monthlyExps, y: monthlyR2,
+  marker: { color: monthlyColors, cornerradius: 4 },
+  text: monthlyR2.map(v => v.toFixed(1)+'%'),
+  textposition: 'outside',
+  textfont: { size: 11 }
+}], {
+  height: 300,
+  title: { text: '<b>월간 예측 — 실험별 R²</b>', font: { size: 14 } },
+  margin: { t: 50, b: 80, l: 50, r: 20 },
+  paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+  yaxis: { range: [0, 75], gridcolor: '#f3f4f6', suffix: '%' },
+  xaxis: { tickangle: -20 },
+  font: { family: 'Pretendard, sans-serif', size: 11 }
+}, { responsive: true, displayModeBar: false });
+
+// 5. Error profile - Cohen's d
+const errorFactors = ['수주 변동성 (13주 표준편차)', '장기 수주 트렌드 (26주 평균)', '중기 수주 트렌드 (13주 평균)', '매출 규모 (4주 매출 평균)', '극단 수주 (4주 최대값)'];
+const cohenD = [1.53, 1.48, 1.42, 1.36, 1.30];
+
+Plotly.newPlot('chart-error-profile', [{
+  type: 'bar',
+  y: errorFactors.reverse(),
+  x: cohenD.reverse(),
+  orientation: 'h',
+  marker: {
+    color: cohenD.map(v => v > 1.4 ? '#dc2626' : v > 1.3 ? '#f59e0b' : '#6b7280'),
+    cornerradius: 4
+  },
+  text: cohenD.map(v => 'd='+v.toFixed(2)),
+  textposition: 'outside',
+  textfont: { size: 12 }
+}], {
+  height: 260,
+  title: { text: '<b>에러 원인 분석 — 어떤 특성의 제품이 예측하기 어려운가?</b>', font: { size: 14 } },
+  margin: { t: 50, b: 30, l: 250, r: 80 },
+  paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+  xaxis: { title: 'Cohen\'s d (영향도)', gridcolor: '#f3f4f6', range: [0, 1.8] },
+  font: { family: 'Pretendard, sans-serif', size: 12 },
+  annotations: [{
+    x: 1.65, y: 4,
+    text: '<b>d > 0.8 = 큰 영향</b>',
+    showarrow: false,
+    font: { size: 10, color: '#dc2626' },
+    bgcolor: '#fee2e2',
+    borderpad: 4
+  }]
+}, { responsive: true, displayModeBar: false });
+
+// 6. Feature Importance
+const fiNames = [
+  '26주 수주 평균', '4주 매출 평균', '13주 수주 평균', '4주 수주 최대',
+  '직전 주 매출', '구리 LME', 'USD/KRW 변동률', 'DRAM 변동률',
+  '현재 재고량', 'SOX 반도체지수'
+].reverse();
+const fiValues = [930.6, 467.9, 422.3, 139.9, 123.7, 105.9, 89.3, 88.4, 80.9, 78.0].reverse();
+
+Plotly.newPlot('chart-fi', [{
+  type: 'bar',
+  y: fiNames,
+  x: fiValues,
+  orientation: 'h',
+  marker: {
+    color: fiValues.map((v,i) => {
+      const idx = fiNames.length - 1 - i;
+      if (idx < 5) return BLUE;
+      return GREEN;
+    }),
+    cornerradius: 4
+  },
+  text: fiValues.map(v => (v).toFixed(0)+'M'),
+  textposition: 'outside',
+  textfont: { size: 11 }
+}], {
+  height: 360,
+  title: { text: '<b>예측 기여도 TOP 10 (Feature Importance)</b>', font: { size: 14 } },
+  margin: { t: 50, b: 30, l: 160, r: 60 },
+  paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+  xaxis: { title: '기여도 (Gain, 백만)', gridcolor: '#f3f4f6' },
+  font: { family: 'Pretendard, sans-serif', size: 12 }
+}, { responsive: true, displayModeBar: false });
+
+</script>
+
+</body>
+</html>

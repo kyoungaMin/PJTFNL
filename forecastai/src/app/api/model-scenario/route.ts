@@ -1,0 +1,228 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
+
+// ─── 인메모리 캐시 (5분, 키별) ──────────────────────────────────────────
+const cache = new Map<string, { data: any; ts: number }>()
+const CACHE_TTL = 300_000 // 5분
+
+function getCached(key: string) {
+  const entry = cache.get(key)
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data
+  return null
+}
+function setCache(key: string, data: any) {
+  cache.set(key, { data, ts: Date.now() })
+}
+
+// GET /api/model-scenario?model=lgbm_q_v4&product=ALL&weeks=8
+export async function GET(req: NextRequest) {
+  const modelId = req.nextUrl.searchParams.get('model') ?? 'segment_best_v1'
+  const productId = req.nextUrl.searchParams.get('product') ?? ''
+  const weeks = parseInt(req.nextUrl.searchParams.get('weeks') ?? '8')
+
+  try {
+    // 1) 제품 목록 조회 (product 파라미터가 없거나 ALL이면)
+    if (!productId || productId === 'ALL') {
+      const cacheKey = `products:${modelId}`
+      const cached = getCached(cacheKey)
+      if (cached) return NextResponse.json(cached)
+
+      // forecast_result에서 해당 모델의 고유 product_id 목록
+      // 최근 90일 데이터만 스캔하여 타임아웃 방지
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - 90)
+      const cutoffStr = cutoff.toISOString().slice(0, 10)
+
+      const { data: prodRows, error: prodErr } = await supabase
+        .from('forecast_result')
+        .select('product_id')
+        .eq('model_id', modelId)
+        .gte('target_date', cutoffStr)
+        .limit(5000)
+
+      if (prodErr) throw prodErr
+
+      const uniqueIds = [...new Set((prodRows ?? []).map(r => r.product_id))]
+
+      // product_master에서 이름 조회 (200개씩 배치)
+      const nameMap: Record<string, string> = {}
+      const specMap: Record<string, string> = {}
+
+      for (let i = 0; i < uniqueIds.length; i += 200) {
+        const chunk = uniqueIds.slice(i, i + 200)
+        const { data: masterRows } = await supabase
+          .from('product_master')
+          .select('product_code,product_name,product_specification')
+          .in('product_code', chunk)
+
+        for (const m of (masterRows ?? [])) {
+          nameMap[m.product_code] = m.product_name
+          specMap[m.product_code] = m.product_specification ?? ''
+        }
+      }
+
+      const products = uniqueIds.map(id => ({
+        id,
+        name: nameMap[id] ?? id,
+        spec: specMap[id] ?? '',
+      }))
+      products.sort((a, b) => a.name.localeCompare(b.name))
+
+      const responseData = { products, modelId }
+      setCache(cacheKey, responseData)
+      return NextResponse.json(responseData)
+    }
+
+    // 2) 특정 제품의 예측 시계열 조회
+    const detailCacheKey = `detail:${modelId}:${productId}:${weeks}`
+    const cachedDetail = getCached(detailCacheKey)
+    if (cachedDetail) return NextResponse.json(cachedDetail)
+
+    // 필요한 주수 + 여유분만 조회하여 타임아웃 방지
+    const dateCutoff = new Date()
+    dateCutoff.setDate(dateCutoff.getDate() - (weeks + 4) * 7)
+    const dateCutoffStr = dateCutoff.toISOString().slice(0, 10)
+
+    // forecast_result + product_master + production_plan 병렬 조회
+    const [forecastRes, masterRes, planRes] = await Promise.all([
+      supabase
+        .from('forecast_result')
+        .select('target_date, p10, p50, p90, actual_qty')
+        .eq('model_id', modelId)
+        .eq('product_id', productId)
+        .gte('target_date', dateCutoffStr)
+        .order('target_date', { ascending: true }),
+      supabase
+        .from('product_master')
+        .select('product_code,product_name,product_specification')
+        .eq('product_code', productId)
+        .limit(1),
+      supabase
+        .from('production_plan')
+        .select('current_inventory,safety_stock,daily_capacity,demand_p50')
+        .eq('product_id', productId)
+        .order('plan_date', { ascending: false })
+        .limit(1),
+    ])
+
+    if (forecastRes.error) throw forecastRes.error
+
+    const allRows = forecastRes.data ?? []
+    if (allRows.length === 0) {
+      return NextResponse.json({ product: null, predictions: [], modelId, source: 'empty' })
+    }
+
+    // 주별 그룹핑
+    const weekMap = new Map<string, { dates: string[], p10: number[], p50: number[], p90: number[], actual: number[] }>()
+    for (const r of allRows) {
+      const d = new Date(r.target_date + 'T00:00:00')
+      const yearStart = new Date(d.getFullYear(), 0, 1)
+      const dayOfYear = Math.floor((d.getTime() - yearStart.getTime()) / 86400000) + 1
+      const weekNum = Math.ceil(dayOfYear / 7)
+      const weekKey = `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
+
+      if (!weekMap.has(weekKey)) {
+        weekMap.set(weekKey, { dates: [], p10: [], p50: [], p90: [], actual: [] })
+      }
+      const entry = weekMap.get(weekKey)!
+      entry.dates.push(r.target_date)
+      entry.p10.push(Number(r.p10 ?? 0))
+      entry.p50.push(Number(r.p50 ?? 0))
+      entry.p90.push(Number(r.p90 ?? 0))
+      if (r.actual_qty != null) entry.actual.push(Number(r.actual_qty))
+    }
+
+    // 주별 집계 (합계)
+    const weekKeys = [...weekMap.keys()].sort()
+    const targetWeeks = weekKeys.slice(-weeks)
+    const predictions = targetWeeks.map((wk, idx) => {
+      const entry = weekMap.get(wk)!
+      const sumP10 = entry.p10.reduce((s, v) => s + v, 0)
+      const sumP50 = entry.p50.reduce((s, v) => s + v, 0)
+      const sumP90 = entry.p90.reduce((s, v) => s + v, 0)
+      const sumActual = entry.actual.length > 0 ? entry.actual.reduce((s, v) => s + v, 0) : null
+      return {
+        week: `W${String(idx + 1).padStart(2, '0')}`,
+        weekKey: wk,
+        targetDate: entry.dates[0],
+        p10: Math.round(sumP10),
+        p50: Math.round(sumP50),
+        p90: Math.round(sumP90),
+        actual: sumActual != null ? Math.round(sumActual) : null,
+        nDays: entry.dates.length,
+      }
+    })
+
+    // 3) 제품 정보
+    const masterRow = masterRes.data
+    const planRow = planRes.data
+
+    const hasPlan = planRow && planRow.length > 0 && Number(planRow[0].current_inventory ?? 0) > 0
+    let currentStock: number, safeStock: number, productionCap: number
+    let dataEstimated = false
+    const usedTables = ['forecast_result', 'product_master']
+
+    if (hasPlan) {
+      currentStock = Math.round(Number(planRow![0].current_inventory ?? 0))
+      safeStock = Math.round(Number(planRow![0].safety_stock ?? 0))
+      productionCap = Math.round(Number(planRow![0].daily_capacity ?? 0))
+      usedTables.push('production_plan')
+    } else {
+      // production_plan에 데이터 없음 → 예측 데이터 기반 추정
+      dataEstimated = true
+      const avgWeeklyP50 = predictions.length > 0
+        ? Math.round(predictions.reduce((s, p) => s + p.p50, 0) / predictions.length)
+        : 0
+      currentStock = avgWeeklyP50 * 3       // 3주치 수요를 현재 재고로 추정
+      safeStock = avgWeeklyP50 * 2           // 2주치 수요를 안전재고로 추정
+      productionCap = Math.round(avgWeeklyP50 / 5)  // 주5일 기준 일 생산능력 추정
+    }
+
+    const product = {
+      id: productId,
+      name: masterRow?.[0]?.product_name ?? productId,
+      spec: masterRow?.[0]?.product_specification ?? '',
+      currentStock,
+      safeStock,
+      productionCap,
+      estimated: dataEstimated,
+    }
+
+    // 데이터 메타 정보
+    const dateRange = predictions.length > 0
+      ? { start: predictions[0].targetDate, end: predictions[predictions.length - 1].targetDate }
+      : null
+    const totalRecords = allRows.length
+
+    const responseData = {
+      product,
+      predictions,
+      modelId,
+      source: 'database',
+      meta: {
+        totalRecords,
+        weekCount: predictions.length,
+        dateRange,
+        tables: usedTables,
+        modelDesc: ({
+          'segment_best_v1': '구간별 최적 모델 (저수요=SVR, 중·고수요=LightGBM/Ridge)',
+          'lgbm_q_v4': 'LightGBM 2-Stage 글로벌 주간 수요예측 모델 v4',
+          'lgbm_q_v3': 'LightGBM 주간 수요예측 모델 v3',
+          'lgbm_q_monthly_v2': 'LightGBM 월간 수요예측 모델 v2',
+          'svr_linear_v1': 'SVR Linear 주간 모델 v1 (저수요 특화)',
+          'ridge_monthly_v1': 'Ridge 월간 모델 v1 (중·고수요)',
+        } as Record<string, string>)[modelId] ?? modelId,
+        estimated: dataEstimated,
+      },
+    }
+
+    setCache(detailCacheKey, responseData)
+    return NextResponse.json(responseData)
+  } catch (err: any) {
+    console.error('[API] model-scenario error:', err)
+    return NextResponse.json(
+      { error: err.message ?? String(err) },
+      { status: 500 }
+    )
+  }
+}

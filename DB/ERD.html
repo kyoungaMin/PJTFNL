@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ForecastAI ERD - 반도체 부품·소재 수요예측 AI SaaS</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      overflow-x: auto;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-bottom: 1px solid #334155;
+      padding: 20px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    header .subtitle {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+
+    .canvas {
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 50px;
+      min-width: 1600px;
+    }
+
+    .layer {
+      position: relative;
+    }
+
+    .layer-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #64748b;
+      margin-bottom: 16px;
+      padding-left: 4px;
+    }
+
+    .tables-row {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    /* ── Table Card ── */
+    .table-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      min-width: 240px;
+      max-width: 320px;
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+      flex-shrink: 0;
+    }
+
+    .table-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    }
+
+    .table-header {
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #334155;
+    }
+
+    .table-header .icon {
+      font-size: 14px;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .table-header .tname {
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 12.5px;
+    }
+
+    .table-header .tname-ko {
+      font-size: 10px;
+      color: #94a3b8;
+      font-weight: 400;
+      margin-left: 2px;
+    }
+
+    .table-header .row-count {
+      margin-left: auto;
+      font-size: 10px;
+      color: #64748b;
+      font-weight: 400;
+    }
+
+    .table-body {
+      padding: 6px 0;
+    }
+
+    .col-row {
+      display: flex;
+      align-items: center;
+      padding: 3px 14px;
+      font-size: 11.5px;
+      gap: 6px;
+    }
+
+    .col-row:hover {
+      background: #ffffff08;
+    }
+
+    .col-icon {
+      font-size: 10px;
+      width: 16px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .col-name {
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 11px;
+      color: #cbd5e1;
+      min-width: 100px;
+    }
+
+    .col-type {
+      font-size: 10px;
+      color: #64748b;
+      margin-left: auto;
+    }
+
+    .col-row.pk .col-name { color: #fbbf24; font-weight: 600; }
+    .col-row.fk .col-name { color: #60a5fa; }
+
+    .table-footer {
+      padding: 6px 14px;
+      font-size: 10px;
+      color: #475569;
+      border-top: 1px solid #1a2332;
+      font-style: italic;
+    }
+
+    /* ── Color themes per group ── */
+    .group-master .table-header { background: linear-gradient(135deg, #7c3aed22, #7c3aed11); border-left: 3px solid #8b5cf6; }
+    .group-master .legend-dot { background: #8b5cf6; }
+
+    .group-txn .table-header { background: linear-gradient(135deg, #2563eb22, #2563eb11); border-left: 3px solid #3b82f6; }
+    .group-txn .legend-dot { background: #3b82f6; }
+
+    .group-ext .table-header { background: linear-gradient(135deg, #0d948822, #0d948811); border-left: 3px solid #14b8a6; }
+    .group-ext .legend-dot { background: #14b8a6; }
+
+    .group-analytics .table-header { background: linear-gradient(135deg, #ea580c22, #ea580c11); border-left: 3px solid #f97316; }
+    .group-analytics .legend-dot { background: #f97316; }
+
+    .group-agg .table-header { background: linear-gradient(135deg, #0284c722, #0284c711); border-left: 3px solid #0ea5e9; }
+    .group-agg .legend-dot { background: #0ea5e9; }
+
+    .group-ml .table-header { background: linear-gradient(135deg, #e11d4822, #e11d4811); border-left: 3px solid #f43f5e; }
+    .group-ml .legend-dot { background: #f43f5e; }
+
+    .group-auth .table-header { background: linear-gradient(135deg, #65a30d22, #65a30d11); border-left: 3px solid #84cc16; }
+    .group-auth .legend-dot { background: #84cc16; }
+
+    /* ── Relationship lines (SVG overlay) ── */
+    .rel-section {
+      margin-top: 40px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 24px;
+    }
+
+    .rel-section h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #94a3b8;
+    }
+
+    .rel-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+      gap: 8px;
+    }
+
+    .rel-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: #0f172a;
+    }
+
+    .rel-from, .rel-to {
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #334155;
+      color: #e2e8f0;
+    }
+
+    .rel-arrow {
+      color: #f97316;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .rel-label {
+      color: #64748b;
+      font-size: 10px;
+    }
+
+    .rel-cardinality {
+      font-size: 10px;
+      color: #fbbf24;
+      font-weight: 600;
+    }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: flex;
+      gap: 24px;
+      padding: 16px 24px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    @media print {
+      body { background: white; color: #1e293b; }
+      .table-card { border-color: #cbd5e1; }
+      .table-header { border-bottom-color: #e2e8f0; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ForecastAI Database ERD</h1>
+    <div class="subtitle">반도체 부품·소재 수요예측 AI SaaS &mdash; PostgreSQL (Supabase) &mdash; 30 Tables</div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div> Master</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> Transaction</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#14b8a6"></div> External</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> Analytics</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#0ea5e9"></div> Aggregation</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f43f5e"></div> ML / Eval</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#84cc16"></div> Auth</div>
+    <div class="legend-item" style="margin-left:8px; padding-left:12px; border-left:1px solid #334155;">
+      <span style="color:#fbbf24">&#9670;</span> PK
+      <span style="color:#60a5fa; margin-left:4px;">&#9671;</span> FK
+    </div>
+  </div>
+</header>
+
+<div class="canvas">
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat-item"><div class="stat-value">30</div><div class="stat-label">Tables</div></div>
+    <div class="stat-item"><div class="stat-value">7</div><div class="stat-label">Groups</div></div>
+    <div class="stat-item"><div class="stat-value">~468K</div><div class="stat-label">Core Rows</div></div>
+    <div class="stat-item"><div class="stat-value">~186K</div><div class="stat-label">Risk Scores</div></div>
+    <div class="stat-item"><div class="stat-value">~347K</div><div class="stat-label">Aggregated</div></div>
+    <div class="stat-item"><div class="stat-value">~132K</div><div class="stat-label">ML Features</div></div>
+  </div>
+
+  <!-- ═══════ Layer 1: Master ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 1 &mdash; Master Data (마스터)</div>
+    <div class="tables-row">
+
+      <!-- product_master -->
+      <div class="table-card group-master">
+        <div class="table-header">
+          <div class="icon" style="background:#8b5cf620;color:#a78bfa">&#9632;</div>
+          <span class="tname">product_master</span><span class="tname-ko">제품 마스터</span>
+          <span class="row-count">~2,500</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">product_code</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">product_name</span><span class="col-type">VARCHAR(200)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">product_specification</span><span class="col-type">VARCHAR(200)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">product_type</span><span class="col-type">VARCHAR(50)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">product_category</span><span class="col-type">VARCHAR(100)</span></div>
+        </div>
+        <div class="table-footer">Central hub &mdash; referenced by 16 tables</div>
+      </div>
+
+      <!-- supplier -->
+      <div class="table-card group-master">
+        <div class="table-header">
+          <div class="icon" style="background:#8b5cf620;color:#a78bfa">&#9632;</div>
+          <span class="tname">supplier</span><span class="tname-ko">거래처</span>
+          <span class="row-count">~300</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">customer_code</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">customer_name</span><span class="col-type">VARCHAR(200)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">country</span><span class="col-type">VARCHAR(5)</span></div>
+        </div>
+        <div class="table-footer">Referenced by purchase_order, lead_time, weekly/monthly_customer</div>
+      </div>
+
+      <!-- customer -->
+      <div class="table-card group-master">
+        <div class="table-header">
+          <div class="icon" style="background:#8b5cf620;color:#a78bfa">&#9632;</div>
+          <span class="tname">customer</span><span class="tname-ko">고객사</span>
+          <span class="row-count">~500</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">company_name</span><span class="col-type">VARCHAR(200)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">industry_type_uptae</span><span class="col-type">VARCHAR(100)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">industry_type_upjong</span><span class="col-type">VARCHAR(500)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">industry_type_jongmok</span><span class="col-type">VARCHAR(500)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">country</span><span class="col-type">VARCHAR(5)</span></div>
+        </div>
+        <div class="table-footer">Referenced by daily_revenue, daily_order</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════ Layer 2: Transactions ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 2 &mdash; Transactions (트랜잭션 &middot; 핵심 업무 데이터)</div>
+    <div class="tables-row">
+
+      <!-- bom -->
+      <div class="table-card group-txn">
+        <div class="table-header">
+          <div class="icon" style="background:#3b82f620;color:#60a5fa">&#9654;</div>
+          <span class="tname">bom</span><span class="tname-ko">자재명세서</span>
+          <span class="row-count">~3,000</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">parent_product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">component_product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">usage_qty</span><span class="col-type">NUMERIC</span></div>
+        </div>
+        <div class="table-footer">Parent-child product relationship</div>
+      </div>
+
+      <!-- purchase_order -->
+      <div class="table-card group-txn">
+        <div class="table-header">
+          <div class="icon" style="background:#3b82f620;color:#60a5fa">&#9654;</div>
+          <span class="tname">purchase_order</span><span class="tname-ko">구매발주</span>
+          <span class="row-count">~65,000</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">cd_partner</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">supplier_name</span><span class="col-type">VARCHAR(200)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">component_product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">po_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">receipt_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">po_qty</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">unit_price</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">currency</span><span class="col-type">VARCHAR(5)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status</span><span class="col-type">VARCHAR(5)</span></div>
+        </div>
+      </div>
+
+      <!-- daily_order -->
+      <div class="table-card group-txn" style="border-color:#fbbf2444;">
+        <div class="table-header" style="background:linear-gradient(135deg, #2563eb22, #fbbf2411);">
+          <div class="icon" style="background:#fbbf2420;color:#fbbf24">&#9733;</div>
+          <span class="tname">daily_order</span><span class="tname-ko">일별 수주</span>
+          <span class="row-count">~65,000</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">order_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">expected_delivery_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">customer_id</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">order_qty</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">order_amount</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status</span><span class="col-type">VARCHAR(5)</span></div>
+        </div>
+        <div class="table-footer" style="color:#fbbf24;">&#9733; Key input for demand forecasting</div>
+      </div>
+
+      <!-- daily_revenue -->
+      <div class="table-card group-txn">
+        <div class="table-header">
+          <div class="icon" style="background:#3b82f620;color:#60a5fa">&#9654;</div>
+          <span class="tname">daily_revenue</span><span class="tname-ko">일별 매출</span>
+          <span class="row-count">~100,000</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">revenue_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">customer_id</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">quantity</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">revenue_amount</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">currency</span><span class="col-type">VARCHAR(5)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">exchange_rate</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">domestic_flag</span><span class="col-type">BOOLEAN</span></div>
+        </div>
+      </div>
+
+      <!-- daily_production -->
+      <div class="table-card group-txn">
+        <div class="table-header">
+          <div class="icon" style="background:#3b82f620;color:#60a5fa">&#9654;</div>
+          <span class="tname">daily_production</span><span class="tname-ko">일별 생산</span>
+          <span class="row-count">~110,000</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">production_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">work_start_date</span><span class="col-type">TIMESTAMP</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">work_end_date</span><span class="col-type">TIMESTAMP</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">produced_qty</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">line_id</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">mfg_order_serial</span><span class="col-type">VARCHAR(30)</span></div>
+        </div>
+      </div>
+
+      <!-- inventory -->
+      <div class="table-card group-txn">
+        <div class="table-header">
+          <div class="icon" style="background:#3b82f620;color:#60a5fa">&#9654;</div>
+          <span class="tname">inventory</span><span class="tname-ko">재고 스냅샷</span>
+          <span class="row-count">~105,000</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">snapshot_date</span><span class="col-type">VARCHAR(6)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">inventory_qty</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">warehouse</span><span class="col-type">VARCHAR(10)</span></div>
+        </div>
+        <div class="table-footer">Monthly snapshot (YYYYMM)</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════ Layer 3: External Data ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 3 &mdash; External Indicators (외부지표 &middot; 시장 데이터)</div>
+    <div class="tables-row">
+
+      <!-- economic_indicator -->
+      <div class="table-card group-ext">
+        <div class="table-header">
+          <div class="icon" style="background:#14b8a620;color:#2dd4bf">&#9679;</div>
+          <span class="tname">economic_indicator</span><span class="tname-ko">경제지표</span>
+          <span class="row-count">~8,475</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">source</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">indicator_code</span><span class="col-type">VARCHAR(50)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">indicator_name</span><span class="col-type">VARCHAR(200)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">value</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">unit</span><span class="col-type">VARCHAR(50)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">fetched_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+        </div>
+        <div class="table-footer">UNIQUE(source, indicator_code, date) &mdash; FRED/EIA/ECOS</div>
+      </div>
+
+      <!-- trade_statistics -->
+      <div class="table-card group-ext">
+        <div class="table-header">
+          <div class="icon" style="background:#14b8a620;color:#2dd4bf">&#9679;</div>
+          <span class="tname">trade_statistics</span><span class="tname-ko">무역통계</span>
+          <span class="row-count">3,240</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">hs_code</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">hs_description</span><span class="col-type">VARCHAR(200)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">year_month</span><span class="col-type">VARCHAR(7)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">export_amount</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">import_amount</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">balance</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">fetched_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+        </div>
+        <div class="table-footer">UNIQUE(hs_code, year_month) &mdash; Korea Customs</div>
+      </div>
+
+      <!-- exchange_rate -->
+      <div class="table-card group-ext">
+        <div class="table-header">
+          <div class="icon" style="background:#14b8a620;color:#2dd4bf">&#9679;</div>
+          <span class="tname">exchange_rate</span><span class="tname-ko">일별 환율</span>
+          <span class="row-count">~5,300</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">base_currency</span><span class="col-type">VARCHAR(3)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">quote_currency</span><span class="col-type">VARCHAR(3)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">rate_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">rate</span><span class="col-type">NUMERIC(12,4)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">source</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">fetched_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+        </div>
+        <div class="table-footer">USD/JPY/EUR/CNY &rarr; KRW</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════ Layer 4: Analytics ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 4 &mdash; Analytics (분석 &middot; 예측형 관제 시스템)</div>
+    <div class="tables-row">
+
+      <!-- daily_inventory_estimated -->
+      <div class="table-card group-analytics">
+        <div class="table-header">
+          <div class="icon" style="background:#f9731620;color:#fb923c">&#9650;</div>
+          <span class="tname">daily_inventory_estimated</span><span class="tname-ko">일간 추정 재고</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">target_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">snapshot_base</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">cumul_produced</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">cumul_shipped</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">estimated_qty</span><span class="col-type">NUMERIC</span></div>
+        </div>
+        <div class="table-footer">= snapshot + produced - shipped</div>
+      </div>
+
+      <!-- product_lead_time -->
+      <div class="table-card group-analytics">
+        <div class="table-header">
+          <div class="icon" style="background:#f9731620;color:#fb923c">&#9650;</div>
+          <span class="tname">product_lead_time</span><span class="tname-ko">리드타임 통계</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">supplier_code</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">calc_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">avg_lead_days</span><span class="col-type">NUMERIC(8,2)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">p90_lead_days</span><span class="col-type">NUMERIC(8,2)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">sample_count</span><span class="col-type">INT</span></div>
+        </div>
+      </div>
+
+      <!-- forecast_result -->
+      <div class="table-card group-analytics">
+        <div class="table-header">
+          <div class="icon" style="background:#f9731620;color:#fb923c">&#9650;</div>
+          <span class="tname">forecast_result</span><span class="tname-ko">예측 결과</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">model_id</span><span class="col-type">VARCHAR(50)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">forecast_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">target_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">horizon_days</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">p10 / p50 / p90</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">actual_qty</span><span class="col-type">NUMERIC</span></div>
+        </div>
+        <div class="table-footer">Prediction bands: P10(optimistic) ~ P90(pessimistic)</div>
+      </div>
+
+      <!-- risk_score -->
+      <div class="table-card group-analytics" style="border-color:#f9731644;">
+        <div class="table-header" style="background:linear-gradient(135deg, #ea580c22, #fbbf2411);">
+          <div class="icon" style="background:#f9731640;color:#fb923c">&#9888;</div>
+          <span class="tname">risk_score</span><span class="tname-ko">리스크 스코어</span>
+          <span class="row-count">~186,303</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">eval_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">eval_type</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">stockout_risk</span><span class="col-type">NUMERIC(5,2)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">excess_risk</span><span class="col-type">NUMERIC(5,2)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">delivery_risk</span><span class="col-type">NUMERIC(5,2)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">margin_risk</span><span class="col-type">NUMERIC(5,2)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">total_risk</span><span class="col-type">NUMERIC(5,2)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">risk_grade</span><span class="col-type">VARCHAR(1)</span></div>
+        </div>
+        <div class="table-footer">Weights: stockout 35% + excess 25% + delivery 25% + margin 15%</div>
+      </div>
+
+      <!-- action_queue -->
+      <div class="table-card group-analytics">
+        <div class="table-header">
+          <div class="icon" style="background:#f9731620;color:#fb923c">&#9650;</div>
+          <span class="tname">action_queue</span><span class="tname-ko">조치 큐</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">eval_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">risk_type</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">severity</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">action_type</span><span class="col-type">VARCHAR(30)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">description</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status</span><span class="col-type">VARCHAR(15)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">assigned_to</span><span class="col-type">UUID</span></div>
+        </div>
+        <div class="table-footer">Recommended actions: expedite/increase/reduce/adjust</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════ Layer 5: Aggregation ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 5 &mdash; Aggregation (주별 &middot; 월별 집계)</div>
+    <div class="tables-row">
+
+      <!-- calendar_week -->
+      <div class="table-card group-agg">
+        <div class="table-header">
+          <div class="icon" style="background:#0ea5e920;color:#38bdf8">&#9636;</div>
+          <span class="tname">calendar_week</span><span class="tname-ko">주차 캘린더</span>
+          <span class="row-count">121</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">year_week</span><span class="col-type">VARCHAR(8)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">year</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">week_num</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">week_start</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">week_end</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">year_month</span><span class="col-type">VARCHAR(7)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">quarter</span><span class="col-type">SMALLINT</span></div>
+        </div>
+        <div class="table-footer">ISO 8601 dimension table</div>
+      </div>
+
+      <!-- weekly_product_summary -->
+      <div class="table-card group-agg">
+        <div class="table-header">
+          <div class="icon" style="background:#0ea5e920;color:#38bdf8">&#9636;</div>
+          <span class="tname">weekly_product_summary</span><span class="tname-ko">주별 제품 집계</span>
+          <span class="row-count">130,697</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">year_week</span><span class="col-type">VARCHAR(8)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">order_qty / amount / count</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">revenue_qty / amount / count</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">produced_qty / count</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">customer_count</span><span class="col-type">INT</span></div>
+        </div>
+      </div>
+
+      <!-- weekly_customer_summary -->
+      <div class="table-card group-agg">
+        <div class="table-header">
+          <div class="icon" style="background:#0ea5e920;color:#38bdf8">&#9636;</div>
+          <span class="tname">weekly_customer_summary</span><span class="tname-ko">주별 거래처 집계</span>
+          <span class="row-count">95,868</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">customer_id</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">year_week</span><span class="col-type">VARCHAR(8)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">order_qty / amount / count</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">revenue_qty / amount / count</span><span class="col-type">NUMERIC</span></div>
+        </div>
+      </div>
+
+      <!-- monthly_product_summary -->
+      <div class="table-card group-agg">
+        <div class="table-header">
+          <div class="icon" style="background:#0ea5e920;color:#38bdf8">&#9636;</div>
+          <span class="tname">monthly_product_summary</span><span class="tname-ko">월별 제품 집계</span>
+          <span class="row-count">65,712</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">year_month</span><span class="col-type">VARCHAR(7)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">order / revenue / produced</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">customer_count</span><span class="col-type">INT</span></div>
+        </div>
+      </div>
+
+      <!-- monthly_customer_summary -->
+      <div class="table-card group-agg">
+        <div class="table-header">
+          <div class="icon" style="background:#0ea5e920;color:#38bdf8">&#9636;</div>
+          <span class="tname">monthly_customer_summary</span><span class="tname-ko">월별 거래처 집계</span>
+          <span class="row-count">55,149</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">customer_id</span><span class="col-type">VARCHAR(10)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">year_month</span><span class="col-type">VARCHAR(7)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">order / revenue</span><span class="col-type">NUMERIC</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════ Layer 6: ML / Feature Store ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 6 &mdash; ML Feature Store &amp; Evaluation (피처 스토어 &middot; 모델 평가)</div>
+    <div class="tables-row">
+
+      <!-- feature_store -->
+      <div class="table-card group-ml">
+        <div class="table-header">
+          <div class="icon" style="background:#f43f5e20;color:#fb7185">&#9830;</div>
+          <span class="tname">feature_store</span><span class="tname-ko">피처 스토어</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">target_date</span><span class="col-type">DATE</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">order_qty_7d/30d/90d</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">shipped/produced_qty</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">inventory_qty</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">macro indicators</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">dow / month / is_holiday</span><span class="col-type">various</span></div>
+        </div>
+        <div class="table-footer">Daily ML input features (~20 cols)</div>
+      </div>
+
+      <!-- feature_store_weekly -->
+      <div class="table-card group-ml">
+        <div class="table-header">
+          <div class="icon" style="background:#f43f5e20;color:#fb7185">&#9830;</div>
+          <span class="tname">feature_store_weekly</span><span class="tname-ko">주간 피처 스토어</span>
+          <span class="row-count">83,719</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">year_week</span><span class="col-type">VARCHAR(8)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">lag features (1~52w)</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">moving avg (4/13/26w)</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">market / macro / trade</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">target_1w/2w/4w</span><span class="col-type">NUMERIC</span></div>
+        </div>
+        <div class="table-footer">LightGBM weekly ~70 features + 3 targets</div>
+      </div>
+
+      <!-- feature_store_monthly -->
+      <div class="table-card group-ml">
+        <div class="table-header">
+          <div class="icon" style="background:#f43f5e20;color:#fb7185">&#9830;</div>
+          <span class="tname">feature_store_monthly</span><span class="tname-ko">월간 피처 스토어</span>
+          <span class="row-count">48,416</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">year_month</span><span class="col-type">VARCHAR(7)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">~55 features</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">target_1m/2m/3m</span><span class="col-type">NUMERIC</span></div>
+        </div>
+        <div class="table-footer">LightGBM monthly ~55 features + targets</div>
+      </div>
+
+      <!-- model_evaluation -->
+      <div class="table-card group-ml">
+        <div class="table-header">
+          <div class="icon" style="background:#f43f5e20;color:#fb7185">&#9830;</div>
+          <span class="tname">model_evaluation</span><span class="tname-ko">모델 평가</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">model_id</span><span class="col-type">VARCHAR(50)</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">product_id</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">horizon_key / days</span><span class="col-type">VARCHAR/INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">mape / rmse / mae</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">coverage_rate</span><span class="col-type">NUMERIC(5,2)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">pinball_p10/p50/p90</span><span class="col-type">NUMERIC</span></div>
+        </div>
+        <div class="table-footer">Walk-Forward CV metrics</div>
+      </div>
+
+      <!-- feature_importance -->
+      <div class="table-card group-ml">
+        <div class="table-header">
+          <div class="icon" style="background:#f43f5e20;color:#fb7185">&#9830;</div>
+          <span class="tname">feature_importance</span><span class="tname-ko">피처 중요도</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">model_id</span><span class="col-type">VARCHAR(50)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">horizon_key</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">feature_name</span><span class="col-type">VARCHAR(100)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">importance_gain</span><span class="col-type">NUMERIC</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">rank_gain</span><span class="col-type">INT</span></div>
+        </div>
+        <div class="table-footer">LightGBM gain/split importance</div>
+      </div>
+
+      <!-- tuning_result -->
+      <div class="table-card group-ml">
+        <div class="table-header">
+          <div class="icon" style="background:#f43f5e20;color:#fb7185">&#9830;</div>
+          <span class="tname">tuning_result</span><span class="tname-ko">튜닝 결과</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">model_id</span><span class="col-type">VARCHAR(50)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">horizon_key</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">params_json</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">metric_name / value</span><span class="col-type">various</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">is_best</span><span class="col-type">BOOLEAN</span></div>
+        </div>
+        <div class="table-footer">Grid Search hyperparameter history</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════ Layer 7: Auth ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 7 &mdash; Authentication (인증 &middot; 권한)</div>
+    <div class="tables-row">
+
+      <!-- user_profile -->
+      <div class="table-card group-auth">
+        <div class="table-header">
+          <div class="icon" style="background:#84cc1620;color:#a3e635">&#9679;</div>
+          <span class="tname">user_profile</span><span class="tname-ko">사용자 프로필</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">UUID (FK auth.users)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">email</span><span class="col-type">VARCHAR(255)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">display_name</span><span class="col-type">VARCHAR(100)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">role</span><span class="col-type">VARCHAR(20)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">department</span><span class="col-type">VARCHAR(100)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">is_active</span><span class="col-type">BOOLEAN</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">last_login_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+        </div>
+        <div class="table-footer">RLS: self R/W + admin full &mdash; roles: admin/manager/analyst/viewer</div>
+      </div>
+
+      <!-- login_history -->
+      <div class="table-card group-auth">
+        <div class="table-header">
+          <div class="icon" style="background:#84cc1620;color:#a3e635">&#9679;</div>
+          <span class="tname">login_history</span><span class="tname-ko">로그인 이력</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row fk"><span class="col-icon">&#9671;</span><span class="col-name">user_id</span><span class="col-type">UUID</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">login_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">ip_address</span><span class="col-type">VARCHAR(45)</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">user_agent</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status</span><span class="col-type">VARCHAR(10)</span></div>
+        </div>
+        <div class="table-footer">Audit log: success / failure</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════ Relationships Section ═══════ -->
+  <div class="rel-section">
+    <h2>Relationships (Logical FK References)</h2>
+    <div class="rel-grid">
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">bom.parent_product_id</span>
+        <span class="rel-label">parent product</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">bom.component_product_id</span>
+        <span class="rel-label">child component</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">purchase_order.component_product_id</span>
+        <span class="rel-label">ordered material</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">daily_revenue.product_id</span>
+        <span class="rel-label">sold product</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">daily_production.product_id</span>
+        <span class="rel-label">produced product</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">daily_order.product_id</span>
+        <span class="rel-label">ordered product</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">inventory.product_id</span>
+        <span class="rel-label">stocked product</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">forecast_result.product_id</span>
+        <span class="rel-label">forecasted product</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">risk_score.product_id</span>
+        <span class="rel-label">risk-evaluated product</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">product_master.product_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">action_queue.product_id</span>
+        <span class="rel-label">action target</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">supplier.customer_code</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">purchase_order.cd_partner</span>
+        <span class="rel-label">order supplier</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">customer.id</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">daily_revenue.customer_id</span>
+        <span class="rel-label">revenue customer</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">customer.id</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">daily_order.customer_id</span>
+        <span class="rel-label">ordering customer</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:1</span>
+        <span class="rel-from">auth.users.id</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">user_profile.id</span>
+        <span class="rel-label">profile</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">user_profile.id</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">login_history.user_id</span>
+        <span class="rel-label">login audit</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">user_profile.id</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">action_queue.assigned_to</span>
+        <span class="rel-label">assigned user</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">calendar_week.year_week</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">weekly_product_summary.year_week</span>
+        <span class="rel-label">week dimension</span>
+      </div>
+      <div class="rel-item">
+        <span class="rel-cardinality">1:N</span>
+        <span class="rel-from">calendar_week.year_week</span>
+        <span class="rel-arrow">&rarr;</span>
+        <span class="rel-to">weekly_customer_summary.year_week</span>
+        <span class="rel-label">week dimension</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Flow -->
+  <div class="rel-section">
+    <h2>Data Flow Architecture</h2>
+    <div style="font-family:'Cascadia Code','Fira Code','Consolas',monospace; font-size:12px; line-height:2; color:#94a3b8; padding:10px;">
+      <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="background:#0f172a;padding:16px 20px;border-radius:8px;border:1px solid #334155;min-width:200px;">
+          <div style="color:#8b5cf6;font-weight:700;margin-bottom:8px;">SOURCE</div>
+          <div>product_master</div>
+          <div>supplier / customer</div>
+          <div>bom</div>
+        </div>
+        <div style="color:#f97316;font-size:20px;align-self:center;">&rarr;</div>
+        <div style="background:#0f172a;padding:16px 20px;border-radius:8px;border:1px solid #334155;min-width:200px;">
+          <div style="color:#3b82f6;font-weight:700;margin-bottom:8px;">INGEST</div>
+          <div>daily_order &#9733;</div>
+          <div>daily_revenue</div>
+          <div>daily_production</div>
+          <div>purchase_order</div>
+          <div>inventory</div>
+        </div>
+        <div style="color:#f97316;font-size:20px;align-self:center;">&rarr;</div>
+        <div style="background:#0f172a;padding:16px 20px;border-radius:8px;border:1px solid #334155;min-width:200px;">
+          <div style="color:#0ea5e9;font-weight:700;margin-bottom:8px;">AGGREGATE</div>
+          <div>weekly_product_summary</div>
+          <div>weekly_customer_summary</div>
+          <div>monthly_product_summary</div>
+          <div>monthly_customer_summary</div>
+        </div>
+        <div style="color:#f97316;font-size:20px;align-self:center;">&rarr;</div>
+        <div style="background:#0f172a;padding:16px 20px;border-radius:8px;border:1px solid #334155;min-width:200px;">
+          <div style="color:#f43f5e;font-weight:700;margin-bottom:8px;">ML PIPELINE</div>
+          <div>feature_store_weekly</div>
+          <div>feature_store_monthly</div>
+          <div>model_evaluation</div>
+          <div>feature_importance</div>
+          <div>tuning_result</div>
+        </div>
+        <div style="color:#f97316;font-size:20px;align-self:center;">&rarr;</div>
+        <div style="background:#0f172a;padding:16px 20px;border-radius:8px;border:1px solid #334155;min-width:200px;">
+          <div style="color:#f97316;font-weight:700;margin-bottom:8px;">OUTPUT</div>
+          <div>forecast_result</div>
+          <div>risk_score</div>
+          <div>action_queue</div>
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:20px;">
+        <div style="background:#0f172a;padding:16px 20px;border-radius:8px;border:1px solid #334155;min-width:200px;">
+          <div style="color:#14b8a6;font-weight:700;margin-bottom:8px;">EXTERNAL</div>
+          <div>economic_indicator</div>
+          <div>trade_statistics</div>
+          <div>exchange_rate</div>
+        </div>
+        <div style="color:#64748b;font-size:11px;align-self:center;">&uarr; feeds into ML features</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+  <!-- ═══════ Layer 8: Operations / Monitoring ═══════ -->
+  <div class="layer">
+    <div class="layer-title">Layer 8 &mdash; Operations &amp; Monitoring (운영 &middot; 모니터링)</div>
+    <div class="tables-row">
+
+      <!-- pipeline_run -->
+      <div class="table-card group-auth">
+        <div class="table-header">
+          <span class="table-name">pipeline_run</span>
+          <span class="table-rows">파이프라인 실행 이력</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">pipeline_id</span><span class="col-type">VARCHAR</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">pipeline_name</span><span class="col-type">VARCHAR</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">started_at / finished_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status</span><span class="col-type">VARCHAR</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">duration_sec</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">message</span><span class="col-type">TEXT</span></div>
+        </div>
+        <div class="table-footer">Pipeline execution history &mdash; DataPipelineManager</div>
+      </div>
+
+      <!-- system_alert -->
+      <div class="table-card group-auth" style="border-color:#f9731644;">
+        <div class="table-header" style="background:linear-gradient(135deg, #ea580c22, #fbbf2411);">
+          <span class="table-name">system_alert</span>
+          <span class="table-rows">시스템 알림</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">UUID</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">alert_type</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">severity</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">title / message</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">source / target_page</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">is_read / is_dismissed</span><span class="col-type">BOOLEAN</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">metadata</span><span class="col-type">JSONB</span></div>
+        </div>
+        <div class="table-footer">Pipeline failure / DB down / API error alerts (6h dedup)</div>
+      </div>
+
+      <!-- system_health_log -->
+      <div class="table-card group-auth">
+        <div class="table-header">
+          <span class="table-name">system_health_log</span>
+          <span class="table-rows">헬스체크 기록</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">checked_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">service</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">latency_ms</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">metadata</span><span class="col-type">JSONB</span></div>
+        </div>
+        <div class="table-footer">DB latency + system status snapshots</div>
+      </div>
+
+      <!-- api_log -->
+      <div class="table-card group-auth">
+        <div class="table-header">
+          <span class="table-name">api_log</span>
+          <span class="table-rows">API 요청 로그</span>
+        </div>
+        <div class="table-body">
+          <div class="col-row pk"><span class="col-icon">&#9670;</span><span class="col-name">id</span><span class="col-type">BIGINT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">route</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">method</span><span class="col-type">TEXT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">status_code</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">duration_ms</span><span class="col-type">INT</span></div>
+          <div class="col-row"><span class="col-icon"></span><span class="col-name">error_message</span><span class="col-type">TEXT</span></div>
+        </div>
+        <div class="table-footer">API error rate &amp; response time tracking</div>
+      </div>
+
+    </div>
+  </div>
+
+<footer style="padding:20px 40px;border-top:1px solid #334155;text-align:center;font-size:11px;color:#475569;">
+  ForecastAI ERD &mdash; 34 Tables &mdash; PostgreSQL (Supabase) &mdash; Last updated 2026-03-18
+</footer>
+
+</body>
+</html>

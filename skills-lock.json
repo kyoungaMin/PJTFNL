@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "pptx": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "a26d8720d2886860eb109e502d409545b4a4d7827eac2c264bbad313e1a3b02c"
+    }
+  }
+}

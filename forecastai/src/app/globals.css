@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { min-width: 1280px; }
+body { font-family: 'Pretendard','Noto Sans KR','Apple SD Gothic Neo',sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; min-width: 1280px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #F8FAFC; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+/* Firefox 스크롤바 */
+* { scrollbar-width: thin; scrollbar-color: #CBD5E1 #F8FAFC; }
+button:focus { outline: none; }
+input, select, textarea { font-family: inherit; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* KPI 스켈레톤 shimmer */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.shimmer-box {
+  background: linear-gradient(90deg, #eef2f7 25%, #dde4ed 50%, #eef2f7 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}

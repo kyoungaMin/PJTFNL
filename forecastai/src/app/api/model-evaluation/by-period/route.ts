@@ -1,0 +1,200 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
+
+// GET /api/model-evaluation/by-period?type=weekly&period=2025-W37
+export async function GET(req: NextRequest) {
+  const type = req.nextUrl.searchParams.get('type') ?? 'weekly'
+  const period = req.nextUrl.searchParams.get('period') ?? ''
+  const modelParam = req.nextUrl.searchParams.get('model') ?? ''
+
+  // 모델 ID 결정: 파라미터 지정 → 기본값 (주간: lgbm_q_v3, 월간: lgbm_q_monthly_v1)
+  const defaultModel = 'lgbm_q_v3'
+  const VALID_MODELS = [
+    'lgbm_q_v4', 'lgbm_q_v3', 'lgbm_q_v2', 'ridge_v1', 'svr_linear_v1',
+    'lgbm_q_monthly_v2', 'lgbm_q_monthly_v1', 'ridge_monthly_v1', 'svr_linear_monthly_v1',
+  ]
+  const modelId = modelParam && VALID_MODELS.includes(modelParam) ? modelParam : defaultModel
+
+  if (!period) {
+    return NextResponse.json({ error: 'period parameter required' }, { status: 400 })
+  }
+
+  try {
+    // Parse period to date range
+    let startDate: string, endDate: string
+
+    if (type === 'monthly') {
+      // period = "2026-01"
+      const [y, m] = period.split('-').map(Number)
+      startDate = `${y}-${String(m).padStart(2, '0')}-01`
+      const nextMonth = m === 12 ? new Date(y + 1, 0, 1) : new Date(y, m, 1)
+      endDate = nextMonth.toISOString().slice(0, 10)
+    } else {
+      // period = "2025-W37" → compute Monday of that ISO week
+      const match = period.match(/^(\d{4})-W(\d{2})$/)
+      if (!match) {
+        return NextResponse.json({ error: 'Invalid period format' }, { status: 400 })
+      }
+      const [, yearStr, weekStr] = match
+      const year = parseInt(yearStr), week = parseInt(weekStr)
+
+      // ISO week date to Monday
+      const jan4 = new Date(year, 0, 4)
+      const dayOfWeek = jan4.getDay() || 7
+      const mondayOfWeek1 = new Date(jan4)
+      mondayOfWeek1.setDate(jan4.getDate() - dayOfWeek + 1)
+      const targetMonday = new Date(mondayOfWeek1)
+      targetMonday.setDate(mondayOfWeek1.getDate() + (week - 1) * 7)
+      const targetSunday = new Date(targetMonday)
+      targetSunday.setDate(targetMonday.getDate() + 7)
+
+      startDate = targetMonday.toISOString().slice(0, 10)
+      endDate = targetSunday.toISOString().slice(0, 10)
+    }
+
+    // Query forecast_result for the date range
+    const { data, error } = await supabase
+      .from('forecast_result')
+      .select('product_id, p10, p50, p90, actual_qty')
+      .eq('model_id', modelId)
+      .gte('target_date', startDate)
+      .lt('target_date', endDate)
+      .not('actual_qty', 'is', null)
+
+    if (error) throw error
+
+    const rows = data ?? []
+    if (rows.length === 0) {
+      return NextResponse.json({
+        period, type, n_products: 0, n_records: 0,
+        date_range: { start: startDate, end: endDate },
+        metrics: { mae: 0, rmse: 0, r2: 0, mape: 0, wmape: 0, tolerance_5_rate: 0 },
+        segments: [],
+        top_error_products: [],
+        top_accurate_products: [],
+      })
+    }
+
+    // Compute metrics
+    const errors = rows.map(r => ({
+      pid: r.product_id,
+      pred: r.p50,
+      actual: r.actual_qty,
+      error: Math.abs(r.p50 - r.actual_qty),
+      sqError: (r.p50 - r.actual_qty) ** 2,
+    }))
+
+    const n = errors.length
+    const mae = errors.reduce((s, e) => s + e.error, 0) / n
+    const mse = errors.reduce((s, e) => s + e.sqError, 0) / n
+    const rmse = Math.sqrt(mse)
+
+    // R²
+    const meanActual = errors.reduce((s, e) => s + e.actual, 0) / n
+    const ssTot = errors.reduce((s, e) => s + (e.actual - meanActual) ** 2, 0)
+    const ssRes = errors.reduce((s, e) => s + e.sqError, 0)
+    const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
+
+    // MAPE (exclude actual=0)
+    const nonZero = errors.filter(e => e.actual !== 0)
+    const mape = nonZero.length > 0
+      ? nonZero.reduce((s, e) => s + e.error / Math.abs(e.actual), 0) / nonZero.length * 100
+      : 0
+
+    // Weighted MAPE — 수주량 가중 (대량 제품 중심 정확도)
+    const totalActual = nonZero.reduce((s, e) => s + Math.abs(e.actual), 0)
+    const wmape = totalActual > 0
+      ? nonZero.reduce((s, e) => s + e.error, 0) / totalActual * 100
+      : 0
+
+    // ±5 tolerance
+    const within5 = errors.filter(e => e.error <= 5).length
+    const tolerance_5_rate = (within5 / n) * 100
+
+    // Unique products
+    const uniqueProducts = new Set(errors.map(e => e.pid))
+
+    // ── 세그먼트별 평가 (대량 ≥100, 중량 10~99, 소량 <10) ──
+    const segments = [
+      { label: '대량 (≥100)', filter: (e: typeof errors[0]) => e.actual >= 100 },
+      { label: '중량 (10~99)', filter: (e: typeof errors[0]) => e.actual >= 10 && e.actual < 100 },
+      { label: '소량 (<10)', filter: (e: typeof errors[0]) => e.actual < 10 },
+    ].map(seg => {
+      const items = errors.filter(seg.filter)
+      if (items.length === 0) return { label: seg.label, count: 0, mae: 0, rmse: 0, r2: 0, mape: 0, wmape: 0, tolerance_5_rate: 0 }
+      const sN = items.length
+      const sMae = items.reduce((s, e) => s + e.error, 0) / sN
+      const sRmse = Math.sqrt(items.reduce((s, e) => s + e.sqError, 0) / sN)
+      const sMean = items.reduce((s, e) => s + e.actual, 0) / sN
+      const sSsTot = items.reduce((s, e) => s + (e.actual - sMean) ** 2, 0)
+      const sSsRes = items.reduce((s, e) => s + e.sqError, 0)
+      const sR2 = sSsTot > 0 ? 1 - sSsRes / sSsTot : 0
+      const sNonZero = items.filter(e => e.actual !== 0)
+      const sMape = sNonZero.length > 0
+        ? sNonZero.reduce((s, e) => s + e.error / Math.abs(e.actual), 0) / sNonZero.length * 100 : 0
+      const sTotalActual = sNonZero.reduce((s, e) => s + Math.abs(e.actual), 0)
+      const sWmape = sTotalActual > 0 ? sNonZero.reduce((s, e) => s + e.error, 0) / sTotalActual * 100 : 0
+      const sWithin5 = items.filter(e => e.error <= 5).length
+      return {
+        label: seg.label, count: sN,
+        mae: Math.round(sMae * 100) / 100,
+        rmse: Math.round(sRmse * 100) / 100,
+        r2: Math.round(sR2 * 10000) / 10000,
+        mape: Math.round(sMape * 100) / 100,
+        wmape: Math.round(sWmape * 100) / 100,
+        tolerance_5_rate: Math.round((sWithin5 / sN) * 10000) / 100,
+      }
+    })
+
+    // Top error / accurate products
+    const sorted = [...errors].sort((a, b) => b.error - a.error)
+    const topErrorRaw = sorted.slice(0, 10)
+    const topAccurateRaw = sorted.filter(e => e.actual > 0 || e.pred > 0).slice(-10).reverse()
+
+    // product_master 조회 (제품명 + 규격)
+    const allPids = [...new Set([...topErrorRaw, ...topAccurateRaw].map(e => e.pid))]
+    const { data: pmRows } = await supabase
+      .from('product_master')
+      .select('product_code, product_name, product_specification')
+      .in('product_code', allPids)
+    const pmMap: Record<string, { name: string; spec: string }> = {}
+    for (const pm of pmRows ?? []) {
+      pmMap[pm.product_code] = { name: pm.product_name ?? '', spec: pm.product_specification ?? '' }
+    }
+
+    const enrichProduct = (e: typeof errors[0]) => ({
+      product_id: e.pid,
+      product_name: pmMap[e.pid]?.name ?? '',
+      product_specification: pmMap[e.pid]?.spec ?? '',
+      predicted: Math.round(e.pred * 10) / 10,
+      actual: Math.round(e.actual * 10) / 10,
+      error: Math.round(e.error * 10) / 10,
+    })
+
+    const topError = topErrorRaw.map(enrichProduct)
+    const topAccurate = topAccurateRaw.map(enrichProduct)
+
+    return NextResponse.json({
+      period, type, modelId,
+      n_products: uniqueProducts.size,
+      n_records: n,
+      date_range: { start: startDate, end: endDate },
+      metrics: {
+        mae: Math.round(mae * 100) / 100,
+        rmse: Math.round(rmse * 100) / 100,
+        r2: Math.round(r2 * 10000) / 10000,
+        mape: Math.round(mape * 100) / 100,
+        wmape: Math.round(wmape * 100) / 100,
+        tolerance_5_rate: Math.round(tolerance_5_rate * 100) / 100,
+      },
+      segments,
+      top_error_products: topError,
+      top_accurate_products: topAccurate,
+    })
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err.message ?? String(err) },
+      { status: 500 }
+    )
+  }
+}
