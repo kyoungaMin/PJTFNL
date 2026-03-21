@@ -31,6 +31,16 @@ function useDbSkus(model: 'weekly' | 'monthly') {
 
 type ForecastRow = { w: string; p10: number | null; p50: number; p90: number | null; actual: number | null }
 
+/** 'W2' → '2주차', 'W-3' → '3주 전', 'W0' → '현재 주' */
+function fmtWeek(w: string): string {
+  const m = w.match(/^W(-?\d+)$/)
+  if (!m) return w
+  const n = Number(m[1])
+  if (n === 0) return '현재 주'
+  if (n < 0) return `${Math.abs(n)}주 전`
+  return `${n}주차`
+}
+
 type EvaluationData = { mape: number; coverageRate: number; mae: number }
 
 type ApiResp = {
@@ -968,13 +978,13 @@ export default function PageWeeklyForecast() {
             <Select
               value={startW}
               onChange={v => { setStartW(v); if (endW && v > endW) setEndW(v) }}
-              options={data.map(d => ({ value: d.w, label: d.w }))}
+              options={data.map(d => ({ value: d.w, label: fmtWeek(d.w) }))}
             />
             <span style={{ fontSize: 11, color: T.text3 }}>~</span>
             <Select
               value={endW}
               onChange={v => { setEndW(v); if (startW && v < startW) setStartW(v) }}
-              options={[...data].reverse().map(d => ({ value: d.w, label: d.w }))}
+              options={[...data].reverse().map(d => ({ value: d.w, label: fmtWeek(d.w) }))}
             />
           </>
         )}
@@ -1124,7 +1134,7 @@ export default function PageWeeklyForecast() {
 
             return {
               cells: [
-                <span key="w" style={{ fontFamily: "'IBM Plex Mono',monospace", fontWeight: 600 }}>{d.w}</span>,
+                <span key="w" style={{ fontFamily: "'IBM Plex Mono',monospace", fontWeight: 600 }}>{fmtWeek(d.w)}</span>,
                 <span key="p10" style={{ color: T.text3 }}>{d.p10 != null ? d.p10.toLocaleString() : '─'}</span>,
                 <span key="p50" style={{ fontWeight: 700, color: T.blue }}>{d.p50?.toLocaleString()}</span>,
                 <span key="p90" style={{ color: T.text3 }}>{d.p90 != null ? d.p90.toLocaleString() : '─'}</span>,

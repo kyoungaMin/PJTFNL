@@ -137,6 +137,11 @@ function pearson(xs: number[], ys: number[]): number | null {
   return Math.max(-1, Math.min(1, num / (dx * dy)))
 }
 
+/** 'YY.MM → YY년 MM월 */
+function fmtMonth(m: string): string {
+  return m.replace(/^'?(\d{2})\.(\d{2})$/, '$1년 $2월')
+}
+
 /** 밴드폭 % (P90-P10)/P50 */
 function bandwidthPct(row: MonthRow): number | null {
   if (row.p10 == null || row.p90 == null || !row.p50) return null
@@ -211,7 +216,7 @@ function ForecastKpiBar({ forecast, historyItems }: { forecast: MonthRow[]; hist
   const kpis = [
     {
       label: '예측 피크 시점',
-      value: peakRow.m,
+      value: fmtMonth(peakRow.m),
       sub: `P50 ${(peakRow.p50 ?? 0).toLocaleString()} EA`,
       color: T.blue,
       bg: T.blueSoft,
@@ -220,7 +225,9 @@ function ForecastKpiBar({ forecast, historyItems }: { forecast: MonthRow[]; hist
     },
     {
       label: `${forecast.length}개월 예측 합계`,
-      value: `${(totalP50 / 1000).toFixed(1)}k EA`,
+      value: totalP50 >= 10000
+        ? `${(totalP50 / 10000).toFixed(1)}만 개`
+        : `${totalP50.toLocaleString()}개`,
       sub: vsActual != null
         ? `직전 실적 대비 ${Number(vsActual) >= 0 ? '+' : ''}${vsActual}%`
         : 'P50 기준 누적 수요',
@@ -830,13 +837,13 @@ export default function PageMonthlyForecast() {
             <Select
               value={startM}
               onChange={v => { setStartM(v); if (endM && v > endM) setEndM(v) }}
-              options={chartData.map(d => ({ value: d.m, label: d.m }))}
+              options={chartData.map(d => ({ value: d.m, label: fmtMonth(d.m) }))}
             />
             <span style={{ fontSize: 11, color: T.text3 }}>~</span>
             <Select
               value={endM}
               onChange={v => { setEndM(v); if (startM && v < startM) setStartM(v) }}
-              options={[...chartData].reverse().map(d => ({ value: d.m, label: d.m }))}
+              options={[...chartData].reverse().map(d => ({ value: d.m, label: fmtMonth(d.m) }))}
             />
           </>
         )}
@@ -968,7 +975,7 @@ export default function PageMonthlyForecast() {
                 // 실적 행
                 ...filteredHistory.map(d => ({
                   cells: [
-                    <span style={{ fontWeight: 600, color: T.text2 }}>{d.m}</span>,
+                    <span style={{ fontWeight: 600, color: T.text2 }}>{fmtMonth(d.m)}</span>,
                     <span style={{ fontSize: 11, color: T.orange, fontWeight: 600, background: T.orangeSoft, border: `1px solid ${T.orangeMid}`, borderRadius: 4, padding: '1px 6px' }}>실적</span>,
                     <span style={{ fontWeight: 700, fontFamily: "'IBM Plex Mono',monospace", color: T.orange }}>{(d.actual ?? 0).toLocaleString()}</span>,
                     <span style={{ color: T.text3 }}>─</span>,
@@ -985,7 +992,7 @@ export default function PageMonthlyForecast() {
                   const pct  = diff != null && prevP50 ? ((diff / prevP50) * 100).toFixed(1) : null
                   return {
                     cells: [
-                      <span style={{ fontWeight: 600, color: T.text1 }}>{d.m}</span>,
+                      <span style={{ fontWeight: 600, color: T.text1 }}>{fmtMonth(d.m)}</span>,
                       <span style={{ fontSize: 11, color: T.blue, fontWeight: 600, background: T.blueSoft, border: `1px solid ${T.blueMid}`, borderRadius: 4, padding: '1px 6px' }}>예측</span>,
                       <span style={{ fontWeight: 700, fontFamily: "'IBM Plex Mono',monospace", color: T.blue }}>{(d.p50 ?? 0).toLocaleString()}</span>,
                       bw != null
