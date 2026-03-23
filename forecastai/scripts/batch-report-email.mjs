@@ -9,7 +9,7 @@ import sgMail from '@sendgrid/mail'
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
 // ─── 날짜 유틸 ─────────────────────────────────────────────────────────────────
