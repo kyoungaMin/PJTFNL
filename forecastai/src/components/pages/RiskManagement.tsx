@@ -139,10 +139,10 @@ export default function PageRiskManagement() {
   const [riskItems,     setRiskItems]     = useState<RiskItem[]>([])
   const [dataSource,    setDataSource]    = useState<string>('loading')
   const [gradeSummary,  setGradeSummary]  = useState<Record<string, number>>({})
+  const [typeSummary,   setTypeSummary]   = useState<Record<string, number>>({})
+  const [topCriticalItems, setTopCriticalItems] = useState<RiskItem[]>([])
+  const [pendingCriticalCount, setPendingCriticalCount] = useState<number>(0)
   const [totalCount,    setTotalCount]    = useState<number>(0)
-  const [hasMore,       setHasMore]       = useState<boolean>(false)
-  const [page,          setPage]          = useState<number>(1)
-  const [loadingMore,   setLoadingMore]   = useState<boolean>(false)
 
   const [periodType, setPeriodType] = useState<'weekly' | 'monthly'>('weekly')
   const [search,  setSearch]  = useState('')
@@ -239,30 +239,23 @@ export default function PageRiskManagement() {
     setDataSource('loading')
     setRiskItems([])
     setGradeSummary({})
+    setTypeSummary({})
+    setTopCriticalItems([])
+    setPendingCriticalCount(0)
     setTotalCount(0)
-    setHasMore(false)
-    setPage(1)
     
     if (selDate) {
-      loadPage(1, selDate, selCategory, periodType, gradeF, false)
+      loadData(selDate, selCategory, periodType, gradeF)
     } else if (filtersLoaded && availDates.length === 0) {
        // 필터 로드 완료 후에도 날짜가 없으면 empty 처리
        setDataSource('empty')
     }
   }, [selDate, selCategory, periodType, gradeF, filtersLoaded, availDates.length])
 
-  /* ── 페이지 추가 로드 ── */
-  useEffect(() => {
-    if (page === 1) return // 최초 로드는 위 effect에서 처리
-    setLoadingMore(true)
-    loadPage(page, selDate, selCategory, periodType, gradeF, true)
-  }, [page])
-
-  function loadPage(p: number, date: string, category: string, pType: string, grade: string, append: boolean) {
+  function loadData(date: string, category: string, pType: string, grade: string) {
     const requestId = ++requestRef.current
     const query = new URLSearchParams()
     query.set('date', date)
-    query.set('page', String(p))
     query.set('eval_type', pType)
     if (category !== '전체') query.set('type', category)
     if (grade !== '전체') query.set('grade', grade)
@@ -272,18 +265,20 @@ export default function PageRiskManagement() {
       .then(data => {
         if (requestId !== requestRef.current) return
         if (data.source === 'database') {
-          setRiskItems(prev => append ? [...prev, ...(data.items ?? [])] : (data.items ?? []))
+          setRiskItems(data.items ?? [])
           setDataSource('database')
           setGradeSummary(data.gradeSummary ?? {})
+          setTypeSummary(data.typeSummary ?? {})
+          setTopCriticalItems(data.topCriticalItems ?? [])
+          setPendingCriticalCount(data.pendingCriticalCount ?? 0)
           setTotalCount(data.totalCount ?? 0)
-          setHasMore(data.hasMore ?? false)
         } else if (data.source === 'empty') {
-          if (!append) {
-            setRiskItems([])
-            setGradeSummary({})
-            setTotalCount(0)
-            setHasMore(false)
-          }
+          setRiskItems([])
+          setGradeSummary({})
+          setTypeSummary({})
+          setTopCriticalItems([])
+          setPendingCriticalCount(0)
+          setTotalCount(0)
           setDataSource('empty')
         } else {
           setDataSource(data.source === 'error' ? 'error' : 'mock')
@@ -291,9 +286,6 @@ export default function PageRiskManagement() {
       })
       .catch(() => {
         if (requestId === requestRef.current) setDataSource('error')
-      })
-      .finally(() => {
-        if (requestId === requestRef.current) setLoadingMore(false)
       })
   }
 
@@ -312,15 +304,13 @@ export default function PageRiskManagement() {
 
   const criticalCount   = (gradeSummary['E'] ?? 0) + (gradeSummary['F'] ?? 0)
   const warningCount    = gradeSummary['D'] ?? 0
-
-  const typeDistCount = useMemo(() => {
-    const c: Record<string,number> = { '결품': 0, '과잉': 0, '납기': 0, '마진': 0 }
-    for (const r of riskItems) if (r.type in c) c[r.type]++
-    return c
-  }, [riskItems])
-
-  const top5Critical    = useMemo(() => riskItems.filter(r => ['E','F'].includes(r.grade)).slice(0, 5), [riskItems])
-  const pendingCritical = riskItems.filter(r => ['E','F'].includes(r.grade) && r.status === '미처리').length
+  const normalizedTypeSummary = useMemo(() => ({
+    '결품': typeSummary['결품'] ?? 0,
+    '과잉': typeSummary['과잉'] ?? 0,
+    '납기': typeSummary['납기'] ?? 0,
+    '마진': typeSummary['마진'] ?? 0,
+  }), [typeSummary])
+  const typeTotalCount = Object.values(normalizedTypeSummary).reduce((sum, cnt) => sum + cnt, 0)
 
   return (
     <div style={{ position: 'relative' }}>
@@ -408,9 +398,7 @@ export default function PageRiskManagement() {
           }}>초기화</Btn>
 
           <span style={{ fontSize: 11, color: T.text3, marginLeft: 'auto' }}>
-            {riskItems.length > 0 && totalCount > 0
-              ? `${riskItems.length.toLocaleString()} / ${totalCount.toLocaleString()}건`
-              : `총 ${filtered.length}건`}
+            {`${filtered.length.toLocaleString()} / ${totalCount.toLocaleString()}건`}
           </span>
         </div>
       </div>
@@ -421,7 +409,7 @@ export default function PageRiskManagement() {
           { label: '즉시 조치 필요',   value: criticalCount,   sub: `E · F 등급 — ${periodType === 'weekly' ? '이번 주' : '이번 달'} 내 조치 필수`,    color: T.red,           bg: T.redSoft,               border: T.redMid },
           { label: '주의 필요',        value: warningCount,    sub: 'D 등급 — 조기 대응 권고',                color: gradeColors['D'], bg: `${gradeColors['D']}12`, border: `${gradeColors['D']}40` },
           { label: '전체 관리 품목',   value: totalCount,      sub: `${formatPeriodLabel(selDate, periodType) || '선택된 기간'} 기준 전체 품목 수`,          color: T.text2,          bg: T.surface2,              border: T.border },
-          { label: '미처리 (E·F 중)', value: pendingCritical, sub: '즉시 조치 필요 중 아직 미실시',          color: T.blue,           bg: T.blueSoft,              border: T.blueMid },
+          { label: '미처리 (E·F 중)', value: pendingCriticalCount, sub: '즉시 조치 필요 중 아직 미실시',   color: T.blue,           bg: T.blueSoft,              border: T.blueMid },
         ] as { label: string; value: number; sub: string; color: string; bg: string; border: string }[]).map(({ label, value, sub, color, bg, border }) => (
           <div key={label} style={{ ...card, padding: '16px 20px', background: bg, border: `1px solid ${border}`, borderLeftWidth: 4, borderLeftColor: color, borderLeftStyle: 'solid' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, marginBottom: 6 }}>{label}</div>
@@ -475,7 +463,7 @@ export default function PageRiskManagement() {
           <div style={{ ...card, padding: '16px 20px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: T.text1 }}>위험유형 분포</span>
-              <span style={{ fontSize: 10, color: T.text3 }}>현재 로드된 {riskItems.length}건 기준 — 가장 빈번한 위험 원인 파악용</span>
+              <span style={{ fontSize: 10, color: T.text3 }}>DB 전체 {typeTotalCount.toLocaleString()}건 기준 — 가장 빈번한 위험 원인 파악용</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
               {([
@@ -484,8 +472,8 @@ export default function PageRiskManagement() {
                 { type: '과잉', color: T.blue,           desc: '재고 과다 — 보관비·운전자금 부담' },
                 { type: '마진', color: T.amber,          desc: '수익성 악화 — 단가 재협의 필요' },
               ] as { type: string; color: string; desc: string }[]).map(({ type, color, desc }) => {
-                const cnt = typeDistCount[type] ?? 0
-                const pct = riskItems.length > 0 ? Math.round(cnt / riskItems.length * 100) : 0
+                const cnt = normalizedTypeSummary[type] ?? 0
+                const pct = typeTotalCount > 0 ? Math.round(cnt / typeTotalCount * 100) : 0
                 return (
                   <div key={type}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
@@ -519,14 +507,14 @@ export default function PageRiskManagement() {
               ? Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} style={{ height: 66, borderRadius: 8, background: T.surface2, marginBottom: 8, animation: 'pulse 1.5s ease-in-out infinite' }} />
                 ))
-              : top5Critical.length === 0
+              : topCriticalItems.length === 0
               ? (
                 <div style={{ textAlign: 'center', padding: '36px 0', color: T.text3, fontSize: 12 }}>
                   <div style={{ fontSize: 24, marginBottom: 8 }}>✅</div>
                   즉시 조치 필요 품목이 없습니다
                 </div>
               )
-              : top5Critical.map((r) => (
+              : topCriticalItems.map((r) => (
                 <div
                   key={r.sku}
                   onClick={() => setDrawer(r)}
@@ -587,19 +575,6 @@ export default function PageRiskManagement() {
               ]}))}
             />
           </div>
-
-          {/* 더 보기 버튼 */}
-          {hasMore && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
-              <Btn
-                variant="secondary"
-                onClick={() => setPage(p => p + 1)}
-                disabled={loadingMore}
-              >
-                {loadingMore ? '불러오는 중…' : `더 보기 (${riskItems.length.toLocaleString()} / ${totalCount.toLocaleString()}건)`}
-              </Btn>
-            </div>
-          )}
         </>
       )}
 

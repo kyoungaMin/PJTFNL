@@ -4,7 +4,6 @@ import { supabase } from '@/lib/supabase'
 export const dynamic = 'force-dynamic'
 
 const FETCH_PAGE = 1000
-const PAGE_SIZE = 200
 
 async function fetchAll(
   table: string,
@@ -80,7 +79,6 @@ const STATUS_LABEL: Record<string, string> = {
    쿼리 파라미터:
      date      - 기준일 (없으면 최신 eval_date 자동 탐색)
      type      - 제품 유형 필터 (제품, 반제품, 부재료 등)
-     page      - 페이지 번호 (기본 1, PAGE_SIZE=200)
      sku       - 특정 SKU 단건 조회 (지정 시 페이지네이션 생략, 1건 즉시 반환)
      eval_type - weekly / monthly (기본 monthly)
 ═══════════════════════════════════════════════════════════════════ */
@@ -92,9 +90,6 @@ export async function GET(request: Request) {
     const gradeParam = searchParams.get('grade')
     const skuParam   = searchParams.get('sku')   // ← 단건 조회용 SKU 코드
     const evalType   = searchParams.get('eval_type') || 'monthly'
-    const page       = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-    const offset     = (page - 1) * PAGE_SIZE
-
     // ── 1. eval_date 결정 ──────────────────────────────────────────────────
     let evalDate: string | undefined = dateParam ?? undefined
 
@@ -110,7 +105,17 @@ export async function GET(request: Request) {
     }
 
     if (!evalDate) {
-      return NextResponse.json({ items: [], evalDate: null, gradeSummary: {}, typeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
+      return NextResponse.json({
+        items: [],
+        evalDate: null,
+        gradeSummary: {},
+        typeSummary: {},
+        pendingCriticalCount: 0,
+        topCriticalItems: [],
+        totalCount: 0,
+        hasMore: false,
+        source: 'empty',
+      })
     }
 
     // ── 1-b. SKU 단건 조회 (sku 파라미터 있으면 즉시 반환) ─────────────────
@@ -126,7 +131,17 @@ export async function GET(request: Request) {
       if (skuErr) throw skuErr
 
       if (!skuRisk?.[0]) {
-        return NextResponse.json({ items: [], evalDate, gradeSummary: {}, typeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
+        return NextResponse.json({
+          items: [],
+          evalDate,
+          gradeSummary: {},
+          typeSummary: {},
+          pendingCriticalCount: 0,
+          topCriticalItems: [],
+          totalCount: 0,
+          hasMore: false,
+          source: 'empty',
+        })
       }
 
       const r = skuRisk[0]
@@ -156,7 +171,17 @@ export async function GET(request: Request) {
         leadTime:  Math.round(Number(lt?.avg_lead_days ?? 0)),
         customer:  '-',
       }
-      return NextResponse.json({ items: [item], evalDate, gradeSummary: { [grade]: 1 }, typeSummary: { [rType]: 1 }, totalCount: 1, hasMore: false, source: 'database' })
+      return NextResponse.json({
+        items: [item],
+        evalDate,
+        gradeSummary: { [grade]: 1 },
+        typeSummary: { [rType]: 1 },
+        pendingCriticalCount: ['E', 'F'].includes(grade) && item.status === '미처리' ? 1 : 0,
+        topCriticalItems: ['E', 'F'].includes(grade) ? [item] : [],
+        totalCount: 1,
+        hasMore: false,
+        source: 'database',
+      })
     }
 
     // ── 2. 제품유형 필터: product_master에서 대상 product_code 목록 선추출 ─
@@ -169,7 +194,17 @@ export async function GET(request: Request) {
       )
       validProductIds = typeRows.map((r: any) => r.product_code)
       if (validProductIds.length === 0) {
-        return NextResponse.json({ items: [], evalDate, gradeSummary: {}, typeSummary: {}, totalCount: 0, hasMore: false, source: 'empty' })
+        return NextResponse.json({
+          items: [],
+          evalDate,
+          gradeSummary: {},
+          typeSummary: {},
+          pendingCriticalCount: 0,
+          topCriticalItems: [],
+          totalCount: 0,
+          hasMore: false,
+          source: 'empty',
+        })
       }
     }
 
@@ -221,44 +256,78 @@ export async function GET(request: Request) {
       }
     }
 
-    // ── 4. risk_score 목록 조회 (페이지네이션) ──────────────────────────────
     const RISK_SELECT = 'product_id,eval_date,total_risk,risk_grade,stockout_risk,excess_risk,delivery_risk,margin_risk,safety_stock,inventory_days'
+    let criticalRows: any[] = []
+
+    if (validProductIds) {
+      criticalRows = await batchIn(
+        'risk_score', RISK_SELECT, 'product_id', validProductIds,
+        (q) => q.eq('eval_date', evalDate).eq('eval_type', evalType).in('risk_grade', ['E', 'F']).order('total_risk', { ascending: false }).order('product_id', { ascending: true })
+      )
+      criticalRows.sort((a, b) => {
+        const scoreDiff = Number(b.total_risk ?? 0) - Number(a.total_risk ?? 0)
+        if (scoreDiff !== 0) return scoreDiff
+        return String(a.product_id).localeCompare(String(b.product_id))
+      })
+    } else {
+      criticalRows = await fetchAll(
+        'risk_score',
+        RISK_SELECT,
+        (q) => q.eq('eval_date', evalDate).eq('eval_type', evalType).in('risk_grade', ['E', 'F']).order('total_risk', { ascending: false }).order('product_id', { ascending: true }),
+      )
+    }
+
+    // ── 4. risk_score 전체 목록 조회 (선택 조건 기준 전건) ───────────────────
 
     let risks: any[] = []
 
     if (validProductIds) {
-      const allRisks = await batchIn(
+      risks = await batchIn(
         'risk_score', RISK_SELECT, 'product_id', validProductIds,
         (q) => {
           let qq = q.eq('eval_date', evalDate).eq('eval_type', evalType)
           if (gradeParam) qq = qq.eq('risk_grade', gradeParam)
-          return qq.order('total_risk', { ascending: false })
+          return qq.order('total_risk', { ascending: false }).order('product_id', { ascending: true })
         }
       )
-      allRisks.sort((a, b) => b.total_risk - a.total_risk)
-      risks = allRisks.slice(offset, offset + PAGE_SIZE)
+      risks.sort((a, b) => {
+        const scoreDiff = Number(b.total_risk ?? 0) - Number(a.total_risk ?? 0)
+        if (scoreDiff !== 0) return scoreDiff
+        return String(a.product_id).localeCompare(String(b.product_id))
+      })
     } else {
-      let riskQuery = supabase
-        .from('risk_score')
-        .select(RISK_SELECT)
-        .eq('eval_date', evalDate)
-        .eq('eval_type', evalType)
-        .order('total_risk', { ascending: false })
-        .range(offset, offset + PAGE_SIZE - 1)
-      if (gradeParam) riskQuery = riskQuery.eq('risk_grade', gradeParam)
-
-      const { data, error: rErr } = await riskQuery
-      if (rErr) throw rErr
-      if (data) risks = data
+      risks = await fetchAll(
+        'risk_score',
+        RISK_SELECT,
+        (q) => {
+          let qq = q.eq('eval_date', evalDate).eq('eval_type', evalType)
+          if (gradeParam) qq = qq.eq('risk_grade', gradeParam)
+          return qq.order('total_risk', { ascending: false }).order('product_id', { ascending: true })
+        },
+      )
     }
 
-    const hasMore = offset + risks.length < totalCount
+    totalCount = risks.length
 
     if (risks.length === 0) {
-      return NextResponse.json({ items: [], evalDate, gradeSummary, typeSummary, totalCount, hasMore: false, source: page === 1 ? 'empty' : 'database' })
+      return NextResponse.json({
+        items: [],
+        evalDate,
+        gradeSummary,
+        typeSummary,
+        pendingCriticalCount: 0,
+        topCriticalItems: [],
+        totalCount,
+        hasMore: false,
+        source: 'empty',
+      })
     }
 
-    const productIds = risks.map(r => r.product_id)
+    const topCriticalRows = criticalRows.slice(0, 5)
+    const productIds = Array.from(new Set([
+      ...risks.map(r => r.product_id),
+      ...topCriticalRows.map(r => r.product_id),
+    ]))
     const now = new Date()
     const fourWeeksAgo = new Date(now)
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28)
@@ -313,8 +382,12 @@ export async function GET(request: Request) {
       if (top) custMap[pid] = top[0]
     }
 
-    // ── 8. 아이템 조합 ────────────────────────────────────────────────────
-    const items = risks.map((r, idx) => {
+    const pendingCriticalCount = criticalRows.filter(r => {
+      const aq = actionMap[r.product_id]
+      return !aq || (STATUS_LABEL[aq.status] ?? aq.status ?? '미처리') === '미처리'
+    }).length
+
+    function toRiskItem(r: any, idx: number): any {
       const prod  = productMap[r.product_id] ?? {}
       const lt    = ltMap[r.product_id] ?? {}
       const aq    = actionMap[r.product_id]
@@ -322,7 +395,7 @@ export async function GET(request: Request) {
       const grade = r.risk_grade ?? '-'
 
       return {
-        id:        offset + idx + 1,
+        id:        idx,
         sku:       r.product_id,
         name:      prod.product_name ?? r.product_id,
         score:     Math.round(Number(r.total_risk ?? 0)),
@@ -335,11 +408,35 @@ export async function GET(request: Request) {
         leadTime:  Math.round(Number(lt.avg_lead_days ?? 0)),
         customer:  custMap[r.product_id] ?? '-',
       }
-    })
+    }
 
-    return NextResponse.json({ items, evalDate, gradeSummary, typeSummary, totalCount, hasMore, source: 'database' })
+    // ── 8. 아이템 조합 ────────────────────────────────────────────────────
+    const items = risks.map((r, idx) => toRiskItem(r, idx + 1))
+    const topCriticalItems = topCriticalRows.map((r, idx) => toRiskItem(r, idx + 1))
+
+    return NextResponse.json({
+      items,
+      evalDate,
+      gradeSummary,
+      typeSummary,
+      pendingCriticalCount,
+      topCriticalItems,
+      totalCount,
+      hasMore: false,
+      source: 'database',
+    })
   } catch (err: any) {
     console.error('[API] risk error:', err)
-    return NextResponse.json({ items: [], gradeSummary: {}, totalCount: 0, hasMore: false, source: 'error', error: err.message }, { status: 500 })
+    return NextResponse.json({
+      items: [],
+      gradeSummary: {},
+      typeSummary: {},
+      pendingCriticalCount: 0,
+      topCriticalItems: [],
+      totalCount: 0,
+      hasMore: false,
+      source: 'error',
+      error: err.message,
+    }, { status: 500 })
   }
 }

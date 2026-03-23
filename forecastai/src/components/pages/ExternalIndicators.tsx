@@ -150,6 +150,17 @@ function calcChange(data: Record<string, unknown>[], key: string) {
   return { value: last, pct: prev ? (last - prev) / prev * 100 : 0 }
 }
 
+type SemiIndicatorRow = Record<string, unknown> & {
+  d?: string
+  sox?: number
+  dram?: number
+  nand?: number
+  silicon_wafer?: number
+  mu?: number
+  wdc?: number
+  semi_ppi?: number
+}
+
 function LoadingCard() {
   return (
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px', opacity: 0.5 }}>
@@ -550,15 +561,15 @@ export function PageExtSemi() {
   const [freq, setFreq] = useState<Freq>('month')
   const period = Math.max(...(periodOptionsForFreq(freq) as unknown as number[]))
 
-  const { data, loading } = useExtData(fetchSemiData, EXT_SEMI_DATA, period, freq)
+  const { data, loading } = useExtData<SemiIndicatorRow[]>(fetchSemiData, EXT_SEMI_DATA as SemiIndicatorRow[], period, freq)
   const isLive = data !== EXT_SEMI_DATA
   const sox = calcChange(data, 'sox'), dram = calcChange(data, 'dram'), nand = calcChange(data, 'nand')
   const silicon = calcChange(data, 'silicon_wafer')
   const mu = calcChange(data, 'mu'), wdc = calcChange(data, 'wdc'), ppi = calcChange(data, 'semi_ppi')
 
   // DRAM/NAND 유료 데이터가 없으면 대리지표(MU/WDC) 사용
-  const hasDram = data.some(r => (r.dram as number) > 0)
-  const hasProxy = data.some(r => (r.mu as number) > 0)
+  const hasDram = data.some(r => Number(r.dram ?? 0) > 0)
+  const hasProxy = data.some(r => Number(r.mu ?? 0) > 0)
 
   return <ExtLayout
     title="산업 지표" sub="SOX 지수 · DRAM/NAND · Micron(MU)/WDC 주가 · 반도체 PPI"

@@ -17,25 +17,36 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 최신 주차 기준 제품별 1건 취득을 위해 넉넉하게 로드 후 필터
-    const { data, error } = await supabase
+    const { data: latestWeekRows, error: latestWeekErr } = await supabase
       .from('feature_store_weekly')
-      .select('product_id, year_week, order_qty_nonzero_13w, order_qty_cv4')
+      .select('year_week')
       .order('year_week', { ascending: false })
-      .limit(limit * 50)
+      .limit(1)
 
-    if (error || !data || data.length === 0) {
+    if (latestWeekErr || !latestWeekRows?.[0]?.year_week) {
       return NextResponse.json({ items: [], source: 'no_data' })
     }
 
-    // 제품별 최신 주차 1건만 유지
-    const seen = new Set<string>()
-    const latest: typeof data = []
-    for (const row of data) {
-      if (!seen.has(row.product_id)) {
-        seen.add(row.product_id)
-        latest.push(row)
-      }
+    const latestWeek = latestWeekRows[0].year_week
+    const latest: {
+      product_id: string
+      year_week: string
+      order_qty_nonzero_13w: number | null
+      order_qty_cv4: number | null
+    }[] = []
+
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabase
+        .from('feature_store_weekly')
+        .select('product_id, year_week, order_qty_nonzero_13w, order_qty_cv4')
+        .eq('year_week', latestWeek)
+        .order('product_id', { ascending: true })
+        .range(offset, offset + 999)
+
+      if (error) throw error
+      if (!data?.length) break
+      latest.push(...data)
+      if (data.length < 1000) break
     }
 
     // 신뢰도 점수 계산
@@ -64,7 +75,10 @@ export async function GET(request: Request) {
       }
     })
 
-    scored.sort((a, b) => b.score - a.score)
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      return a.productId.localeCompare(b.productId)
+    })
     const topN = scored.slice(0, limit)
 
     return NextResponse.json({ items: topN, source: 'database' })
