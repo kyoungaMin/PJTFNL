@@ -1,11 +1,11 @@
 /**
  * 주간 이메일 보고서 배치
  * 실행: node scripts/batch-report-email.mjs
- * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY, RESEND_API_KEY, RESEND_FROM_EMAIL, OPENAI_API_KEY
+ * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY, SENDGRID_API_KEY, SENDGRID_FROM_EMAIL, OPENAI_API_KEY
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import sgMail from '@sendgrid/mail'
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -40,7 +40,7 @@ async function callGPT(data) {
     ? data.topActions.map(a => `${a.product_id}: ${a.action_type} (${a.priority}급) — ${a.reason}`).join('\n')
     : '없음'
   const topProductsText = data.topProducts.length > 0
-    ? data.topProducts.map(p => `${p.product_id} ${p.order_qty.toLocaleString()}EA`).join(', ')
+    ? data.topProducts.map(p => `${p.product_id} ${p.product_name}(${p.product_spec}) ${p.order_qty.toLocaleString()}EA`).join(', ')
     : '데이터 없음'
   const changeText = data.changeRate != null
     ? ` (전주 대비 ${Number(data.changeRate) >= 0 ? '+' : ''}${data.changeRate}%)`
@@ -135,10 +135,28 @@ async function fetchReportData() {
   const wRows = weeklyRows ?? []
   const weekProducedQty = wRows.reduce((s, r) => s + Number(r.produced_qty ?? 0), 0)
   const weekOrderAmt    = wRows.reduce((s, r) => s + Number(r.order_amount  ?? 0), 0)
-  const topProducts     = wRows.slice(0, 5).map(r => ({
-    product_id: String(r.product_id ?? ''),
-    order_qty:  Math.round(Number(r.order_qty ?? 0)),
-  }))
+  const top5Rows        = wRows.slice(0, 5)
+
+  // product_master에서 품목명·규격 조회
+  const top5Ids = top5Rows.map(r => String(r.product_id ?? ''))
+  const { data: pmRows } = top5Ids.length > 0
+    ? await supabase.from('product_master').select('product_code, product_name, product_specification').in('product_code', top5Ids)
+    : { data: [] }
+  const pmMap = {}
+  for (const p of (pmRows ?? [])) {
+    pmMap[p.product_code] = { name: p.product_name ?? '', spec: p.product_specification ?? '' }
+  }
+
+  const topProducts = top5Rows.map(r => {
+    const pid = String(r.product_id ?? '')
+    const pm  = pmMap[pid]
+    return {
+      product_id:   pid,
+      product_name: pm?.name ?? '',
+      product_spec: pm?.spec ?? '',
+      order_qty:    Math.round(Number(r.order_qty ?? 0)),
+    }
+  })
 
   const thirtyAgo = addDays(latest.end, -30)
   const { data: covRows } = await supabase.rpc('get_inventory_coverage', {
@@ -241,9 +259,11 @@ function buildHtml(d) {
     ? d.topProducts.map((p, i) => `<tr>
         <td style="padding:6px 12px;font-size:12px;color:#94A3B8;">${i + 1}</td>
         <td style="padding:6px 12px;font-size:12px;font-weight:500;">${p.product_id}</td>
+        <td style="padding:6px 12px;font-size:12px;">${p.product_name || '—'}</td>
+        <td style="padding:6px 12px;font-size:11px;color:#64748B;">${p.product_spec || '—'}</td>
         <td style="padding:6px 12px;font-size:12px;text-align:right;">${p.order_qty.toLocaleString()} EA</td>
       </tr>`).join('')
-    : `<tr><td colspan="3" style="padding:12px;text-align:center;color:#94A3B8;font-size:12px;">데이터 없음</td></tr>`
+    : `<tr><td colspan="5" style="padding:12px;text-align:center;color:#94A3B8;font-size:12px;">데이터 없음</td></tr>`
 
   const gptSection = d.gptReport ? `
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom:1px solid #E2E8F0;background:#FAFBFF;">
@@ -308,7 +328,9 @@ function buildHtml(d) {
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
       <thead><tr style="background:#F8FAFC;">
         <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748B;border-bottom:1px solid #E2E8F0;width:36px;">#</th>
-        <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748B;border-bottom:1px solid #E2E8F0;">품목 ID</th>
+        <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748B;border-bottom:1px solid #E2E8F0;">품목코드</th>
+        <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748B;border-bottom:1px solid #E2E8F0;">품목명</th>
+        <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748B;border-bottom:1px solid #E2E8F0;">규격</th>
         <th style="padding:6px 12px;text-align:right;font-size:10px;color:#64748B;border-bottom:1px solid #E2E8F0;">수주량</th>
       </tr></thead>
       <tbody>${topProductsHtml}</tbody>
@@ -338,11 +360,11 @@ function buildHtml(d) {
 // ─── 메인 ───────────────────────────────────────────────────────────────────────
 console.log('=== 주간 이메일 보고서 발송 ===\n')
 
-const resendKey = process.env.RESEND_API_KEY
-if (!resendKey) { console.error('RESEND_API_KEY 환경변수 없음'); process.exit(1) }
+const sendgridKey = process.env.SENDGRID_API_KEY
+if (!sendgridKey) { console.error('SENDGRID_API_KEY 환경변수 없음'); process.exit(1) }
 
-const resend = new Resend(resendKey)
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'
+sgMail.setApiKey(sendgridKey)
+const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL ?? 'noreply@example.com'
 
 try {
   const { data: recipients, error: rErr } = await supabase
@@ -361,7 +383,7 @@ try {
 
   console.log(`[2/2] 이메일 발송 중 (${recipients.length}명)...`)
   const results = await Promise.allSettled(
-    recipients.map(r => resend.emails.send({ from: FROM_EMAIL, to: r.email, subject, html }))
+    recipients.map(r => sgMail.send({ from: FROM_EMAIL, to: r.email, subject, html }))
   )
   const succeeded = results.filter(r => r.status === 'fulfilled').length
   const failed    = results.filter(r => r.status === 'rejected').length
